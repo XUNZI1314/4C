@@ -33,7 +33,7 @@ jobs:
           OWNER_LOWER=$(echo "$OWNER_LOWER" | tr '[:upper:]' '[:lower:]')
           echo "IMAGE_NAME=ghcr.io/$OWNER_LOWER/protein-visualizer" >> $GITHUB_ENV
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
       - name: Cache pip
