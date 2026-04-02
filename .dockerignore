@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+.env
+.pytest_cache/
+.git/
+.ipynb_checkpoints/
+protein_visualization_prototype.ipynb

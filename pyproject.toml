@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "protein-visualizer"
+version = "0.1.0"
+description = "Protein visualization software with PDB rendering and MMPBSA DELTA TOTAL heat mapping"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "4C Project Team" }
+]
+dependencies = [
+  "streamlit>=1.44.0",
+  "py3Dmol>=2.4.2",
+  "pandas>=2.2.3",
+  "numpy>=2.1.0"
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
