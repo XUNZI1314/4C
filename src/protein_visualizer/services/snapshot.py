@@ -323,7 +323,11 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         lines.append(f"Catalytic benchmark variant residues: {benchmark_variant_detail_rows} rows")
     benchmark_remediation_rows = int(extra.get("pocket_benchmark_variant_remediation_rows") or 0)
     if benchmark_remediation_rows > 0:
-        lines.append(f"Catalytic benchmark remediation queue: {benchmark_remediation_rows} rows")
+        remediation_summary_rows = int(extra.get("pocket_benchmark_variant_remediation_summary_rows") or 0)
+        checklist_status = "available" if bool(extra.get("pocket_benchmark_variant_remediation_checklist_available")) else "not available"
+        lines.append(
+            f"Catalytic benchmark remediation queue: {benchmark_remediation_rows} rows / summary {remediation_summary_rows} rows / checklist {checklist_status}"
+        )
     consensus_rerank_rows = int(extra.get("consensus_rerank_suggestion_rows") or 0)
     if consensus_rerank_rows > 0:
         rerank_pocket = str(extra.get("top_consensus_rerank_pocket_id") or "-").strip()

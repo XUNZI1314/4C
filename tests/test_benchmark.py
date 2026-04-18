@@ -9,7 +9,9 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_variant_case_comparison,
     build_pocket_benchmark_variant_dataset_comparison,
     build_pocket_benchmark_variant_detail_comparison,
+    build_pocket_benchmark_variant_remediation_checklist_markdown,
     build_pocket_benchmark_variant_remediation_queue,
+    build_pocket_benchmark_variant_remediation_summary,
     parse_benchmark_reference_table,
 )
 
@@ -395,3 +397,62 @@ def test_variant_remediation_queue_prioritizes_lost_and_current_missed_residues(
     assert "Literature evidence" in str(lost_row["suggested_action"])
     assert str(current_miss["priority"]) == "P1"
     assert str(current_miss["issue_type"]) == "current-missed-residue"
+
+
+def test_variant_remediation_summary_and_checklist_markdown():
+    queue = pd.DataFrame(
+        [
+            {
+                "action_id": "a1",
+                "priority": "P0",
+                "issue_type": "ablation-lost-residue",
+                "variant_label": "no-evidence-route",
+                "reference_variant_label": "current",
+                "benchmark_id": "enzyme-a",
+                "residue_label": "SER A10",
+                "chain": "A",
+                "resid": 10,
+                "resname": "SER",
+                "match_delta": "lost",
+                "reference_matched_pocket_id": "Pocket-1",
+                "variant_matched_pocket_id": "",
+                "reference_matched_rank": 1,
+                "variant_matched_rank": 0,
+                "expected_pocket_id": "Pocket-1",
+                "suggested_action": "Review route threshold.",
+                "benchmark_warning": "reference-residue-lost-vs-current",
+            },
+            {
+                "action_id": "a2",
+                "priority": "P0",
+                "issue_type": "ablation-lost-residue",
+                "variant_label": "no-evidence-route",
+                "reference_variant_label": "current",
+                "benchmark_id": "enzyme-b",
+                "residue_label": "HIS B20",
+                "chain": "B",
+                "resid": 20,
+                "resname": "HIS",
+                "match_delta": "lost",
+                "reference_matched_pocket_id": "Pocket-2",
+                "variant_matched_pocket_id": "",
+                "reference_matched_rank": 2,
+                "variant_matched_rank": 0,
+                "expected_pocket_id": "",
+                "suggested_action": "Review route threshold.",
+                "benchmark_warning": "reference-residue-lost-vs-current",
+            },
+        ]
+    )
+
+    summary = build_pocket_benchmark_variant_remediation_summary(queue)
+    checklist = build_pocket_benchmark_variant_remediation_checklist_markdown(queue, summary)
+
+    assert len(summary) == 1
+    assert int(summary.iloc[0]["action_count"]) == 2
+    assert int(summary.iloc[0]["affected_case_count"]) == 2
+    assert int(summary.iloc[0]["affected_residue_count"]) == 2
+    assert "Ablation removes residues" in str(summary.iloc[0]["summary_warning"])
+    assert checklist.startswith("# Pocket benchmark remediation checklist")
+    assert "| P0 | ablation-lost-residue | no-evidence-route | 2 | 2 | 2 |" in checklist
+    assert "`P0` `ablation-lost-residue` `no-evidence-route` enzyme-a SER A10" in checklist

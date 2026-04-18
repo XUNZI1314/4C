@@ -190,6 +190,19 @@ BENCHMARK_VARIANT_REMEDIATION_COLUMNS = [
     "benchmark_warning",
 ]
 
+BENCHMARK_VARIANT_REMEDIATION_SUMMARY_COLUMNS = [
+    "priority",
+    "issue_type",
+    "variant_label",
+    "action_count",
+    "affected_case_count",
+    "affected_residue_count",
+    "top_residues",
+    "suggested_action",
+    "summary_status",
+    "summary_warning",
+]
+
 CHAIN_ALIASES = {"chain", "chainid", "chain_id", "authasymid", "auth_asym_id", "asymid", "asym_id"}
 RESID_ALIASES = {
     "resid",
@@ -254,6 +267,10 @@ def _empty_variant_detail_comparison_df() -> pd.DataFrame:
 
 def _empty_variant_remediation_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_VARIANT_REMEDIATION_COLUMNS)
+
+
+def _empty_variant_remediation_summary_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_VARIANT_REMEDIATION_SUMMARY_COLUMNS)
 
 
 def _simplify_column_name(value: object) -> str:
@@ -1211,3 +1228,133 @@ def build_pocket_benchmark_variant_remediation_queue(variant_detail_comparison_d
     frame["_priority_rank"] = frame["priority"].map(priority_rank).fillna(99)
     frame = frame.sort_values(["_priority_rank", "variant_label", "benchmark_id", "resid", "residue_label"]).drop(columns=["_priority_rank"])
     return frame.reset_index(drop=True)
+
+
+def build_pocket_benchmark_variant_remediation_summary(remediation_df: Optional[pd.DataFrame]) -> pd.DataFrame:
+    """Summarize remediation actions by priority, issue type and variant."""
+
+    if remediation_df is None or getattr(remediation_df, "empty", True):
+        return _empty_variant_remediation_summary_df()
+
+    working = remediation_df.copy()
+    for column in BENCHMARK_VARIANT_REMEDIATION_COLUMNS:
+        if column not in working.columns:
+            working[column] = ""
+    working["priority"] = working["priority"].astype(str).str.strip()
+    working["issue_type"] = working["issue_type"].astype(str).str.strip()
+    working["variant_label"] = working["variant_label"].astype(str).str.strip()
+    working["benchmark_id"] = working["benchmark_id"].astype(str).str.strip()
+    working["residue_label"] = working["residue_label"].astype(str).str.strip()
+    working["suggested_action"] = working["suggested_action"].astype(str).str.strip()
+    if working.empty:
+        return _empty_variant_remediation_summary_df()
+
+    rows: list[dict[str, object]] = []
+    group_columns = ["priority", "issue_type", "variant_label"]
+    for (priority, issue_type, variant_label), group in working.groupby(group_columns, sort=True, dropna=False):
+        residue_keys = (
+            group["benchmark_id"].astype(str).str.strip()
+            + "|"
+            + group["chain"].astype(str).str.strip()
+            + "|"
+            + group["resid"].astype(str).str.strip()
+        )
+        top_residues = ", ".join(group["residue_label"].dropna().astype(str).str.strip().replace("", pd.NA).dropna().drop_duplicates().head(8).tolist())
+        action_count = int(len(group))
+        status = "review-required" if action_count else "no-actions"
+        warning = ""
+        if str(priority).upper() == "P0":
+            warning = "Ablation removes residues that current covers; do not weaken this evidence path without review."
+        elif str(issue_type) == "current-missed-residue":
+            warning = "Current run misses curated residues; validate numbering, mapping and detection thresholds."
+        rows.append(
+            {
+                "priority": str(priority or ""),
+                "issue_type": str(issue_type or ""),
+                "variant_label": str(variant_label or ""),
+                "action_count": action_count,
+                "affected_case_count": int(group["benchmark_id"].replace("", pd.NA).dropna().nunique()),
+                "affected_residue_count": int(residue_keys.nunique()),
+                "top_residues": top_residues or "none",
+                "suggested_action": str(group["suggested_action"].dropna().astype(str).head(1).iloc[0]) if not group.empty else "",
+                "summary_status": status,
+                "summary_warning": warning,
+            }
+        )
+
+    if not rows:
+        return _empty_variant_remediation_summary_df()
+    frame = pd.DataFrame(rows, columns=BENCHMARK_VARIANT_REMEDIATION_SUMMARY_COLUMNS)
+    priority_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    frame["_priority_rank"] = frame["priority"].map(priority_rank).fillna(99)
+    frame = frame.sort_values(["_priority_rank", "variant_label", "issue_type"]).drop(columns=["_priority_rank"])
+    return frame.reset_index(drop=True)
+
+
+def build_pocket_benchmark_variant_remediation_checklist_markdown(
+    remediation_df: Optional[pd.DataFrame],
+    summary_df: Optional[pd.DataFrame] = None,
+    *,
+    title: str = "Pocket benchmark remediation checklist",
+    max_actions: int = 80,
+) -> str:
+    """Render a manual review checklist for benchmark remediation actions."""
+
+    if remediation_df is None or getattr(remediation_df, "empty", True):
+        return ""
+
+    working = remediation_df.copy()
+    for column in BENCHMARK_VARIANT_REMEDIATION_COLUMNS:
+        if column not in working.columns:
+            working[column] = ""
+    priority_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    working["_priority_rank"] = working["priority"].map(priority_rank).fillna(99)
+    working["resid"] = pd.to_numeric(working["resid"], errors="coerce").fillna(0).astype(int)
+    working = working.sort_values(["_priority_rank", "variant_label", "benchmark_id", "resid", "residue_label"]).drop(columns=["_priority_rank"])
+
+    summary = summary_df.copy() if summary_df is not None and not getattr(summary_df, "empty", True) else build_pocket_benchmark_variant_remediation_summary(working)
+    lines = [
+        f"# {title}",
+        "",
+        "Generated from `pocket_benchmark_variant_remediation_queue.csv`.",
+        "",
+        "## Summary",
+        "",
+    ]
+    if summary.empty:
+        lines.append("No remediation actions are currently required.")
+    else:
+        lines.append("| Priority | Issue | Variant | Actions | Cases | Residues |")
+        lines.append("| --- | --- | --- | ---: | ---: | ---: |")
+        for _, row in summary.iterrows():
+            lines.append(
+                "| {priority} | {issue} | {variant} | {actions} | {cases} | {residues} |".format(
+                    priority=str(row.get("priority") or "-"),
+                    issue=str(row.get("issue_type") or "-"),
+                    variant=str(row.get("variant_label") or "-"),
+                    actions=int(row.get("action_count") or 0),
+                    cases=int(row.get("affected_case_count") or 0),
+                    residues=int(row.get("affected_residue_count") or 0),
+                )
+            )
+
+    lines.extend(["", "## Actions", ""])
+    for index, (_, row) in enumerate(working.head(max_actions).iterrows(), start=1):
+        lines.append(
+            "- [ ] `{priority}` `{issue}` `{variant}` {case} {residue}: {action} Reference pocket `{ref_pocket}` rank `{ref_rank}`, variant pocket `{variant_pocket}` rank `{variant_rank}`.".format(
+                priority=str(row.get("priority") or "-"),
+                issue=str(row.get("issue_type") or "-"),
+                variant=str(row.get("variant_label") or "-"),
+                case=str(row.get("benchmark_id") or "current"),
+                residue=str(row.get("residue_label") or f"{row.get('chain', '')}{row.get('resid', '')}"),
+                action=str(row.get("suggested_action") or "Review this benchmark action."),
+                ref_pocket=str(row.get("reference_matched_pocket_id") or "-"),
+                ref_rank=int(row.get("reference_matched_rank") or 0),
+                variant_pocket=str(row.get("variant_matched_pocket_id") or "-"),
+                variant_rank=int(row.get("variant_matched_rank") or 0),
+            )
+        )
+    if len(working) > max_actions:
+        lines.append("")
+        lines.append(f"Additional actions omitted: {len(working) - max_actions}. Export the CSV for the full queue.")
+    return "\n".join(lines).strip() + "\n"

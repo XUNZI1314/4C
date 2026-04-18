@@ -250,6 +250,8 @@ The benchmark exports:
 - `pocket_benchmark_variant_dataset_comparison.csv`
 - `pocket_benchmark_variant_residue_comparison.csv`
 - `pocket_benchmark_variant_remediation_queue.csv`
+- `pocket_benchmark_variant_remediation_summary.csv`
+- `pocket_benchmark_variant_remediation_checklist.md`
 - `pocket_benchmark_details.csv`
 - `p2rank_ab_comparison.csv`
 
@@ -266,6 +268,7 @@ Current summary metrics:
 - Case-level and dataset-level variant coverage loss.
 - Residue-level variant match deltas: `lost`, `gained`, `unchanged-hit` or `unchanged-miss`.
 - Remediation queue rows for ablation-lost residues and current missed residues.
+- Remediation summary and Markdown checklist for manual review.
 
 This gives a concrete accuracy check before claiming that the top-ranked pocket is the active-site pocket.
 
@@ -288,7 +291,7 @@ Positive `coverage_loss_vs_reference` means removing that evidence path reduced 
 
 For batch-like reference tables, `pocket_benchmark_variant_case_comparison.csv` pinpoints which cases lose coverage, while `pocket_benchmark_variant_dataset_comparison.csv` reports mean coverage loss, any-hit/all-hit rate deltas and loss/gain case counts per variant. `pocket_benchmark_variant_residue_comparison.csv` then shows the exact catalytic residues that were lost or gained by each ablation.
 
-`pocket_benchmark_variant_remediation_queue.csv` turns the residue comparison into actions. P0 rows mean an ablation lost a catalytic residue that current covered. P1 rows mean current itself misses a curated residue and the reference mapping or detection thresholds need review.
+`pocket_benchmark_variant_remediation_queue.csv` turns the residue comparison into actions. P0 rows mean an ablation lost a catalytic residue that current covered. P1 rows mean current itself misses a curated residue and the reference mapping or detection thresholds need review. `pocket_benchmark_variant_remediation_summary.csv` groups actions by priority, issue type and variant, while `pocket_benchmark_variant_remediation_checklist.md` renders the same queue as human checkboxes.
 
 ## P2Rank Integration
 
@@ -461,7 +464,7 @@ Coverage includes:
 Latest full run:
 
 ```text
-205 passed
+206 passed
 ```
 
 ## Known Limits
