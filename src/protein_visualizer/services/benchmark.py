@@ -348,6 +348,23 @@ BENCHMARK_CASE_INTERPRETATION_MATRIX_SUMMARY_COLUMNS = [
     "summary_warning",
 ]
 
+BENCHMARK_CASE_INTERPRETATION_MATRIX_QUEUE_COLUMNS = [
+    "action_id",
+    "priority",
+    "action_status",
+    "benchmark_id",
+    "case_interpretation_status",
+    "best_claim_ready_top_n",
+    "best_claim_ready_coverage",
+    "best_claim_ready_rank",
+    "top1_claim_status",
+    "top3_claim_status",
+    "top5_claim_status",
+    "issue_type",
+    "suggested_action",
+    "case_warning",
+]
+
 BENCHMARK_DATASET_INTERPRETATION_COLUMNS = [
     "top_n",
     "case_count",
@@ -537,6 +554,10 @@ def _empty_case_interpretation_matrix_df(top_ns: Sequence[int] = (1, 3, 5)) -> p
 
 def _empty_case_interpretation_matrix_summary_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_CASE_INTERPRETATION_MATRIX_SUMMARY_COLUMNS)
+
+
+def _empty_case_interpretation_matrix_queue_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_CASE_INTERPRETATION_MATRIX_QUEUE_COLUMNS)
 
 
 def _empty_dataset_interpretation_df() -> pd.DataFrame:
@@ -2081,6 +2102,92 @@ def build_pocket_benchmark_case_interpretation_matrix_summary(matrix_df: Optiona
         "summary_warning": warning,
     }
     return pd.DataFrame([row], columns=BENCHMARK_CASE_INTERPRETATION_MATRIX_SUMMARY_COLUMNS)
+
+
+def _case_matrix_queue_issue(case_status: str) -> tuple[str, str, str, str]:
+    if case_status == "blocked":
+        return (
+            "P0",
+            "blocker",
+            "blocked-case",
+            "Fix readiness or reference blockers for this benchmark case before using it in dataset-level claims.",
+        )
+    if case_status == "no-claim-ready":
+        return (
+            "P1",
+            "review",
+            "no-claim-ready-case",
+            "Inspect missed catalytic residues, ranking thresholds and pocket boundary choices for this benchmark case.",
+        )
+    if case_status == "review-needed":
+        return (
+            "P2",
+            "review",
+            "review-needed-case",
+            "Complete reviewer sign-off for this benchmark case before publishing dataset-level claims.",
+        )
+    if case_status == "readiness-unknown":
+        return (
+            "P2",
+            "review",
+            "readiness-unknown-case",
+            "Generate or repair readiness evidence for this benchmark case before reporting benchmark accuracy.",
+        )
+    return "", "", "", ""
+
+
+def build_pocket_benchmark_case_interpretation_matrix_queue(matrix_df: Optional[pd.DataFrame]) -> pd.DataFrame:
+    """Turn case matrix statuses into a one-row-per-case triage queue."""
+
+    if matrix_df is None or getattr(matrix_df, "empty", True):
+        return _empty_case_interpretation_matrix_queue_df()
+
+    working = matrix_df.copy()
+    for column in BENCHMARK_CASE_INTERPRETATION_MATRIX_BASE_COLUMNS:
+        if column not in working.columns:
+            working[column] = ""
+    for column in ("top1_claim_status", "top3_claim_status", "top5_claim_status"):
+        if column not in working.columns:
+            working[column] = ""
+    working["case_interpretation_status"] = working["case_interpretation_status"].map(_normalized_claim_status)
+    working.loc[working["case_interpretation_status"].eq(""), "case_interpretation_status"] = "readiness-unknown"
+    for column in ("best_claim_ready_top_n", "best_claim_ready_rank"):
+        working[column] = pd.to_numeric(working[column], errors="coerce").fillna(0).astype(int)
+    working["best_claim_ready_coverage"] = pd.to_numeric(working["best_claim_ready_coverage"], errors="coerce").fillna(0.0)
+
+    rows: list[dict[str, object]] = []
+    for _, row in working.iterrows():
+        case_status = _safe_text(row.get("case_interpretation_status"))
+        priority, action_status, issue_type, fallback_action = _case_matrix_queue_issue(case_status)
+        if not priority:
+            continue
+        rows.append(
+            {
+                "priority": priority,
+                "action_status": action_status,
+                "benchmark_id": _safe_text(row.get("benchmark_id")) or "current",
+                "case_interpretation_status": case_status,
+                "best_claim_ready_top_n": int(row.get("best_claim_ready_top_n") or 0),
+                "best_claim_ready_coverage": round(float(row.get("best_claim_ready_coverage") or 0.0), 3),
+                "best_claim_ready_rank": int(row.get("best_claim_ready_rank") or 0),
+                "top1_claim_status": _safe_text(row.get("top1_claim_status")),
+                "top3_claim_status": _safe_text(row.get("top3_claim_status")),
+                "top5_claim_status": _safe_text(row.get("top5_claim_status")),
+                "issue_type": issue_type,
+                "suggested_action": _safe_text(row.get("recommended_action")) or fallback_action,
+                "case_warning": fallback_action,
+            }
+        )
+
+    if not rows:
+        return _empty_case_interpretation_matrix_queue_df()
+
+    frame = pd.DataFrame(rows)
+    priority_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    frame["_priority_rank"] = frame["priority"].map(priority_rank).fillna(99)
+    frame = frame.sort_values(["_priority_rank", "benchmark_id", "issue_type"]).drop(columns=["_priority_rank"]).reset_index(drop=True)
+    frame["action_id"] = [f"BCMQ-{index + 1:03d}" for index in range(len(frame))]
+    return frame[BENCHMARK_CASE_INTERPRETATION_MATRIX_QUEUE_COLUMNS]
 
 
 def _dataset_interpretation_status(

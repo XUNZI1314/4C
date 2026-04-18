@@ -3,6 +3,7 @@ import pandas as pd
 from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_case_interpretation_summary,
     build_pocket_benchmark_case_interpretation_matrix,
+    build_pocket_benchmark_case_interpretation_matrix_queue,
     build_pocket_benchmark_case_interpretation_matrix_summary,
     build_pocket_benchmark_dataset_interpretation_checklist_markdown,
     build_pocket_benchmark_dataset_interpretation_report_markdown,
@@ -378,6 +379,58 @@ def test_build_pocket_benchmark_case_interpretation_matrix_summary_counts_case_s
     assert int(row["earliest_top1_claim_ready_case_count"]) == 1
     assert float(row["mean_usable_claim_ready_coverage"]) == 1.0
     assert str(row["summary_status"]) == "blocked"
+
+
+def test_build_pocket_benchmark_case_interpretation_matrix_queue_prioritizes_cases():
+    matrix = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "enzyme-a",
+                "case_interpretation_status": "claim-ready",
+                "best_claim_ready_top_n": 1,
+                "best_claim_ready_coverage": 1.0,
+                "best_claim_ready_rank": 1,
+                "top1_claim_status": "claim-ready",
+                "recommended_action": "Ready.",
+            },
+            {
+                "benchmark_id": "enzyme-b",
+                "case_interpretation_status": "blocked",
+                "best_claim_ready_top_n": 0,
+                "best_claim_ready_coverage": 0.0,
+                "best_claim_ready_rank": 0,
+                "top1_claim_status": "blocked",
+                "top3_claim_status": "blocked",
+                "recommended_action": "Fix numbering.",
+            },
+            {
+                "benchmark_id": "enzyme-c",
+                "case_interpretation_status": "no-claim-ready",
+                "best_claim_ready_top_n": 0,
+                "best_claim_ready_coverage": 0.0,
+                "best_claim_ready_rank": 0,
+                "top1_claim_status": "readiness-unknown",
+                "top3_claim_status": "review-needed",
+            },
+            {
+                "benchmark_id": "enzyme-d",
+                "case_interpretation_status": "review-needed",
+                "best_claim_ready_top_n": 3,
+                "best_claim_ready_coverage": 0.7,
+                "best_claim_ready_rank": 3,
+                "top1_claim_status": "review-needed",
+                "top3_claim_status": "claim-ready",
+            },
+        ]
+    )
+
+    queue = build_pocket_benchmark_case_interpretation_matrix_queue(matrix)
+
+    assert queue["action_id"].tolist() == ["BCMQ-001", "BCMQ-002", "BCMQ-003"]
+    assert queue["benchmark_id"].tolist() == ["enzyme-b", "enzyme-c", "enzyme-d"]
+    assert queue["priority"].tolist() == ["P0", "P1", "P2"]
+    assert queue["issue_type"].tolist() == ["blocked-case", "no-claim-ready-case", "review-needed-case"]
+    assert str(queue.iloc[0]["suggested_action"]) == "Fix numbering."
 
 
 def test_build_pocket_benchmark_dataset_interpretation_aggregates_case_claims():
