@@ -303,6 +303,13 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
     if benchmark_template_rows > 0:
         notes_status = "available" if bool(extra.get("pocket_benchmark_reference_template_notes_available")) else "not available"
         lines.append(f"Benchmark reference template: {benchmark_template_rows} rows / notes {notes_status}")
+    benchmark_quality_rows = int(extra.get("pocket_benchmark_reference_quality_issue_rows") or 0)
+    if benchmark_quality_rows > 0:
+        quality_summary_rows = int(extra.get("pocket_benchmark_reference_quality_summary_rows") or 0)
+        checklist_status = "available" if bool(extra.get("pocket_benchmark_reference_quality_checklist_available")) else "not available"
+        lines.append(
+            f"Benchmark reference curation quality: {benchmark_quality_rows} issues / summary {quality_summary_rows} rows / checklist {checklist_status}"
+        )
     benchmark_case_summary = extra.get("pocket_benchmark_case_summary") or []
     benchmark_dataset_rows = int(extra.get("pocket_benchmark_dataset_summary_rows") or 0)
     if benchmark_dataset_rows > 0 or benchmark_case_summary:

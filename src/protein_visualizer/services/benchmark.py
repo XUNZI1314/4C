@@ -207,6 +207,33 @@ BENCHMARK_VARIANT_REMEDIATION_SUMMARY_COLUMNS = [
     "summary_warning",
 ]
 
+BENCHMARK_REFERENCE_QUALITY_COLUMNS = [
+    "issue_id",
+    "severity",
+    "issue_type",
+    "benchmark_id",
+    "chain",
+    "resid",
+    "resname",
+    "residue_label",
+    "reference_type",
+    "reference_source",
+    "reference_note",
+    "suggested_action",
+    "quality_warning",
+]
+
+BENCHMARK_REFERENCE_QUALITY_SUMMARY_COLUMNS = [
+    "severity",
+    "issue_type",
+    "issue_count",
+    "affected_case_count",
+    "affected_residue_count",
+    "suggested_action",
+    "summary_status",
+    "summary_warning",
+]
+
 CHAIN_ALIASES = {"chain", "chainid", "chain_id", "authasymid", "auth_asym_id", "asymid", "asym_id"}
 RESID_ALIASES = {
     "resid",
@@ -231,6 +258,27 @@ SOURCE_ALIASES = {"reference_source", "source", "dataset", "citation", "referenc
 NOTE_ALIASES = {"reference_note", "note", "notes", "comment", "description", "evidence_note"}
 EXPECTED_POCKET_ALIASES = {"expected_pocket_id", "pocket_id", "active_site_pocket", "validated_pocket_id"}
 BENCHMARK_ID_ALIASES = {"benchmark_id", "case_id", "dataset_id", "enzyme_id", "pdb_id", "entry_id"}
+GENERIC_REFERENCE_SOURCE_LABELS = {
+    "",
+    "source",
+    "reference",
+    "curatedbenchmark",
+    "curatedcatalyticbenchmark",
+    "curatedliterature",
+    "mcsapmiddoi",
+}
+SUPPORTED_REFERENCE_TYPE_TOKENS = (
+    "active",
+    "binding",
+    "catalytic",
+    "cofactor",
+    "ligand",
+    "metal",
+    "mutation",
+    "mutagenesis",
+    "substrate",
+)
+MAPPING_ASSUMPTION_TOKENS = ("uniprot", "mature", "isoform", "offset", "precursor")
 
 
 def _empty_reference_df() -> pd.DataFrame:
@@ -281,6 +329,14 @@ def _empty_variant_remediation_summary_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_VARIANT_REMEDIATION_SUMMARY_COLUMNS)
 
 
+def _empty_reference_quality_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_QUALITY_COLUMNS)
+
+
+def _empty_reference_quality_summary_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_QUALITY_SUMMARY_COLUMNS)
+
+
 def _simplify_column_name(value: object) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
 
@@ -294,9 +350,20 @@ def _find_column(frame: pd.DataFrame, aliases: set[str]) -> Optional[str]:
     return None
 
 
+def _safe_text(value: object) -> str:
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    return str(value).strip()
+
+
 def _safe_int(value: object) -> Optional[int]:
     try:
-        text = str(value or "").strip()
+        text = _safe_text(value)
         if not text:
             return None
         return int(float(text))
@@ -398,7 +465,7 @@ def build_pocket_benchmark_reference_template_markdown() -> str:
 
 
 def _extract_residue_token(value: object) -> tuple[str, str, Optional[int]]:
-    text = str(value or "").strip()
+    text = _safe_text(value)
     if not text:
         return "", "", None
 
@@ -426,8 +493,9 @@ def _extract_residue_token(value: object) -> tuple[str, str, Optional[int]]:
 
 
 def _residue_label(chain: str, resid: int, resname: str = "") -> str:
-    prefix = f"{str(resname or '').strip().upper()} " if str(resname or "").strip() else ""
-    chain_text = str(chain or "").strip()
+    resname_text = _safe_text(resname).upper()
+    prefix = f"{resname_text} " if resname_text else ""
+    chain_text = _safe_text(chain)
     return f"{prefix}{chain_text}{int(resid)}".strip()
 
 
@@ -471,18 +539,18 @@ def parse_benchmark_reference_table(text: str, *, source_hint: str = "Curated be
         if resid is None:
             continue
 
-        chain = str(row_dict.get(chain_column, "") if chain_column else "").strip() or token_chain
-        resname = str(row_dict.get(resname_column, "") if resname_column else "").strip().upper() or token_resname
+        chain = _safe_text(row_dict.get(chain_column, "") if chain_column else "") or token_chain
+        resname = _safe_text(row_dict.get(resname_column, "") if resname_column else "").upper() or token_resname
         rows.append(
             {
-                "benchmark_id": str(row_dict.get(benchmark_id_column, "") if benchmark_id_column else "").strip(),
+                "benchmark_id": _safe_text(row_dict.get(benchmark_id_column, "") if benchmark_id_column else ""),
                 "chain": chain,
                 "resid": int(resid),
                 "resname": resname,
-                "reference_type": str(row_dict.get(type_column, "") if type_column else "Catalytic residue").strip() or "Catalytic residue",
-                "reference_source": str(row_dict.get(source_column, "") if source_column else source_hint).strip() or source_hint,
-                "reference_note": str(row_dict.get(note_column, "") if note_column else "").strip(),
-                "expected_pocket_id": str(row_dict.get(expected_pocket_column, "") if expected_pocket_column else "").strip(),
+                "reference_type": _safe_text(row_dict.get(type_column, "") if type_column else "Catalytic residue") or "Catalytic residue",
+                "reference_source": _safe_text(row_dict.get(source_column, "") if source_column else source_hint) or source_hint,
+                "reference_note": _safe_text(row_dict.get(note_column, "") if note_column else ""),
+                "expected_pocket_id": _safe_text(row_dict.get(expected_pocket_column, "") if expected_pocket_column else ""),
             }
         )
 
@@ -583,9 +651,222 @@ def _reference_rows(reference_df: Optional[pd.DataFrame]) -> pd.DataFrame:
     if working.empty:
         return _empty_reference_df()
     working["resid"] = working["resid"].astype(int)
-    working["chain"] = working["chain"].astype(str).str.strip()
-    working["resname"] = working["resname"].astype(str).str.strip().str.upper()
+    for column in ("benchmark_id", "chain", "resname", "reference_type", "reference_source", "reference_note", "expected_pocket_id"):
+        working[column] = working[column].map(_safe_text)
+    working["resname"] = working["resname"].str.upper()
     return working[BENCHMARK_REFERENCE_COLUMNS].drop_duplicates(subset=["benchmark_id", "chain", "resid", "reference_type"]).reset_index(drop=True)
+
+
+def _reference_quality_issue(
+    issue_number: int,
+    reference_row: pd.Series,
+    *,
+    severity: str,
+    issue_type: str,
+    suggested_action: str,
+    quality_warning: str,
+) -> dict[str, object]:
+    chain = _safe_text(reference_row.get("chain"))
+    resid = int(reference_row.get("resid"))
+    resname = _safe_text(reference_row.get("resname")).upper()
+    return {
+        "issue_id": f"REFQ-{issue_number:03d}",
+        "severity": severity,
+        "issue_type": issue_type,
+        "benchmark_id": _safe_text(reference_row.get("benchmark_id")),
+        "chain": chain,
+        "resid": resid,
+        "resname": resname,
+        "residue_label": _residue_label(chain, resid, resname),
+        "reference_type": _safe_text(reference_row.get("reference_type")),
+        "reference_source": _safe_text(reference_row.get("reference_source")),
+        "reference_note": _safe_text(reference_row.get("reference_note")),
+        "suggested_action": suggested_action,
+        "quality_warning": quality_warning,
+    }
+
+
+def _source_is_generic(value: object) -> bool:
+    return _simplify_column_name(value) in GENERIC_REFERENCE_SOURCE_LABELS
+
+
+def build_pocket_benchmark_reference_quality_issues(reference_df: Optional[pd.DataFrame]) -> pd.DataFrame:
+    """Flag curation risks in uploaded benchmark reference residues."""
+
+    references = _reference_rows(reference_df)
+    if references.empty:
+        return _empty_reference_quality_df()
+
+    issues: list[dict[str, object]] = []
+
+    def add_issue(reference_row: pd.Series, severity: str, issue_type: str, suggested_action: str, quality_warning: str) -> None:
+        issues.append(
+            _reference_quality_issue(
+                len(issues) + 1,
+                reference_row,
+                severity=severity,
+                issue_type=issue_type,
+                suggested_action=suggested_action,
+                quality_warning=quality_warning,
+            )
+        )
+
+    for _, reference in references.iterrows():
+        benchmark_id = _safe_text(reference.get("benchmark_id"))
+        chain = _safe_text(reference.get("chain"))
+        resname = _safe_text(reference.get("resname"))
+        reference_type = _safe_text(reference.get("reference_type"))
+        reference_source = _safe_text(reference.get("reference_source"))
+        note_text = f"{reference_source} {_safe_text(reference.get('reference_note'))}".lower()
+
+        if not benchmark_id:
+            add_issue(
+                reference,
+                "P1",
+                "missing_benchmark_id",
+                "Assign a stable benchmark_id/case_id before using this row in batch benchmark aggregation.",
+                "Rows without benchmark_id are grouped as an unnamed case and can hide case-level errors.",
+            )
+        if _source_is_generic(reference_source):
+            add_issue(
+                reference,
+                "P1",
+                "generic_reference_source",
+                "Replace the generic source with M-CSA ID, PDB ID, PMID, DOI, or another stable curated dataset label.",
+                "Generic sources make benchmark residues difficult to audit or reproduce.",
+            )
+        if not chain:
+            add_issue(
+                reference,
+                "P2",
+                "wildcard_chain",
+                "Map the residue to a PDB chain, or document why chain-agnostic matching is intended.",
+                "Blank chain matches any pocket chain and can overestimate catalytic coverage.",
+            )
+        if not resname:
+            add_issue(
+                reference,
+                "P2",
+                "missing_resname",
+                "Fill the expected three-letter residue name and verify it against the structure.",
+                "Missing residue identity weakens numbering and mapping validation.",
+            )
+        if reference_type and not any(token in reference_type.lower() for token in SUPPORTED_REFERENCE_TYPE_TOKENS):
+            add_issue(
+                reference,
+                "P2",
+                "unsupported_reference_type",
+                "Use a functional role such as Catalytic residue, Binding residue, Metal binding, Mutagenesis, Substrate, or Cofactor.",
+                "Unrecognized reference_type values can make benchmark interpretation ambiguous.",
+            )
+        if any(token in note_text for token in MAPPING_ASSUMPTION_TOKENS):
+            add_issue(
+                reference,
+                "P2",
+                "mapping_assumption_note",
+                "Record the exact UniProt/PDB numbering conversion and verify residue identity in the uploaded structure.",
+                "UniProt, mature-chain, isoform, precursor, or offset assumptions can shift catalytic residue numbers.",
+            )
+
+    for _, group in references.groupby(["benchmark_id", "chain", "resid"], dropna=False):
+        if len(group) <= 1:
+            continue
+        reference_types = group["reference_type"].map(_safe_text).str.lower().drop_duplicates()
+        sources = group["reference_source"].map(_safe_text).str.lower().drop_duplicates()
+        if len(reference_types) > 1 or len(sources) > 1:
+            add_issue(
+                group.iloc[0],
+                "P3",
+                "multi_role_or_source_residue",
+                "Keep the duplicated evidence if intentional, but consolidate notes so reviewers understand why the same residue has multiple roles or sources.",
+                "Multiple roles or sources for one residue are valid evidence, but should be explicit in curated benchmark records.",
+            )
+
+    if not issues:
+        return _empty_reference_quality_df()
+    return pd.DataFrame(issues, columns=BENCHMARK_REFERENCE_QUALITY_COLUMNS)
+
+
+def build_pocket_benchmark_reference_quality_summary(quality_issue_df: Optional[pd.DataFrame]) -> pd.DataFrame:
+    """Summarize benchmark reference curation issues by severity and type."""
+
+    if quality_issue_df is None or getattr(quality_issue_df, "empty", True):
+        return _empty_reference_quality_summary_df()
+    working = quality_issue_df.copy()
+    for column in BENCHMARK_REFERENCE_QUALITY_COLUMNS:
+        if column not in working.columns:
+            working[column] = ""
+    rows: list[dict[str, object]] = []
+    severity_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    for (severity, issue_type), group in working.groupby(["severity", "issue_type"], dropna=False):
+        severity_text = _safe_text(severity) or "P3"
+        case_count = int(group["benchmark_id"].map(_safe_text).replace("", pd.NA).dropna().nunique())
+        residue_count = int(
+            group[["benchmark_id", "chain", "resid"]]
+            .astype(str)
+            .drop_duplicates()
+            .shape[0]
+        )
+        if severity_text in {"P0", "P1"}:
+            status = "needs-curation"
+            warning = "Fix before using this reference set as a batch accuracy benchmark."
+        elif severity_text == "P2":
+            status = "review"
+            warning = "Review before interpreting precision metrics."
+        else:
+            status = "informational"
+            warning = "Document the curation decision for traceability."
+        rows.append(
+            {
+                "severity": severity_text,
+                "issue_type": _safe_text(issue_type),
+                "issue_count": int(len(group)),
+                "affected_case_count": case_count,
+                "affected_residue_count": residue_count,
+                "suggested_action": _safe_text(group.iloc[0].get("suggested_action")),
+                "summary_status": status,
+                "summary_warning": warning,
+            }
+        )
+
+    return pd.DataFrame(rows, columns=BENCHMARK_REFERENCE_QUALITY_SUMMARY_COLUMNS).sort_values(
+        ["severity", "issue_count", "issue_type"],
+        key=lambda series: series.map(severity_rank).fillna(series) if series.name == "severity" else series,
+        ascending=[True, False, True],
+    ).reset_index(drop=True)
+
+
+def build_pocket_benchmark_reference_quality_checklist_markdown(
+    quality_issue_df: Optional[pd.DataFrame],
+    quality_summary_df: Optional[pd.DataFrame] = None,
+) -> str:
+    """Render curation issues as a reviewer checklist."""
+
+    if quality_issue_df is None or getattr(quality_issue_df, "empty", True):
+        return ""
+    issues = quality_issue_df.copy()
+    summary = build_pocket_benchmark_reference_quality_summary(issues) if quality_summary_df is None else quality_summary_df
+    lines = [
+        "# Benchmark reference curation checklist",
+        "",
+        "Resolve or explicitly accept these issues before using the reference table as a precision benchmark.",
+        "",
+    ]
+    if summary is not None and not getattr(summary, "empty", True):
+        lines.extend(["## Summary", ""])
+        for row in summary.itertuples(index=False):
+            lines.append(
+                f"- {row.severity} `{row.issue_type}`: {int(row.issue_count)} issues / {int(row.affected_residue_count)} residues / {row.summary_status}."
+            )
+        lines.append("")
+    lines.extend(["## Actions", ""])
+    severity_order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    issues["_severity_order"] = issues["severity"].map(severity_order).fillna(9)
+    issues = issues.sort_values(["_severity_order", "issue_type", "benchmark_id", "chain", "resid"]).drop(columns=["_severity_order"])
+    for row in issues.itertuples(index=False):
+        case_text = f"case `{row.benchmark_id}`" if _safe_text(row.benchmark_id) else "unnamed case"
+        lines.append(f"- [ ] {row.severity} `{row.issue_type}` for {case_text}, residue `{row.residue_label}`: {row.suggested_action}")
+    return "\n".join(lines).strip() + "\n"
 
 
 def _matches_reference(pocket_row: pd.Series, reference_row: pd.Series) -> bool:

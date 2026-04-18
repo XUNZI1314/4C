@@ -239,6 +239,8 @@ The parser also accepts residue labels such as `Ser195`, `A:195` or `D123A`. Bla
 
 The page also exports `pocket_benchmark_reference_template.csv` and `pocket_benchmark_reference_template.md` so M-CSA, PDB and literature-confirmed catalytic residue cases can be collected with a consistent schema before upload.
 
+After upload, the reference table is checked for curation risks before coverage metrics are interpreted. The check flags missing `benchmark_id`, generic source labels, wildcard chain matching, missing residue identity, numbering assumptions such as UniProt/mature-chain offsets, and residues that intentionally carry multiple roles or evidence sources.
+
 ### Metrics
 
 The benchmark exports:
@@ -246,6 +248,9 @@ The benchmark exports:
 - `pocket_benchmark_reference.csv`
 - `pocket_benchmark_reference_template.csv`
 - `pocket_benchmark_reference_template.md`
+- `pocket_benchmark_reference_quality_issues.csv`
+- `pocket_benchmark_reference_quality_summary.csv`
+- `pocket_benchmark_reference_quality_checklist.md`
 - `pocket_benchmark_summary.csv`
 - `pocket_benchmark_case_summary.csv`
 - `pocket_benchmark_dataset_summary.csv`
@@ -468,7 +473,7 @@ Coverage includes:
 Latest full run:
 
 ```text
-207 passed
+208 passed
 ```
 
 ## Known Limits

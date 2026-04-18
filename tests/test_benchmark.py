@@ -4,6 +4,9 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_case_summary,
     build_pocket_benchmark_dataset_summary,
     build_pocket_benchmark_details,
+    build_pocket_benchmark_reference_quality_checklist_markdown,
+    build_pocket_benchmark_reference_quality_issues,
+    build_pocket_benchmark_reference_quality_summary,
     build_pocket_benchmark_reference_template,
     build_pocket_benchmark_reference_template_markdown,
     build_pocket_benchmark_summary,
@@ -36,6 +39,33 @@ def test_build_pocket_benchmark_reference_template_is_parseable():
     assert metadata["status"] == "ok"
     assert int(metadata["reference_rows"]) == len(template)
     assert "blank chain is treated as wildcard" in markdown.lower()
+
+
+def test_build_pocket_benchmark_reference_quality_flags_curation_risks():
+    reference_df, _ = parse_benchmark_reference_table(
+        """case_id,chain,resid,resname,type,source,note
+, ,195,,Catalytic residue,,UniProt mature-chain numbering needs offset check
+enzyme-a,A,57,HIS,Catalytic residue,M-CSA,
+enzyme-a,A,57,HIS,Mutagenesis,PMID:12345,
+"""
+    )
+
+    issues = build_pocket_benchmark_reference_quality_issues(reference_df)
+    summary = build_pocket_benchmark_reference_quality_summary(issues)
+    checklist = build_pocket_benchmark_reference_quality_checklist_markdown(issues, summary)
+
+    issue_types = set(issues["issue_type"].astype(str).tolist())
+    assert {
+        "missing_benchmark_id",
+        "generic_reference_source",
+        "wildcard_chain",
+        "missing_resname",
+        "mapping_assumption_note",
+        "multi_role_or_source_residue",
+    }.issubset(issue_types)
+    assert summary["issue_count"].astype(int).sum() == len(issues)
+    assert "Benchmark reference curation checklist" in checklist
+    assert '"nan"' not in reference_df.to_csv(index=False).lower()
 
 
 def test_parse_benchmark_reference_table_accepts_catalytic_residue_aliases():
