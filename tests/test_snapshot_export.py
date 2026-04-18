@@ -81,7 +81,7 @@ def test_snapshot_summary_lines_do_not_expose_mojibake_labels():
         assert snippet not in summary_text
     assert "联合推荐条目数: 1" in summary_text
     assert "自动口袋方法: geometry-cluster" in summary_text
-    assert "检测状态: geometry-cluster:used" in summary_text
+    assert "检测状态: geometry-cluster:已使用" in summary_text
     assert "外部位点证据: 2 (M-CSA,UniProt)" in summary_text
     assert "Top 口袋: Pocket-1 (优先验证)" in summary_text
     assert "Top 口袋证据质量: direct-anchor (0.910)" in summary_text
@@ -254,8 +254,9 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
 
     assert snapshot["extra"]["auto_detection_metadata"]["diagnostics"][0]["method"] == "geometry-cluster"
     assert any("geometry-cluster" in line for line in summary_lines)
-    assert any("P2Rank: ok" in line for line in summary_lines)
-    assert any("P2Rank A/B: enabled / rows 1" in line for line in summary_lines)
+    assert any("检测状态: geometry-cluster:已使用; 共识:单方法" in line for line in summary_lines)
+    assert any("P2Rank: 正常 / 预测 2 / 残基 7" in line for line in summary_lines)
+    assert any("P2Rank A/B: 已启用 / 记录 1" in line for line in summary_lines)
     assert any("基准参考候选: 2 行 / 导入 需复核 / 使用临时参考 是" in line for line in summary_lines)
     assert any("基准参考来源: 临时外部证据 / 临时参考 是 / 已复核候选 否" in line for line in summary_lines)
     assert any("基准参考来源审计: 3 行 / 结论状态 临时参考阻断 / 独立结论 否" in line for line in summary_lines)
@@ -283,6 +284,10 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
         "Benchmark dataset interpretation",
         "Catalytic pocket benchmark",
         "Catalytic benchmark",
+        "P2Rank: ok",
+        "P2Rank A/B: enabled",
+        "pred ",
+        "res ",
     ]:
         assert forbidden_label not in joined_summary
     assert b'"auto_detection_metadata": {' in json_bytes

@@ -278,6 +278,15 @@ SNAPSHOT_CONSENSUS_LINE_REPLACEMENTS = [
 ]
 
 
+SNAPSHOT_AUTO_DETECTION_TEXT_REPLACEMENTS = [
+    (":used", ":已使用"),
+    (":single-method", ":单方法"),
+    ("; consensus", "; 共识"),
+    ("enabled", "已启用"),
+    ("ok", "正常"),
+]
+
+
 SNAPSHOT_BENCHMARK_LINE_REPLACEMENTS = [
     ("Benchmark source-audit decision dataset impact action summary", "基准来源审计决策数据集影响行动汇总"),
     ("Benchmark source-audit decision dataset impact action queue", "基准来源审计决策数据集影响行动队列"),
@@ -389,6 +398,15 @@ def _snapshot_text_label(value: Any, *, default: str = "-") -> str:
     return text
 
 
+def _snapshot_auto_detection_label(value: Any, *, default: str = "-") -> str:
+    text = str(value or "").strip()
+    if not text:
+        return default
+    for source, target in SNAPSHOT_AUTO_DETECTION_TEXT_REPLACEMENTS:
+        text = text.replace(source, target)
+    return text
+
+
 def _snapshot_summary_line_label(line: str) -> str:
     text = str(line)
     if text.startswith(("Benchmark ", "Catalytic ")):
@@ -435,16 +453,16 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         lines.append(f"自动口袋方法: {methods_used}")
     status_summary = str(extra.get("auto_detection_status_summary") or "").strip()
     if status_summary:
-        lines.append(f"检测状态: {status_summary}")
+        lines.append(f"检测状态: {_snapshot_auto_detection_label(status_summary)}")
     p2rank_status = str(extra.get("auto_detection_p2rank_status") or "").strip()
     if p2rank_status:
         lines.append(
-            f"P2Rank: {p2rank_status} / pred {int(extra.get('auto_detection_p2rank_prediction_rows') or 0)} / "
-            f"res {int(extra.get('auto_detection_p2rank_residue_rows') or 0)}"
+            f"P2Rank: {_snapshot_auto_detection_label(p2rank_status)} / 预测 {int(extra.get('auto_detection_p2rank_prediction_rows') or 0)} / "
+            f"残基 {int(extra.get('auto_detection_p2rank_residue_rows') or 0)}"
         )
     if bool(extra.get("p2rank_ab_enabled")):
         comparison_rows = len(extra.get("p2rank_ab_comparison") or [])
-        lines.append(f"P2Rank A/B: enabled / rows {comparison_rows}")
+        lines.append(f"P2Rank A/B: 已启用 / 记录 {comparison_rows}")
     try:
         external_rows = int(extra.get("auto_detection_external_rows") or 0)
     except (TypeError, ValueError):
