@@ -9,6 +9,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_variant_case_comparison,
     build_pocket_benchmark_variant_dataset_comparison,
     build_pocket_benchmark_variant_detail_comparison,
+    build_pocket_benchmark_variant_remediation_queue,
     parse_benchmark_reference_table,
 )
 
@@ -328,3 +329,69 @@ enzyme-a,A,20,HIS
     assert not bool(lost_his["variant_matched"])
     assert str(lost_his["benchmark_warning"]) == "reference-residue-lost-vs-current"
     assert str(kept_ser["match_delta"]) == "unchanged-hit"
+
+
+def test_variant_remediation_queue_prioritizes_lost_and_current_missed_residues():
+    detail_comparison = pd.DataFrame(
+        [
+            {
+                "variant_label": "current",
+                "reference_variant_label": "current",
+                "benchmark_id": "enzyme-a",
+                "chain": "A",
+                "resid": 10,
+                "resname": "SER",
+                "residue_label": "SER A10",
+                "match_delta": "unchanged-miss",
+                "variant_matched": False,
+                "reference_matched": False,
+                "variant_matched_rank": 0,
+                "reference_matched_rank": 0,
+                "variant_matched_pocket_id": "",
+                "reference_matched_pocket_id": "",
+                "expected_pocket_id": "",
+                "benchmark_warning": "reference-residue-not-covered-by-any-pocket",
+            },
+            {
+                "variant_label": "no-literature",
+                "reference_variant_label": "current",
+                "benchmark_id": "enzyme-a",
+                "chain": "A",
+                "resid": 20,
+                "resname": "HIS",
+                "residue_label": "HIS A20",
+                "match_delta": "lost",
+                "variant_matched": False,
+                "reference_matched": True,
+                "variant_matched_rank": 0,
+                "reference_matched_rank": 1,
+                "variant_matched_pocket_id": "",
+                "reference_matched_pocket_id": "Pocket-1",
+                "expected_pocket_id": "Pocket-1",
+                "benchmark_warning": "reference-residue-lost-vs-current",
+            },
+            {
+                "variant_label": "no-literature",
+                "reference_variant_label": "current",
+                "benchmark_id": "enzyme-a",
+                "chain": "A",
+                "resid": 30,
+                "resname": "ASP",
+                "residue_label": "ASP A30",
+                "match_delta": "unchanged-hit",
+                "variant_matched": True,
+                "reference_matched": True,
+            },
+        ]
+    )
+
+    queue = build_pocket_benchmark_variant_remediation_queue(detail_comparison)
+
+    assert queue["issue_type"].tolist() == ["ablation-lost-residue", "current-missed-residue"]
+    lost_row = queue.iloc[0]
+    current_miss = queue.iloc[1]
+    assert str(lost_row["priority"]) == "P0"
+    assert str(lost_row["variant_label"]) == "no-literature"
+    assert "Literature evidence" in str(lost_row["suggested_action"])
+    assert str(current_miss["priority"]) == "P1"
+    assert str(current_miss["issue_type"]) == "current-missed-residue"

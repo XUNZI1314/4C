@@ -169,6 +169,27 @@ BENCHMARK_VARIANT_DETAIL_COMPARISON_COLUMNS = [
     "benchmark_warning",
 ]
 
+BENCHMARK_VARIANT_REMEDIATION_COLUMNS = [
+    "action_id",
+    "priority",
+    "issue_type",
+    "variant_label",
+    "reference_variant_label",
+    "benchmark_id",
+    "residue_label",
+    "chain",
+    "resid",
+    "resname",
+    "match_delta",
+    "reference_matched_pocket_id",
+    "variant_matched_pocket_id",
+    "reference_matched_rank",
+    "variant_matched_rank",
+    "expected_pocket_id",
+    "suggested_action",
+    "benchmark_warning",
+]
+
 CHAIN_ALIASES = {"chain", "chainid", "chain_id", "authasymid", "auth_asym_id", "asymid", "asym_id"}
 RESID_ALIASES = {
     "resid",
@@ -229,6 +250,10 @@ def _empty_variant_dataset_comparison_df() -> pd.DataFrame:
 
 def _empty_variant_detail_comparison_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_VARIANT_DETAIL_COMPARISON_COLUMNS)
+
+
+def _empty_variant_remediation_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_VARIANT_REMEDIATION_COLUMNS)
 
 
 def _simplify_column_name(value: object) -> str:
@@ -1102,3 +1127,87 @@ def build_pocket_benchmark_variant_detail_comparison(
     if not rows:
         return _empty_variant_detail_comparison_df()
     return pd.DataFrame(rows, columns=BENCHMARK_VARIANT_DETAIL_COMPARISON_COLUMNS)
+
+
+def _variant_issue_action(variant_label: str, issue_type: str) -> str:
+    variant = str(variant_label or "").strip().lower()
+    if issue_type == "current-missed-residue":
+        return "Check curated residue numbering, chain mapping and pocket detection thresholds; current ranking does not cover this catalytic residue."
+    if "no-literature" in variant:
+        return "Literature evidence appears to support this residue; verify citation/snippet quality, numbering assumptions and manual-review flags before weakening the literature route."
+    if "no-evidence-route" in variant:
+        return "External-evidence route appears to preserve this residue; review route thresholds, mapping quality and neighborhood radius before disabling the route."
+    if "no-p2rank" in variant:
+        return "P2Rank appears to preserve this residue; verify the local P2Rank install/profile and keep a fallback when P2Rank is unavailable."
+    if "no-conservation" in variant:
+        return "Conservation rerank appears to preserve this residue; review conservation score direction and keep it rerank-only unless benchmark loss persists."
+    return "Inspect this ablation before accepting the rank change; removing the evidence path changed catalytic residue coverage."
+
+
+def build_pocket_benchmark_variant_remediation_queue(variant_detail_comparison_df: Optional[pd.DataFrame]) -> pd.DataFrame:
+    """Turn residue-level variant errors into a review/remediation queue."""
+
+    if (
+        variant_detail_comparison_df is None
+        or getattr(variant_detail_comparison_df, "empty", True)
+        or "match_delta" not in variant_detail_comparison_df.columns
+    ):
+        return _empty_variant_remediation_df()
+
+    working = variant_detail_comparison_df.copy()
+    for column in BENCHMARK_VARIANT_DETAIL_COMPARISON_COLUMNS:
+        if column not in working.columns:
+            working[column] = ""
+    working["match_delta"] = working["match_delta"].astype(str).str.strip()
+    working["variant_label"] = working["variant_label"].astype(str).str.strip()
+    working["reference_variant_label"] = working["reference_variant_label"].astype(str).str.strip()
+    reference_label = str(working["reference_variant_label"].replace("", pd.NA).dropna().iloc[0]) if working["reference_variant_label"].replace("", pd.NA).dropna().shape[0] else "current"
+
+    rows: list[dict[str, object]] = []
+    for _, row in working.iterrows():
+        variant_label = str(row.get("variant_label") or "").strip()
+        delta = str(row.get("match_delta") or "").strip()
+        issue_type = ""
+        priority = ""
+        if delta == "lost" and variant_label != reference_label:
+            issue_type = "ablation-lost-residue"
+            priority = "P0"
+        elif delta == "unchanged-miss" and variant_label == reference_label:
+            issue_type = "current-missed-residue"
+            priority = "P1"
+        else:
+            continue
+
+        benchmark_id = str(row.get("benchmark_id") or "").strip() or "current"
+        residue_label = str(row.get("residue_label") or "").strip() or f"{row.get('chain', '')}{row.get('resid', '')}"
+        action_id = f"{issue_type}:{variant_label}:{benchmark_id}:{residue_label}".replace(" ", "-")
+        rows.append(
+            {
+                "action_id": action_id,
+                "priority": priority,
+                "issue_type": issue_type,
+                "variant_label": variant_label,
+                "reference_variant_label": reference_label,
+                "benchmark_id": benchmark_id,
+                "residue_label": residue_label,
+                "chain": str(row.get("chain") or ""),
+                "resid": int(row.get("resid") or 0),
+                "resname": str(row.get("resname") or ""),
+                "match_delta": delta,
+                "reference_matched_pocket_id": str(row.get("reference_matched_pocket_id") or ""),
+                "variant_matched_pocket_id": str(row.get("variant_matched_pocket_id") or ""),
+                "reference_matched_rank": int(row.get("reference_matched_rank") or 0),
+                "variant_matched_rank": int(row.get("variant_matched_rank") or 0),
+                "expected_pocket_id": str(row.get("expected_pocket_id") or ""),
+                "suggested_action": _variant_issue_action(variant_label, issue_type),
+                "benchmark_warning": str(row.get("benchmark_warning") or ""),
+            }
+        )
+
+    if not rows:
+        return _empty_variant_remediation_df()
+    frame = pd.DataFrame(rows, columns=BENCHMARK_VARIANT_REMEDIATION_COLUMNS)
+    priority_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    frame["_priority_rank"] = frame["priority"].map(priority_rank).fillna(99)
+    frame = frame.sort_values(["_priority_rank", "variant_label", "benchmark_id", "resid", "residue_label"]).drop(columns=["_priority_rank"])
+    return frame.reset_index(drop=True)

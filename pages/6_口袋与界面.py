@@ -51,6 +51,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_variant_case_comparison,
     build_pocket_benchmark_variant_dataset_comparison,
     build_pocket_benchmark_variant_detail_comparison,
+    build_pocket_benchmark_variant_remediation_queue,
     parse_benchmark_reference_table,
 )
 from protein_visualizer.services.candidate_fusion import build_joint_candidate_table, build_pocket_consensus_coverage
@@ -849,6 +850,7 @@ pocket_benchmark_variant_comparison_df = pd.DataFrame()
 pocket_benchmark_variant_case_comparison_df = pd.DataFrame()
 pocket_benchmark_variant_dataset_comparison_df = pd.DataFrame()
 pocket_benchmark_variant_detail_comparison_df = pd.DataFrame()
+pocket_benchmark_variant_remediation_df = pd.DataFrame()
 consensus_rerank_suggestion_df = pd.DataFrame()
 consensus_rerank_preview_df = pd.DataFrame()
 consensus_rerank_policy_gate_df = pd.DataFrame()
@@ -1556,6 +1558,9 @@ pocket_benchmark_variant_detail_comparison_df = (
     if len(benchmark_variants) > 1
     else pd.DataFrame()
 )
+pocket_benchmark_variant_remediation_df = build_pocket_benchmark_variant_remediation_queue(
+    pocket_benchmark_variant_detail_comparison_df
+)
 pocket_decision_df = build_pocket_decision_table(
     effective_pocket_summary,
     joint_candidate_df,
@@ -1970,6 +1975,7 @@ try:
             "pocket_benchmark_variant_case_comparison_rows": int(len(pocket_benchmark_variant_case_comparison_df)),
             "pocket_benchmark_variant_dataset_comparison_rows": int(len(pocket_benchmark_variant_dataset_comparison_df)),
             "pocket_benchmark_variant_detail_comparison_rows": int(len(pocket_benchmark_variant_detail_comparison_df)),
+            "pocket_benchmark_variant_remediation_rows": int(len(pocket_benchmark_variant_remediation_df)),
             "p2rank_ab_enabled": bool(p2rank_ab_enabled),
             "p2rank_ab_changed_count": int((p2rank_ab_df["status"].astype(str) != "unchanged").sum())
             if not p2rank_ab_df.empty and "status" in p2rank_ab_df.columns
@@ -2182,6 +2188,8 @@ snapshot = build_analysis_snapshot(
         "pocket_benchmark_variant_dataset_comparison": pocket_benchmark_variant_dataset_comparison_df.to_dict(orient="records"),
         "pocket_benchmark_variant_detail_comparison_rows": int(len(pocket_benchmark_variant_detail_comparison_df)),
         "pocket_benchmark_variant_detail_comparison": pocket_benchmark_variant_detail_comparison_df.to_dict(orient="records"),
+        "pocket_benchmark_variant_remediation_rows": int(len(pocket_benchmark_variant_remediation_df)),
+        "pocket_benchmark_variant_remediation": pocket_benchmark_variant_remediation_df.to_dict(orient="records"),
         "pocket_benchmark_top1_coverage": float(top1_benchmark.get("coverage_ratio") or 0.0) if top1_benchmark is not None else None,
         "pocket_benchmark_top1_status": str(top1_benchmark.get("benchmark_status") or "") if top1_benchmark is not None else None,
         "pocket_benchmark_top3_coverage": float(top3_benchmark.get("coverage_ratio") or 0.0) if top3_benchmark is not None else None,
@@ -2464,6 +2472,9 @@ if not pocket_benchmark_summary_df.empty:
         if not pocket_benchmark_variant_detail_comparison_df.empty:
             st.caption("Benchmark variant residue comparison: exact catalytic residues lost, gained or unchanged for each ablation.")
             st.dataframe(pocket_benchmark_variant_detail_comparison_df, use_container_width=True, hide_index=True)
+        if not pocket_benchmark_variant_remediation_df.empty:
+            st.caption("Benchmark remediation queue: lost/current-missed catalytic residues converted into review actions.")
+            st.dataframe(pocket_benchmark_variant_remediation_df, use_container_width=True, hide_index=True)
         if not pocket_benchmark_details_df.empty:
             st.dataframe(pocket_benchmark_details_df, use_container_width=True, hide_index=True)
 if not consensus_rerank_suggestion_df.empty:
@@ -3321,6 +3332,13 @@ with tab_export:
                 file_name="pocket_benchmark_variant_residue_comparison.csv",
                 mime="text/csv",
             )
+        if not pocket_benchmark_variant_remediation_df.empty:
+            st.download_button(
+                "Export pocket benchmark remediation queue CSV",
+                data=_to_csv_bytes(pocket_benchmark_variant_remediation_df),
+                file_name="pocket_benchmark_variant_remediation_queue.csv",
+                mime="text/csv",
+            )
         if not p2rank_ab_df.empty:
             st.download_button(
                 "Export P2Rank A/B comparison CSV",
@@ -3740,6 +3758,7 @@ with tab_export:
         f"Catalytic benchmark variants: {len(pocket_benchmark_variant_comparison_df)} rows / current vs ablations {'available' if not pocket_benchmark_variant_comparison_df.empty else 'not available'}",
         f"Catalytic benchmark variant cases: {len(pocket_benchmark_variant_case_comparison_df)} rows / variant dataset rows {len(pocket_benchmark_variant_dataset_comparison_df)}",
         f"Catalytic benchmark variant residues: {len(pocket_benchmark_variant_detail_comparison_df)} rows",
+        f"Catalytic benchmark remediation queue: {len(pocket_benchmark_variant_remediation_df)} rows",
         f"P2Rank A/B: {len(p2rank_ab_df)} rows / {'enabled' if p2rank_ab_enabled else 'not enabled'}",
         f"Consensus rerank suggestions: {len(consensus_rerank_suggestion_df)} rows / top {top_consensus_rerank_suggestion.get('pocket_id') if top_consensus_rerank_suggestion is not None else '-'} / status {top_consensus_rerank_suggestion.get('suggestion_status') if top_consensus_rerank_suggestion is not None else '-'}",
         f"Consensus rerank preview: {len(consensus_rerank_preview_df)} rows / top {top_consensus_rerank_preview.get('pocket_id') if top_consensus_rerank_preview is not None else '-'} / decision {top_consensus_rerank_preview.get('preview_decision') if top_consensus_rerank_preview is not None else '-'}",
