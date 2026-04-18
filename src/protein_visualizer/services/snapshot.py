@@ -609,6 +609,19 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         lines.append(
             f"Benchmark source-audit decision dataset impact action summary: {source_dataset_impact_action_summary_rows} rows / actions {action_count} / P0 groups {p0_rows} / mismatches {mismatch_count} / top {top_priority or '-'} {top_source_impact or '-'}"
         )
+    source_dataset_impact_artifact_rows = int(
+        extra.get("pocket_benchmark_reference_source_audit_case_decision_dataset_impact_artifact_manifest_rows") or 0
+    )
+    if source_dataset_impact_artifact_rows > 0:
+        artifact_bytes = int(
+            extra.get("pocket_benchmark_reference_source_audit_case_decision_dataset_impact_artifact_manifest_bytes") or 0
+        )
+        artifact_hashes = int(
+            extra.get("pocket_benchmark_reference_source_audit_case_decision_dataset_impact_artifact_manifest_hash_rows") or 0
+        )
+        lines.append(
+            f"Benchmark source-audit decision dataset impact artifacts: {source_dataset_impact_artifact_rows} files / bytes {artifact_bytes} / hashes {artifact_hashes}"
+        )
     benchmark_dataset_interpretation_queue_rows = int(extra.get("pocket_benchmark_dataset_interpretation_queue_rows") or 0)
     if benchmark_dataset_interpretation_queue_rows > 0:
         blocker_rows = int(extra.get("pocket_benchmark_dataset_interpretation_queue_blocker_rows") or 0)

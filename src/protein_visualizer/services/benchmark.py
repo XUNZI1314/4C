@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import io
 import re
 from typing import Optional, Sequence
@@ -356,6 +357,18 @@ BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_ACTION_QUEUE_SUMMA
     "top_benchmark_id",
     "recommended_action",
     "summary_warning",
+]
+
+BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_ARTIFACT_MANIFEST_COLUMNS = [
+    "artifact_name",
+    "file_name",
+    "artifact_type",
+    "row_count",
+    "byte_size",
+    "sha256",
+    "status",
+    "purpose",
+    "recommended_use",
 ]
 
 BENCHMARK_DETAIL_COLUMNS = [
@@ -875,6 +888,12 @@ def _empty_reference_source_audit_case_decision_dataset_impact_action_queue_summ
     )
 
 
+def _empty_reference_source_audit_case_decision_dataset_impact_artifact_manifest_df() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_ARTIFACT_MANIFEST_COLUMNS
+    )
+
+
 def _empty_detail_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_DETAIL_COLUMNS)
 
@@ -1019,6 +1038,17 @@ def _safe_text(value: object) -> str:
     except (TypeError, ValueError):
         pass
     return str(value).strip()
+
+
+def _csv_artifact_bytes(frame: Optional[pd.DataFrame]) -> bytes:
+    if frame is None or getattr(frame, "empty", True):
+        return b""
+    return frame.to_csv(index=False).encode("utf-8")
+
+
+def _artifact_integrity(data: bytes) -> tuple[int, str]:
+    payload = data or b""
+    return len(payload), hashlib.sha256(payload).hexdigest()
 
 
 def _safe_int(value: object) -> Optional[int]:
@@ -3951,6 +3981,124 @@ def build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_r
             lines.append(f"\n{remaining} additional source-impact case actions are available in the CSV export.")
 
     return "\n".join(lines).strip() + "\n"
+
+
+def build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_artifact_manifest(
+    *,
+    dataset_impact_df: Optional[pd.DataFrame] = None,
+    impact_case_df: Optional[pd.DataFrame] = None,
+    action_queue_df: Optional[pd.DataFrame] = None,
+    action_summary_df: Optional[pd.DataFrame] = None,
+    case_checklist_markdown: str = "",
+    report_markdown: str = "",
+) -> pd.DataFrame:
+    """Build an integrity manifest for source-audit dataset impact review artifacts."""
+
+    rows: list[dict[str, object]] = []
+
+    def add_artifact(
+        artifact_name: str,
+        file_name: str,
+        artifact_type: str,
+        row_count: int,
+        data: bytes,
+        status: str,
+        purpose: str,
+        recommended_use: str,
+    ) -> None:
+        if row_count <= 0 or not data:
+            return
+        byte_size, digest = _artifact_integrity(data)
+        rows.append(
+            {
+                "artifact_name": artifact_name,
+                "file_name": file_name,
+                "artifact_type": artifact_type,
+                "row_count": int(row_count),
+                "byte_size": int(byte_size),
+                "sha256": digest,
+                "status": status,
+                "purpose": purpose,
+                "recommended_use": recommended_use,
+            }
+        )
+
+    dataset_status = (
+        _safe_text(dataset_impact_df.iloc[0].get("dataset_source_impact_status"))
+        if dataset_impact_df is not None and not getattr(dataset_impact_df, "empty", True)
+        else "not-generated"
+    )
+    add_artifact(
+        "Dataset source impact",
+        "pocket_benchmark_reference_source_audit_case_decision_dataset_impact.csv",
+        "csv",
+        int(len(dataset_impact_df)) if dataset_impact_df is not None and not getattr(dataset_impact_df, "empty", True) else 0,
+        _csv_artifact_bytes(dataset_impact_df),
+        dataset_status or "available",
+        "Top-N dataset-level source-decision impact summary.",
+        "Use this first to determine whether source decisions block dataset-level precision claims.",
+    )
+    add_artifact(
+        "Dataset source impact cases",
+        "pocket_benchmark_reference_source_audit_case_decision_dataset_impact_cases.csv",
+        "csv",
+        int(len(impact_case_df)) if impact_case_df is not None and not getattr(impact_case_df, "empty", True) else 0,
+        _csv_artifact_bytes(impact_case_df),
+        "case-detail",
+        "Per Top-N/case source-decision impact rows.",
+        "Use this to locate the exact enzyme or structure cases affected by source readiness.",
+    )
+    add_artifact(
+        "Dataset source impact action queue",
+        "pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue.csv",
+        "csv",
+        int(len(action_queue_df)) if action_queue_df is not None and not getattr(action_queue_df, "empty", True) else 0,
+        _csv_artifact_bytes(action_queue_df),
+        "actionable",
+        "Machine-readable blocker, review and mismatch actions.",
+        "Use this to assign source blockers and reviewer tasks.",
+    )
+    add_artifact(
+        "Dataset source impact action summary",
+        "pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_summary.csv",
+        "csv",
+        int(len(action_summary_df)) if action_summary_df is not None and not getattr(action_summary_df, "empty", True) else 0,
+        _csv_artifact_bytes(action_summary_df),
+        "summary",
+        "Grouped action counts by priority, action status and source impact.",
+        "Use this to decide which action category should be fixed first.",
+    )
+    checklist_text = "" if case_checklist_markdown is None else str(case_checklist_markdown)
+    checklist_lines = len([line for line in checklist_text.splitlines() if line.strip()])
+    add_artifact(
+        "Dataset source impact case checklist",
+        "pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_checklist.md",
+        "markdown",
+        checklist_lines,
+        checklist_text.encode("utf-8") if _safe_text(checklist_text) else b"",
+        "available",
+        "Human checklist for blocker, review and mismatch cases.",
+        "Use this for manual reviewer assignment and closure tracking.",
+    )
+    report_text = "" if report_markdown is None else str(report_markdown)
+    report_lines = len([line for line in report_text.splitlines() if line.strip()])
+    add_artifact(
+        "Dataset source impact report",
+        "pocket_benchmark_reference_source_audit_case_decision_dataset_impact_report.md",
+        "markdown",
+        report_lines,
+        report_text.encode("utf-8") if _safe_text(report_text) else b"",
+        "available",
+        "Archive-ready report containing gate, Top-N impact, action summary and case actions.",
+        "Use this as the human-readable review record for dataset-level source decisions.",
+    )
+
+    if not rows:
+        return _empty_reference_source_audit_case_decision_dataset_impact_artifact_manifest_df()
+    return pd.DataFrame(
+        rows,
+        columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_ARTIFACT_MANIFEST_COLUMNS,
+    ).reset_index(drop=True)
 
 
 def build_pocket_benchmark_reference_source_audit_case_decision_closure_checklist_markdown(

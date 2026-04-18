@@ -34,6 +34,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact,
     build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue,
     build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_summary,
+    build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_artifact_manifest,
     build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_checklist_markdown,
     build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_cases,
     build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_report_markdown,
@@ -2226,6 +2227,72 @@ def test_benchmark_reference_source_audit_case_decision_dataset_impact_report_in
     assert "Action summary rows: 1." in report
     assert "## Action Summary" in report
     assert "| P0 | blocker | source-gate-mismatch | 1 | 1 | 1 | 1 | 0.600 | BRSDIA-001 | Regenerate readiness interpretation for source-gate mismatches. |" in report
+
+
+def test_benchmark_reference_source_audit_case_decision_dataset_impact_artifact_manifest_hashes_exports():
+    dataset_impact = pd.DataFrame(
+        [
+            {
+                "top_n": 1,
+                "case_count": 2,
+                "dataset_source_impact_status": "source-gate-mismatch",
+            }
+        ]
+    )
+    detail = pd.DataFrame(
+        [
+            {
+                "impact_case_id": "BRSDIC-001",
+                "top_n": 1,
+                "benchmark_id": "enzyme-b",
+                "source_impact_status": "source-gate-mismatch",
+            }
+        ]
+    )
+    queue = pd.DataFrame(
+        [
+            {
+                "action_id": "BRSDIA-001",
+                "priority": "P0",
+                "action_status": "blocker",
+                "benchmark_id": "enzyme-b",
+            }
+        ]
+    )
+    summary = pd.DataFrame(
+        [
+            {
+                "summary_id": "BRSDIAS-001",
+                "priority": "P0",
+                "action_status": "blocker",
+                "source_impact_status": "source-gate-mismatch",
+                "action_count": 1,
+            }
+        ]
+    )
+
+    manifest = build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_artifact_manifest(
+        dataset_impact_df=dataset_impact,
+        impact_case_df=detail,
+        action_queue_df=queue,
+        action_summary_df=summary,
+        case_checklist_markdown="# Checklist\n\n- [ ] Review enzyme-b\n",
+        report_markdown="# Report\n\nBody\n",
+    )
+
+    assert manifest["file_name"].tolist() == [
+        "pocket_benchmark_reference_source_audit_case_decision_dataset_impact.csv",
+        "pocket_benchmark_reference_source_audit_case_decision_dataset_impact_cases.csv",
+        "pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue.csv",
+        "pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_summary.csv",
+        "pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_checklist.md",
+        "pocket_benchmark_reference_source_audit_case_decision_dataset_impact_report.md",
+    ]
+    assert manifest["row_count"].tolist() == [1, 1, 1, 1, 2, 2]
+    assert manifest["byte_size"].gt(0).all()
+    assert manifest["sha256"].astype(str).str.fullmatch(r"[0-9a-f]{64}").all()
+    assert manifest.iloc[0]["status"] == "source-gate-mismatch"
+    assert "integrity" not in manifest.columns
 
 
 def test_build_pocket_benchmark_summary_reports_top1_and_top3_coverage():
