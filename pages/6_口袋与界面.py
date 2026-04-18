@@ -1540,18 +1540,21 @@ if benchmark_reference_loaded:
             pocket_benchmark_reference_quality_issue_df,
             pocket_benchmark_reference_structure_validation_df,
             benchmark_reference_source_audit_df,
+            benchmark_reference_source_audit_case_decision_outcome_df,
         )
         pocket_benchmark_reference_readiness_summary_df = build_pocket_benchmark_reference_readiness_summary(
             benchmark_reference_df,
             pocket_benchmark_reference_quality_issue_df,
             pocket_benchmark_reference_structure_validation_df,
             benchmark_reference_source_audit_df,
+            benchmark_reference_source_audit_case_decision_outcome_df,
         )
         pocket_benchmark_reference_readiness_case_summary_df = build_pocket_benchmark_reference_readiness_case_summary(
             benchmark_reference_df,
             pocket_benchmark_reference_quality_issue_df,
             pocket_benchmark_reference_structure_validation_df,
             benchmark_reference_source_audit_df,
+            benchmark_reference_source_audit_case_decision_outcome_df,
         )
         pocket_benchmark_reference_readiness_checklist_markdown = build_pocket_benchmark_reference_readiness_checklist_markdown(
             pocket_benchmark_reference_readiness_queue_df,

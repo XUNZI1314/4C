@@ -1539,6 +1539,71 @@ def test_benchmark_reference_readiness_uses_source_audit_as_gate():
     assert int(reviewed_summary.iloc[0]["p2_issue_count"]) == 1
 
 
+def test_benchmark_reference_readiness_uses_source_audit_decisions_to_clear_closed_cases():
+    reference_df = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "enzyme-a",
+                "chain": "A",
+                "resid": 195,
+                "resname": "SER",
+                "reference_type": "Catalytic residue",
+                "reference_source": "M-CSA",
+                "reference_note": "",
+                "expected_pocket_id": "",
+            }
+        ]
+    )
+    source_audit = build_pocket_benchmark_reference_source_audit(
+        reference_df,
+        source_mode="provisional-external-evidence",
+        is_provisional=True,
+    )
+    cleared_outcomes = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "enzyme-a",
+                "applied_status": "cleared",
+                "next_action": "Keep validated source-audit decisions with benchmark exports.",
+            }
+        ]
+    )
+    pending_outcomes = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "enzyme-a",
+                "applied_status": "pending",
+                "next_action": "Fill and upload the source-audit case decision template.",
+                "outcome_reason": "No source-audit case decision has been uploaded.",
+            }
+        ]
+    )
+
+    cleared_queue = build_pocket_benchmark_reference_readiness_queue(None, None, source_audit, cleared_outcomes)
+    cleared_summary = build_pocket_benchmark_reference_readiness_summary(
+        reference_df,
+        None,
+        None,
+        source_audit,
+        cleared_outcomes,
+    )
+    cleared_case_summary = build_pocket_benchmark_reference_readiness_case_summary(
+        reference_df,
+        None,
+        None,
+        source_audit,
+        cleared_outcomes,
+    )
+    pending_queue = build_pocket_benchmark_reference_readiness_queue(None, None, source_audit, pending_outcomes)
+
+    assert cleared_queue.empty
+    assert cleared_summary.iloc[0]["readiness_status"] == "ready"
+    assert int(cleared_summary.iloc[0]["source_audit_issue_count"]) == 0
+    assert cleared_case_summary.iloc[0]["readiness_status"] == "ready"
+    assert pending_queue.iloc[0]["issue_type"] == "source_audit_case_decision_pending"
+    assert pending_queue.iloc[0]["priority"] == "P1"
+
+
 def test_build_pocket_benchmark_summary_reports_top1_and_top3_coverage():
     reference_df, _ = parse_benchmark_reference_table(
         """chain,resid,resname,reference_type

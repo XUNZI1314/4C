@@ -3526,7 +3526,59 @@ def _source_audit_readiness_issue(audit_row: pd.Series) -> tuple[str, str, str, 
     return None
 
 
-def _source_audit_queue_rows(source_audit_df: Optional[pd.DataFrame]) -> list[dict[str, object]]:
+def _source_audit_decision_outcome_by_case(decision_outcome_df: Optional[pd.DataFrame]) -> dict[str, pd.Series]:
+    if decision_outcome_df is None or getattr(decision_outcome_df, "empty", True):
+        return {}
+    outcomes = decision_outcome_df.copy()
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_OUTCOME_COLUMNS:
+        if column not in outcomes.columns:
+            outcomes[column] = ""
+    return {
+        _safe_text(row.get("benchmark_id")): row
+        for _, row in outcomes.iterrows()
+        if _safe_text(row.get("benchmark_id"))
+    }
+
+
+def _source_audit_decision_readiness_issue(outcome_row: pd.Series) -> tuple[str, str, str, str] | None:
+    applied_status = _safe_text(outcome_row.get("applied_status")).lower()
+    next_action = _safe_text(outcome_row.get("next_action"))
+    outcome_reason = _safe_text(outcome_row.get("outcome_reason"))
+    if applied_status in {"cleared", "replaced", "source-ready"}:
+        return None
+    if applied_status == "blocked":
+        return (
+            "P0",
+            "source_audit_case_decision_blocked",
+            next_action or "Fix blocked source-audit case decisions before using benchmark coverage in precision claims.",
+            outcome_reason or "At least one source-audit case decision is invalid or blocked.",
+        )
+    if applied_status == "pending":
+        return (
+            "P1",
+            "source_audit_case_decision_pending",
+            next_action or "Upload or complete source-audit case decisions for pending cases.",
+            outcome_reason or "Some source-risk cases still have no clearing decision.",
+        )
+    if applied_status == "held":
+        return (
+            "P2",
+            "source_audit_case_decision_held",
+            next_action or "Resolve held source-risk cases or exclude them from independent benchmark claims.",
+            outcome_reason or "Held source-risk cases remain outside claim-ready source provenance.",
+        )
+    return (
+        "P1",
+        "source_audit_case_decision_unknown",
+        next_action or "Review source-audit case decision outcomes before reporting benchmark precision.",
+        outcome_reason or "Source-audit decision outcome status is unknown.",
+    )
+
+
+def _source_audit_queue_rows(
+    source_audit_df: Optional[pd.DataFrame],
+    source_audit_decision_outcome_df: Optional[pd.DataFrame] = None,
+) -> list[dict[str, object]]:
     if source_audit_df is None or getattr(source_audit_df, "empty", True):
         return []
     working = source_audit_df.copy()
@@ -3543,9 +3595,16 @@ def _source_audit_queue_rows(source_audit_df: Optional[pd.DataFrame]) -> list[di
         if column not in working.columns:
             working[column] = ""
 
+    decision_by_case = _source_audit_decision_outcome_by_case(source_audit_decision_outcome_df)
     rows: list[dict[str, object]] = []
     for _, audit in working.iterrows():
-        issue = _source_audit_readiness_issue(audit)
+        benchmark_id = _safe_text(audit.get("benchmark_id"))
+        decision_outcome = decision_by_case.get(benchmark_id)
+        issue = (
+            _source_audit_decision_readiness_issue(decision_outcome)
+            if decision_outcome is not None
+            else _source_audit_readiness_issue(audit)
+        )
         if issue is None:
             continue
         priority, issue_type, suggested_action, warning = issue
@@ -3558,7 +3617,7 @@ def _source_audit_queue_rows(source_audit_df: Optional[pd.DataFrame]) -> list[di
                 "action_status": "blocker" if priority in {"P0", "P1"} else "review",
                 "issue_source": "source_audit",
                 "issue_type": issue_type,
-                "benchmark_id": _safe_text(audit.get("benchmark_id")),
+                "benchmark_id": benchmark_id,
                 "residue_label": _residue_label(chain, resid_value, resname) if resid_value else "",
                 "chain": chain,
                 "resid": _safe_text(audit.get("resid")),
@@ -3574,6 +3633,7 @@ def build_pocket_benchmark_reference_readiness_queue(
     quality_issue_df: Optional[pd.DataFrame],
     structure_validation_issue_df: Optional[pd.DataFrame],
     source_audit_df: Optional[pd.DataFrame] = None,
+    source_audit_decision_outcome_df: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """Combine reference curation and structure validation issues into one readiness queue."""
 
@@ -3584,7 +3644,7 @@ def build_pocket_benchmark_reference_readiness_queue(
             issue_source="structure_validation",
             warning_column="validation_warning",
         ),
-        *_source_audit_queue_rows(source_audit_df),
+        *_source_audit_queue_rows(source_audit_df, source_audit_decision_outcome_df),
     ]
     if not rows:
         return _empty_reference_readiness_queue_df()
@@ -3605,11 +3665,17 @@ def build_pocket_benchmark_reference_readiness_summary(
     quality_issue_df: Optional[pd.DataFrame],
     structure_validation_issue_df: Optional[pd.DataFrame],
     source_audit_df: Optional[pd.DataFrame] = None,
+    source_audit_decision_outcome_df: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """Build a one-row gate for whether benchmark reference rows are ready for accuracy claims."""
 
     references = _reference_rows(reference_df)
-    queue = build_pocket_benchmark_reference_readiness_queue(quality_issue_df, structure_validation_issue_df, source_audit_df)
+    queue = build_pocket_benchmark_reference_readiness_queue(
+        quality_issue_df,
+        structure_validation_issue_df,
+        source_audit_df,
+        source_audit_decision_outcome_df,
+    )
     reference_count = int(len(references))
     curation_count = 0 if quality_issue_df is None or getattr(quality_issue_df, "empty", True) else int(len(quality_issue_df))
     structure_count = (
@@ -3706,8 +3772,13 @@ def _readiness_issue_frame(issue_df: Optional[pd.DataFrame], *, issue_source: st
     return working[["benchmark_id", "severity", "issue_type", "issue_source"]].reset_index(drop=True)
 
 
-def _source_audit_readiness_issue_frame(source_audit_df: Optional[pd.DataFrame], *, default_benchmark_id: str) -> pd.DataFrame:
-    rows = _source_audit_queue_rows(source_audit_df)
+def _source_audit_readiness_issue_frame(
+    source_audit_df: Optional[pd.DataFrame],
+    source_audit_decision_outcome_df: Optional[pd.DataFrame] = None,
+    *,
+    default_benchmark_id: str,
+) -> pd.DataFrame:
+    rows = _source_audit_queue_rows(source_audit_df, source_audit_decision_outcome_df)
     if not rows:
         return pd.DataFrame(columns=["benchmark_id", "severity", "issue_type", "issue_source"])
     frame = pd.DataFrame(rows)
@@ -3722,6 +3793,7 @@ def build_pocket_benchmark_reference_readiness_case_summary(
     quality_issue_df: Optional[pd.DataFrame],
     structure_validation_issue_df: Optional[pd.DataFrame],
     source_audit_df: Optional[pd.DataFrame] = None,
+    source_audit_decision_outcome_df: Optional[pd.DataFrame] = None,
     *,
     default_benchmark_id: str = "current",
 ) -> pd.DataFrame:
@@ -3740,7 +3812,11 @@ def build_pocket_benchmark_reference_readiness_case_summary(
         issue_source="structure_validation",
         default_benchmark_id=fallback_id,
     )
-    source_issues = _source_audit_readiness_issue_frame(source_audit_df, default_benchmark_id=fallback_id)
+    source_issues = _source_audit_readiness_issue_frame(
+        source_audit_df,
+        source_audit_decision_outcome_df,
+        default_benchmark_id=fallback_id,
+    )
     issue_frame = pd.concat([quality_issues, structure_issues, source_issues], ignore_index=True)
 
     case_ids = sorted(
