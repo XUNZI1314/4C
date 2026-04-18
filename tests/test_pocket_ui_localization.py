@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 APP_PAGE = ROOT_DIR / "app.py"
 HOME_PAGE = ROOT_DIR / "pages" / "1_首页.py"
+HELP_PAGE = ROOT_DIR / "pages" / "3_使用说明.py"
 STRUCTURE_LAYOUT = ROOT_DIR / "src" / "protein_visualizer" / "ui" / "layout.py"
 POCKET_PAGE = ROOT_DIR / "pages" / "6_口袋与界面.py"
 RESULTS_PAGE = ROOT_DIR / "pages" / "4_结果与导出.py"
@@ -17,6 +18,10 @@ def _app_source() -> str:
 
 def _home_source() -> str:
     return HOME_PAGE.read_text(encoding="utf-8")
+
+
+def _help_source() -> str:
+    return HELP_PAGE.read_text(encoding="utf-8")
 
 
 def _structure_layout_source() -> str:
@@ -220,3 +225,19 @@ def test_home_page_keeps_visible_mode_labels_localized():
     assert "卡通视图、球棍视图和分子表面" in source
     assert "推荐分析链路" in source
     assert "证据复核" in source
+
+
+def test_help_page_documents_current_pocket_workflow():
+    source = _help_source()
+
+    required_snippets = [
+        "推荐分析链路",
+        "UniProt、M-CSA、文献、AI 提取残基、保守性表格或人工关键残基",
+        "文献 A/B、证据路径 A/B、保守性 A/B 和 P2Rank on/off 对照",
+        "AI 残基证据需要来源文本、片段或引用支持",
+        "Top1 口袋证据质量",
+        "PDB author numbering、插入码或成熟肽编号不一致",
+    ]
+
+    for snippet in required_snippets:
+        assert snippet in source
