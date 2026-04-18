@@ -255,6 +255,740 @@ def _to_csv_bytes(table: pd.DataFrame) -> bytes:
     return table.to_csv(index=False).encode("utf-8")
 
 
+DOWNLOAD_LABEL_REPLACEMENTS = [
+    ("normalized ", "标准化"),
+    ("consensus rerank", "共识重排"),
+    ("benchmark reference", "基准参考"),
+    ("pocket benchmark", "口袋基准"),
+    ("AI review", "AI 复核"),
+    ("AI evidence", "AI 证据"),
+    ("AI ranking", "AI 排名"),
+    ("ranking-gated", "排名门控"),
+    ("source audit", "来源审计"),
+    ("candidate review", "候选复核"),
+    ("candidate", "候选"),
+    ("accepted", "已接受"),
+    ("release decision", "发布决策"),
+    ("release execution", "发布执行"),
+    ("release closure", "发布关闭"),
+    ("decision template", "决策模板"),
+    ("decision validation", "决策校验"),
+    ("decision outcomes", "决策结果"),
+    ("decisions", "决策"),
+    ("decision", "决策"),
+    ("review queue", "复核队列"),
+    ("review checklist", "复核清单"),
+    ("round summary", "轮次汇总"),
+    ("round report", "轮次报告"),
+    ("ranking delta", "排名变化"),
+    ("artifact manifest", "产物清单"),
+    ("artifact bundle", "产物包"),
+    ("bundle verification summary", "包校验汇总"),
+    ("bundle verification", "包校验"),
+    ("bundle handoff certificate", "包交接证书"),
+    ("bundle README", "包 README"),
+    ("handoff certificate", "交接证书"),
+    ("follow-up evidence plan", "后续取证计划"),
+    ("follow-up prompt bundle", "后续提示词包"),
+    ("release apply plan", "发布应用计划"),
+    ("release apply report", "发布应用报告"),
+    ("release execution template", "发布执行模板"),
+    ("release execution receipt", "发布执行回执"),
+    ("release execution validation", "发布执行校验"),
+    ("release execution summary", "发布执行汇总"),
+    ("release execution report", "发布执行报告"),
+    ("release closure certificate", "发布关闭证书"),
+    ("release closure ledger", "发布关闭台账"),
+    ("release closure readiness summary", "发布关闭就绪汇总"),
+    ("release closure blocker queue", "发布关闭阻断队列"),
+    ("release closure remediation checklist", "发布关闭修复清单"),
+    ("release closure detached manifest", "发布关闭外置清单"),
+    ("suggestions", "建议"),
+    ("preview", "预览"),
+    ("policy gate", "策略门控"),
+    ("action queue summary", "行动队列汇总"),
+    ("action queue", "行动队列"),
+    ("action checklist", "行动检查清单"),
+    ("apply simulation", "应用模拟"),
+    ("simulation delta", "模拟变化"),
+    ("precision scorecard", "精度评分卡"),
+    ("precision guardrail report", "精度护栏报告"),
+    ("precision guardrail", "精度护栏"),
+    ("guardrail artifact manifest", "护栏产物清单"),
+    ("guardrail handoff ZIP", "护栏交接 ZIP"),
+    ("guardrail bundle verification summary", "护栏包校验汇总"),
+    ("guardrail bundle verification", "护栏包校验"),
+    ("guardrail handoff certificate", "护栏交接证书"),
+    ("import summary", "导入汇总"),
+    ("quality issues", "质量问题"),
+    ("quality summary", "质量汇总"),
+    ("curation checklist", "整理清单"),
+    ("structure validation summary", "结构校验汇总"),
+    ("structure validation checklist", "结构校验清单"),
+    ("structure validation", "结构校验"),
+    ("readiness summary", "就绪汇总"),
+    ("readiness case summary", "就绪 case 汇总"),
+    ("readiness queue", "就绪队列"),
+    ("readiness checklist", "就绪清单"),
+    ("readiness impact summary", "就绪影响汇总"),
+    ("readiness impact", "就绪影响"),
+    ("case decision closure checklist", "case 决策关闭清单"),
+    ("case decision outcome summary", "case 决策结果汇总"),
+    ("case decision closure queue", "case 决策关闭队列"),
+    ("case decision validation", "case 决策校验"),
+    ("case decision template", "case 决策模板"),
+    ("case decision dataset impact action queue summary", "case 决策数据集影响行动队列汇总"),
+    ("case decision dataset impact action queue", "case 决策数据集影响行动队列"),
+    ("case decision dataset impact case checklist", "case 决策数据集影响 case 清单"),
+    ("case decision dataset impact artifact manifest", "case 决策数据集影响产物清单"),
+    ("case decision dataset impact cases", "case 决策数据集影响 case"),
+    ("case decision dataset impact report", "case 决策数据集影响报告"),
+    ("case decision dataset impact", "case 决策数据集影响"),
+    ("case summary", "case 汇总"),
+    ("case checklist", "case 清单"),
+    ("case", "案例"),
+    ("template notes", "模板说明"),
+    ("template", "模板"),
+    ("reference", "参考"),
+    ("interpretation matrix summary", "解释矩阵汇总"),
+    ("interpretation matrix queue", "解释矩阵队列"),
+    ("interpretation matrix", "解释矩阵"),
+    ("dataset interpretation queue", "数据集解释队列"),
+    ("dataset interpretation checklist", "数据集解释清单"),
+    ("dataset interpretation report", "数据集解释报告"),
+    ("dataset interpretation", "数据集解释"),
+    ("dataset summary", "数据集汇总"),
+    ("case interpretation", "case 解释"),
+    ("case summary", "case 汇总"),
+    ("variant dataset comparison", "变体数据集对比"),
+    ("variant case comparison", "变体 case 对比"),
+    ("variant residue comparison", "变体残基对比"),
+    ("variant comparison", "变体对比"),
+    ("remediation queue", "修复队列"),
+    ("remediation summary", "修复汇总"),
+    ("remediation checklist", "修复清单"),
+    ("details", "明细"),
+    ("summary", "汇总"),
+    ("audit", "审计"),
+    ("coverage", "覆盖"),
+    ("evidence", "证据"),
+    ("residue", "残基"),
+    ("pocket", "口袋"),
+    ("CSV", "CSV"),
+    ("MD", "MD"),
+    ("ZIP", "ZIP"),
+]
+
+
+def _localize_download_label(label: object) -> object:
+    if not isinstance(label, str):
+        return label
+    if not label.startswith(("Export ", "Download ")):
+        return label
+    action = "导出" if label.startswith("Export ") else "下载"
+    text = label.split(" ", 1)[1]
+    for source, target in DOWNLOAD_LABEL_REPLACEMENTS:
+        text = text.replace(source, target)
+    text = " ".join(text.split())
+    separator = " " if text and text[0].isascii() else ""
+    return f"{action}{separator}{text}"
+
+
+if not hasattr(st, "_protein_visualizer_original_download_button"):
+    st._protein_visualizer_original_download_button = st.download_button
+
+
+def _localized_download_button(*args, **kwargs):
+    if args:
+        args = (_localize_download_label(args[0]), *args[1:])
+    elif "label" in kwargs:
+        kwargs["label"] = _localize_download_label(kwargs["label"])
+    return st._protein_visualizer_original_download_button(*args, **kwargs)
+
+
+st.download_button = _localized_download_button
+
+
+REPORT_LINE_REPLACEMENTS = [
+    ("Benchmark reference source audit case decision readiness impact summary", "基准参考来源审计 case 决策就绪影响汇总"),
+    ("Benchmark reference source audit case decision readiness impact", "基准参考来源审计 case 决策就绪影响"),
+    ("Benchmark reference source audit case decision closure checklist", "基准参考来源审计 case 决策关闭清单"),
+    ("Benchmark reference source audit case decision closure queue", "基准参考来源审计 case 决策关闭队列"),
+    ("Benchmark reference source audit case decision outcome summary", "基准参考来源审计 case 决策结果汇总"),
+    ("Benchmark reference source audit case decision outcomes", "基准参考来源审计 case 决策结果"),
+    ("Benchmark reference source audit case decision template", "基准参考来源审计 case 决策模板"),
+    ("Benchmark reference source audit case decisions", "基准参考来源审计 case 决策"),
+    ("Benchmark source-audit decision dataset impact action summary", "基准来源审计决策数据集影响行动汇总"),
+    ("Benchmark source-audit decision dataset impact action queue", "基准来源审计决策数据集影响行动队列"),
+    ("Benchmark source-audit decision dataset impact artifacts", "基准来源审计决策数据集影响产物"),
+    ("Benchmark source-audit decision dataset impact cases", "基准来源审计决策数据集影响 case"),
+    ("Benchmark source-audit decision dataset impact", "基准来源审计决策数据集影响"),
+    ("Benchmark reference source audit action queue", "基准参考来源审计行动队列"),
+    ("Benchmark reference source audit case checklist", "基准参考来源审计 case 清单"),
+    ("Benchmark reference source audit checklist", "基准参考来源审计清单"),
+    ("Benchmark reference source audit summary", "基准参考来源审计汇总"),
+    ("Benchmark reference source audit cases", "基准参考来源审计 case"),
+    ("Benchmark reference source audit", "基准参考来源审计"),
+    ("Benchmark reference candidate review decisions", "基准参考候选复核决策"),
+    ("Benchmark reference candidate review", "基准参考候选复核"),
+    ("Benchmark reference candidate", "基准参考候选"),
+    ("Benchmark reference curation quality", "基准参考整理质量"),
+    ("Benchmark reference structure validation", "基准参考结构校验"),
+    ("Benchmark reference readiness cases", "基准参考就绪 case"),
+    ("Benchmark reference readiness", "基准参考就绪"),
+    ("Benchmark reference template", "基准参考模板"),
+    ("Benchmark reference source", "基准参考来源"),
+    ("Catalytic pocket benchmark", "催化口袋基准"),
+    ("Catalytic benchmark remediation queue", "催化基准修复队列"),
+    ("Catalytic benchmark variant residues", "催化基准变体残基"),
+    ("Catalytic benchmark variant cases", "催化基准变体 case"),
+    ("Catalytic benchmark variants", "催化基准变体"),
+    ("Catalytic benchmark dataset", "催化基准数据集"),
+    ("Benchmark case interpretation matrix summary", "基准 case 解释矩阵汇总"),
+    ("Benchmark case interpretation matrix queue", "基准 case 解释矩阵队列"),
+    ("Benchmark case interpretation matrix", "基准 case 解释矩阵"),
+    ("Benchmark case interpretation", "基准 case 解释"),
+    ("case", "案例"),
+    ("Benchmark dataset interpretation queue", "基准数据集解释队列"),
+    ("Benchmark dataset interpretation", "基准数据集解释"),
+    ("Benchmark interpretation", "基准解释"),
+    ("Consensus rerank release closure detached manifest", "共识重排发布关闭外置清单"),
+    ("Consensus rerank release closure remediation checklist", "共识重排发布关闭修复清单"),
+    ("Consensus rerank release closure blockers", "共识重排发布关闭阻断项"),
+    ("Consensus rerank release closure readiness", "共识重排发布关闭就绪"),
+    ("Consensus rerank release closure ledger", "共识重排发布关闭台账"),
+    ("Consensus rerank release closure certificate", "共识重排发布关闭证书"),
+    ("Consensus rerank release execution validation", "共识重排发布执行校验"),
+    ("Consensus rerank release execution template", "共识重排发布执行模板"),
+    ("Consensus rerank release execution receipt", "共识重排发布执行回执"),
+    ("Consensus rerank release execution report", "共识重排发布执行报告"),
+    ("Consensus rerank release execution", "共识重排发布执行"),
+    ("Consensus rerank release apply report", "共识重排发布应用报告"),
+    ("Consensus rerank release apply plan", "共识重排发布应用计划"),
+    ("Consensus rerank release decision validation", "共识重排发布决策校验"),
+    ("Consensus rerank release decision template", "共识重排发布决策模板"),
+    ("Consensus rerank release decisions", "共识重排发布决策"),
+    ("Consensus rerank release review", "共识重排发布复核"),
+    ("Consensus rerank guardrail bundle verification", "共识重排护栏包校验"),
+    ("Consensus rerank guardrail handoff certificate", "共识重排护栏交接证书"),
+    ("Consensus rerank guardrail handoff bundle", "共识重排护栏交接包"),
+    ("Consensus rerank precision guardrail report", "共识重排精度护栏报告"),
+    ("Consensus rerank precision guardrail", "共识重排精度护栏"),
+    ("Consensus rerank precision scorecard", "共识重排精度评分卡"),
+    ("Consensus rerank simulation delta", "共识重排模拟变化"),
+    ("Consensus rerank apply simulation", "共识重排应用模拟"),
+    ("Consensus rerank action checklist", "共识重排行动清单"),
+    ("Consensus rerank action queue", "共识重排行动队列"),
+    ("Consensus rerank policy gate", "共识重排策略门控"),
+    ("Consensus rerank suggestions", "共识重排建议"),
+    ("Consensus rerank preview", "共识重排预览"),
+    ("AI evidence used for ranking", "AI 排名可用证据"),
+    ("AI evidence audit", "AI 证据审计"),
+    ("AI evidence", "AI 证据"),
+    ("AI review bundle verification summary", "AI 复核包校验汇总"),
+    ("AI review bundle verification", "AI 复核包校验"),
+    ("AI review bundle certificate", "AI 复核包证书"),
+    ("AI review artifact manifest", "AI 复核产物清单"),
+    ("AI review artifact bundle", "AI 复核产物包"),
+    ("AI review bundle README", "AI 复核包 README"),
+    ("AI review decision validation", "AI 复核决策校验"),
+    ("AI review decision outcomes", "AI 复核决策结果"),
+    ("AI review decision template", "AI 复核决策模板"),
+    ("AI review decisions", "AI 复核决策"),
+    ("AI review ranking delta", "AI 复核排名变化"),
+    ("AI review round", "AI 复核轮次"),
+    ("AI review queue", "AI 复核队列"),
+    ("AI follow-up plan", "AI 后续取证计划"),
+    ("AI influence", "AI 影响"),
+    ("Residue evidence consensus", "残基证据共识"),
+    ("Pocket consensus coverage", "口袋共识覆盖"),
+    ("Top active-site decision", "Top 活性位点决策"),
+    ("Top decision score", "Top 决策评分"),
+    ("Precision tier", "精度分层"),
+    ("Triage action", "分诊动作"),
+    ("Reliability checks", "可靠性检查"),
+    ("Reliability gaps", "可靠性缺口"),
+    ("Next step", "下一步"),
+    ("P2Rank A/B", "P2Rank A/B"),
+    ("Top pocket AI residues", "Top 口袋 AI 残基"),
+    ("Top-1 claim", "Top-1 结论"),
+    ("Top-3 claim", "Top-3 结论"),
+    ("Top-1", "Top-1"),
+    ("Top-3", "Top-3"),
+    ("current vs ablations", "当前与消融对比"),
+    ("best rank", "最佳排名"),
+    ("dataset rows", "数据集行"),
+    ("accepted actions", "接受动作"),
+    ("accepted references", "接受参考"),
+    ("validation blocked", "校验阻断"),
+    ("independent claim", "独立结论"),
+    ("claim status", "结论状态"),
+    ("top status", "Top 状态"),
+    ("top fix", "Top 修复项"),
+    ("provisional used", "使用临时参考"),
+    ("reviewed candidate", "已复核候选"),
+    ("provisional", "临时参考"),
+    ("rankable", "可排名"),
+    ("manifest", "清单"),
+    ("checklist", "清单"),
+    ("references", "条参考"),
+    ("blockers", "阻断项"),
+    ("blocked", "阻断"),
+    ("mismatches", "不匹配"),
+    ("mismatch", "不匹配"),
+    ("cleared", "已清除"),
+    ("changed", "已变化"),
+    ("failed", "失败"),
+    ("usable", "可用"),
+    ("complete", "完成"),
+    ("closed", "关闭"),
+    ("allowed", "允许"),
+    ("actions", "动作"),
+    ("hashes", "哈希"),
+    ("bytes", "字节"),
+    ("score", "评分"),
+    ("mode", "模式"),
+    ("issue", "问题"),
+    ("files", "个文件"),
+    ("issues", "个问题"),
+    ("cases", "个案例"),
+    ("rows", "行"),
+    ("status", "状态"),
+    ("summary", "汇总"),
+    ("decision", "决策"),
+    ("audit", "审计"),
+    ("source", "来源"),
+    ("import", "导入"),
+    ("notes", "说明"),
+    ("tier", "分层"),
+    ("label", "标签"),
+    ("top", "Top"),
+    ("source-review-needed", "来源需复核"),
+    ("source-blocked", "来源阻断"),
+    ("source-gate-mismatch", "来源门控不匹配"),
+    ("review-needed", "需复核"),
+    ("cleared-by-decision", "决策已清除"),
+    ("decision-adjusted-open", "决策调整后未关闭"),
+    ("decision-open", "决策未关闭"),
+    ("unchanged-open", "未改变且未关闭"),
+    ("verified", "已校验"),
+    ("accepted", "已接受"),
+    ("review", "复核"),
+    ("open", "未关闭"),
+    ("pending", "待处理"),
+    ("applied", "已应用"),
+    ("not available", "不可用"),
+    ("not enabled", "未启用"),
+    ("available", "可用"),
+    ("enabled", "已启用"),
+    ("none", "无"),
+    ("yes", "是"),
+    ("no", "否"),
+    ("pass", "通过"),
+    ("missing", "缺失"),
+]
+
+
+REPORT_STATUS_REPLACEMENTS = [
+    ("source-review-needed", "来源需复核"),
+    ("source-blocked", "来源阻断"),
+    ("source-gate-mismatch", "来源门控不匹配"),
+    ("review-needed", "需复核"),
+    ("cleared-by-decision", "决策已清除"),
+    ("decision-adjusted-open", "决策调整后未关闭"),
+    ("decision-open", "决策未关闭"),
+    ("unchanged-open", "未改变且未关闭"),
+]
+
+
+REPORT_VALUE_REPLACEMENTS = [
+    ("interface_and_pocket", "界面与口袋"),
+    ("interface_and_hotspot", "界面与热点"),
+    ("pocket_and_hotspot", "口袋与热点"),
+    ("interface_residues", "界面残基"),
+    ("pocket_residues", "口袋残基"),
+    ("hotspot_residues", "热点残基"),
+    ("triple_overlap", "三重交集"),
+    ("empty-input", "输入为空"),
+    ("not-uploaded", "未上传"),
+    ("source-ready", "来源就绪"),
+    ("needs-review", "需复核"),
+    ("unsupported", "无支持"),
+    ("conflicting", "冲突"),
+    ("supported", "已支持"),
+    ("unchanged", "未变化"),
+    ("changed", "已变化"),
+    ("cleared", "已清除"),
+    ("replaced", "已替换"),
+    ("rejected", "已拒绝"),
+    ("promoted", "提升"),
+    ("removed", "移除"),
+    ("complete", "完成"),
+    ("failed", "失败"),
+    ("external", "外部"),
+    ("literature", "文献"),
+    ("manual", "人工"),
+    ("uploaded", "上传"),
+    ("combined", "合并"),
+    ("inferred", "推断"),
+    ("core", "核心"),
+    ("rim", "边缘"),
+    ("surface", "表面"),
+    ("contact", "接触"),
+    ("empty", "空"),
+    ("ok", "正常"),
+    ("not available", "不可用"),
+    ("not enabled", "未启用"),
+    ("available", "可用"),
+    ("enabled", "已启用"),
+    ("verified", "已校验"),
+    ("accepted", "已接受"),
+    ("blocked", "阻断"),
+    ("pending", "待处理"),
+    ("review", "复核"),
+    ("pass", "通过"),
+    ("missing", "缺失"),
+    ("none", "无"),
+    ("yes", "是"),
+    ("no", "否"),
+]
+
+
+STATUS_TEXT_LABELS = {
+    source: target
+    for source, target in [
+        *REPORT_STATUS_REPLACEMENTS,
+        *REPORT_VALUE_REPLACEMENTS,
+    ]
+}
+STATUS_TEXT_LABELS.update({source.lower(): target for source, target in STATUS_TEXT_LABELS.items()})
+
+
+def _localize_report_line(line: str) -> str:
+    text = str(line)
+    for source, target in REPORT_STATUS_REPLACEMENTS:
+        text = text.replace(source, target)
+    for source, target in REPORT_LINE_REPLACEMENTS:
+        text = text.replace(source, target)
+    for source, target in REPORT_VALUE_REPLACEMENTS:
+        text = text.replace(source, target)
+    return text
+
+
+def _localize_status_text(value: object, default: str = "-") -> str:
+    text = str(value or "").strip()
+    if not text:
+        return default
+    if text in STATUS_TEXT_LABELS:
+        return STATUS_TEXT_LABELS[text]
+    if text.lower() in STATUS_TEXT_LABELS:
+        return STATUS_TEXT_LABELS[text.lower()]
+    if "," in text:
+        return ", ".join(
+            _localize_status_text(part.strip(), default=part.strip())
+            for part in text.split(",")
+            if part.strip()
+        )
+    return text
+
+
+DATAFRAME_COLUMN_LABELS = {
+    "pocket_id": "口袋 ID",
+    "rank": "排名",
+    "old_rank": "原排名",
+    "new_rank": "新排名",
+    "best_rank": "最佳排名",
+    "rank_delta": "排名变化",
+    "score": "得分",
+    "original_score": "原始得分",
+    "adjusted_score": "调整后得分",
+    "consensus_score": "共识得分",
+    "confidence": "置信度",
+    "confidence_score": "置信度",
+    "coverage_ratio": "覆盖率",
+    "coverage": "覆盖",
+    "status": "状态",
+    "audit_status": "审计状态",
+    "validation_status": "校验状态",
+    "applied_status": "应用状态",
+    "action_status": "行动状态",
+    "readiness_status": "就绪状态",
+    "benchmark_status": "基准状态",
+    "claim_status": "结论状态",
+    "source_claim_status": "来源结论状态",
+    "decision_label": "决策标签",
+    "decision_score": "决策得分",
+    "decision_reason": "决策理由",
+    "next_step": "下一步",
+    "precision_tier": "精度分层",
+    "triage_action": "分诊动作",
+    "issue_type": "问题类型",
+    "issue_flags": "问题标记",
+    "priority": "优先级",
+    "reason": "原因",
+    "recommendation_label": "推荐等级",
+    "recommendation_reason": "推荐理由",
+    "residue_label": "残基",
+    "residue_anchor": "残基锚点",
+    "residue_name": "残基名称",
+    "residue_number": "残基编号",
+    "residue_index": "残基序号",
+    "chain_id": "链 ID",
+    "chain": "链",
+    "insertion_code": "插入码",
+    "uniprot_position": "UniProt 位点",
+    "sequence_position": "序列位点",
+    "structure_residue_number": "结构残基编号",
+    "source": "来源",
+    "sources": "来源",
+    "source_mode": "来源模式",
+    "source_id": "来源 ID",
+    "source_url": "来源链接",
+    "evidence_source": "证据来源",
+    "evidence_type": "证据类型",
+    "mapping_level": "映射等级",
+    "matching_chain": "匹配链",
+    "method": "方法",
+    "detection_method": "识别方法",
+    "region_type": "区域类型",
+    "annotation": "注释",
+    "annotation_source": "注释来源",
+    "inference_basis": "推断依据",
+    "is_overlap": "是否交集",
+    "is_pocket": "是否口袋",
+    "is_hotspot": "是否热点",
+    "category": "类别",
+    "count": "数量",
+    "residue_count": "残基数",
+    "pocket_count": "口袋命中数",
+    "hotspot_count": "热点命中数",
+    "overlap_count": "交集数",
+    "residue_labels": "残基列表",
+    "delta_total": "总能量变化",
+    "hotspot_rank": "热点排名",
+    "top_n": "Top-N",
+    "top_pocket_id": "Top 口袋 ID",
+    "best_pocket_id": "最佳口袋 ID",
+    "reference_rows": "参考残基数",
+    "import_status": "导入状态",
+    "manual_review_rows": "人工复核行数",
+    "rankable_after_review_rows": "复核后可排名行数",
+    "promoted_rows": "提升行数",
+    "removed_rows": "移除行数",
+    "failed_files": "失败文件数",
+    "byte_size": "字节数",
+    "sha256": "SHA256",
+}
+
+
+DATAFRAME_COLUMN_TOKEN_LABELS = {
+    "auto": "自动",
+    "detection": "识别",
+    "min": "最小",
+    "max": "最大",
+    "ai": "AI",
+    "ab": "A/B",
+    "p2rank": "P2Rank",
+    "pocket": "口袋",
+    "benchmark": "基准",
+    "reference": "参考",
+    "candidate": "候选",
+    "review": "复核",
+    "decision": "决策",
+    "validation": "校验",
+    "outcome": "结果",
+    "source": "来源",
+    "audit": "审计",
+    "case": "案例",
+    "dataset": "数据集",
+    "impact": "影响",
+    "action": "行动",
+    "queue": "队列",
+    "summary": "汇总",
+    "status": "状态",
+    "reason": "原因",
+    "issue": "问题",
+    "issues": "问题",
+    "priority": "优先级",
+    "rank": "排名",
+    "ranking": "排名",
+    "delta": "变化",
+    "score": "得分",
+    "coverage": "覆盖",
+    "ratio": "比例",
+    "residue": "残基",
+    "residues": "残基",
+    "chain": "链",
+    "position": "位点",
+    "number": "编号",
+    "name": "名称",
+    "label": "标签",
+    "type": "类型",
+    "mode": "模式",
+    "method": "方法",
+    "evidence": "证据",
+    "consensus": "共识",
+    "confidence": "置信度",
+    "mapping": "映射",
+    "level": "等级",
+    "support": "支持",
+    "supported": "支持",
+    "manual": "人工",
+    "external": "外部",
+    "route": "路径",
+    "readiness": "就绪",
+    "closure": "关闭",
+    "closed": "关闭",
+    "blocker": "阻断项",
+    "blocked": "阻断",
+    "missing": "缺失",
+    "pass": "通过",
+    "failed": "失败",
+    "files": "文件",
+    "file": "文件",
+    "bytes": "字节",
+    "size": "大小",
+    "hash": "哈希",
+    "rows": "行数",
+    "row": "行",
+    "count": "数量",
+    "top": "Top",
+    "recommendation": "推荐",
+    "best": "最佳",
+    "old": "原",
+    "new": "新",
+    "current": "当前",
+    "baseline": "基线",
+    "variant": "变体",
+    "comparison": "对比",
+    "interpretation": "解释",
+    "matrix": "矩阵",
+    "artifact": "产物",
+    "manifest": "清单",
+    "bundle": "包",
+    "verification": "校验",
+    "certificate": "证书",
+    "readme": "README",
+    "template": "模板",
+    "notes": "说明",
+    "quality": "质量",
+    "structure": "结构",
+    "curation": "整理",
+    "remediation": "修复",
+    "guardrail": "护栏",
+    "release": "发布",
+    "execution": "执行",
+    "receipt": "回执",
+    "apply": "应用",
+    "plan": "计划",
+    "effect": "效果",
+    "influence": "影响",
+    "fix": "修复",
+    "query": "检索词",
+    "title": "标题",
+    "snippet": "片段",
+    "abstract": "摘要",
+    "url": "链接",
+    "id": "ID",
+    "ec": "EC",
+    "uniprot": "UniProt",
+    "pdb": "PDB",
+}
+
+
+DATAFRAME_VALUE_COLUMN_HINTS = (
+    "status",
+    "decision",
+    "reason",
+    "action",
+    "issue",
+    "tier",
+    "mode",
+    "check",
+    "outcome",
+    "effect",
+    "support",
+    "route",
+    "category",
+    "basis",
+    "readiness",
+    "validation",
+    "closure",
+    "claim",
+)
+
+
+def _localize_dataframe_column(column: object) -> object:
+    if not isinstance(column, str):
+        return column
+    if column in DATAFRAME_COLUMN_LABELS:
+        return DATAFRAME_COLUMN_LABELS[column]
+    if "_" not in column:
+        return DATAFRAME_COLUMN_TOKEN_LABELS.get(column.lower(), column)
+    parts = column.split("_")
+    localized_parts = [DATAFRAME_COLUMN_TOKEN_LABELS.get(part.lower(), part) for part in parts]
+    if localized_parts != parts:
+        return " ".join(localized_parts)
+    return column
+
+
+def _should_localize_dataframe_values(column: object) -> bool:
+    name = str(column).lower()
+    return any(hint in name for hint in DATAFRAME_VALUE_COLUMN_HINTS)
+
+
+def _localize_dataframe_value(value: object) -> object:
+    if isinstance(value, bool):
+        return "是" if value else "否"
+    try:
+        if pd.isna(value):
+            return value
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, str):
+        return _localize_status_text(value, default="")
+    return value
+
+
+def _localize_dataframe_for_display(table: pd.DataFrame) -> pd.DataFrame:
+    display = table.copy()
+    for column in list(display.columns):
+        if pd.api.types.is_bool_dtype(display[column]):
+            display[column] = display[column].map(lambda value: "是" if bool(value) else "否")
+        elif _should_localize_dataframe_values(column) and (
+            pd.api.types.is_object_dtype(display[column]) or pd.api.types.is_string_dtype(display[column])
+        ):
+            display[column] = display[column].map(_localize_dataframe_value)
+    return display.rename(columns={column: _localize_dataframe_column(column) for column in display.columns})
+
+
+if not hasattr(st, "_protein_visualizer_original_dataframe"):
+    st._protein_visualizer_original_dataframe = st.dataframe
+
+
+def _localized_dataframe(*args, **kwargs):
+    if args and isinstance(args[0], pd.DataFrame):
+        args = (_localize_dataframe_for_display(args[0]), *args[1:])
+    elif isinstance(kwargs.get("data"), pd.DataFrame):
+        kwargs["data"] = _localize_dataframe_for_display(kwargs["data"])
+    return st._protein_visualizer_original_dataframe(*args, **kwargs)
+
+
+st.dataframe = _localized_dataframe
+
+
+def _localize_json_for_display(value):
+    if isinstance(value, dict):
+        return {_localize_dataframe_column(key): _localize_json_for_display(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_localize_json_for_display(item) for item in value]
+    if isinstance(value, tuple):
+        return [_localize_json_for_display(item) for item in value]
+    if isinstance(value, str):
+        return _localize_status_text(value, default=value)
+    return value
+
+
 benchmark_reference_template_df = build_pocket_benchmark_reference_template()
 benchmark_reference_template_markdown = build_pocket_benchmark_reference_template_markdown()
 
@@ -391,17 +1125,217 @@ def _residue_pairs(table: pd.DataFrame) -> list[tuple[str, int]]:
     return [(str(row.chain).strip() or "A", int(row.resid)) for row in table.itertuples(index=False)]
 
 
+POCKET_DECISION_VALUE_LABELS = {
+    "Evidence-led active-site candidate": "证据主导的活性位点候选",
+    "Review mapping before validation": "验证前需要复核映射",
+    "Interface-supported candidate": "界面证据支持的候选口袋",
+    "Geometry-only exploratory pocket": "仅几何支持的探索口袋",
+    "Shortlist for follow-up": "列入后续跟进候选",
+    "Exploratory candidate": "探索性候选",
+    "ready-to-validate": "可进入验证",
+    "mapping-review-needed": "映射需要复核",
+    "needs-functional-evidence": "缺少功能证据",
+    "exploratory-only": "仅探索使用",
+    "shortlist": "候选保留",
+    "validate-prioritize": "优先验证",
+    "review-evidence-mapping": "复核证据映射",
+    "validate-interface-context": "结合界面与热点验证",
+    "shortlist-follow-up": "列入后续跟进",
+    "strong-direct-anchor": "强直接残基锚点",
+    "direct-anchor": "直接残基锚点",
+    "route-anchor": "证据路径锚点",
+    "structure-verified-external": "结构已验证的外部证据",
+    "neighborhood-expanded": "邻域扩展证据",
+    "diffuse-external-support": "分散外部支持",
+    "geometry-only": "仅几何支持",
+    "no-external-evidence": "无外部证据",
+    "unknown": "未知",
+    "evidence-warning": "证据警告",
+    "neighborhood-expansion-risk": "邻域扩展风险",
+    "low-mapping-quality": "映射质量低",
+    "literature-lowered-rank": "文献证据降低排名",
+    "evidence-route-lowered-rank": "证据路径降低排名",
+    "geometry-dominated": "几何信号主导",
+    "none": "无",
+    "pass": "通过",
+    "review": "需复核",
+    "missing": "缺失",
+    "Functional anchors": "功能残基锚点",
+    "Evidence mapping risk": "证据映射风险",
+    "Geometry consensus": "几何一致性",
+    "Evidence A/B movement": "证据 A/B 变化",
+    "Actionability": "可行动性",
+    "validation-ready": "可进入验证",
+    "evidence-gap": "证据缺口",
+    "mapping-review": "映射复核",
+    "geometry-review": "几何复核",
+    "evidence-review": "证据复核",
+    "exploratory": "探索性",
+}
+
+POCKET_DECISION_TEXT_LABELS = {
+    "Prioritize residue-level validation around direct anchors.": "优先围绕直接证据锚点做残基层验证。",
+    "Check UniProt/PDB residue mapping, chain choice, and numbering before validation.": "验证前检查 UniProt/PDB 残基映射、链选择和编号。",
+    "Inspect direct anchors versus expanded neighborhood residues before trusting the pocket boundary.": "信任口袋边界前，先检查直接锚点与邻域扩展残基是否一致。",
+    "Add UniProt/M-CSA/literature or manual key residues before treating this as an active site.": "先补充 UniProt、M-CSA、文献或人工关键残基，再把它作为活性位点。",
+    "Validate with interface and hotspot context; functional residue evidence is still useful.": "结合界面和热点上下文验证，同时继续补充功能残基证据。",
+    "Keep as a secondary candidate and compare against higher-confidence pockets.": "作为次级候选保留，并与更高置信度口袋比较。",
+    "No decision panel is available yet. Run auto-pocket detection or add pocket evidence first.": "暂时没有可用的决策面板。请先运行自动口袋识别，或补充口袋证据。",
+    "Use direct anchors as the pocket core before expanding the boundary.": "先把直接证据锚点作为口袋核心，再扩展边界。",
+    "Review route-derived anchors against residue numbering before treating them as catalytic points.": "把证据路径推导出的锚点视为催化位点前，先核对残基编号。",
+    "Add UniProt, M-CSA, literature, or manual key residues to avoid geometry-only ranking.": "补充 UniProt、M-CSA、文献或人工关键残基，避免只靠几何排名。",
+    "Enzyme active sites should be tied to catalytic/binding residues, not only to surface cavities.": "酶活性位点应绑定到催化/结合残基，而不能只依赖表面凹腔。",
+    "Inspect chain, insertion codes, UniProt/PDB offsets, and expanded-neighborhood residues.": "检查链、插入码、UniProt/PDB 编号偏移，以及邻域扩展残基。",
+    "Fetch or upload external residue evidence before relying on this candidate.": "依赖该候选前，先获取或上传外部残基证据。",
+    "Keep the mapped evidence visible as the validation anchor layer.": "保留映射后的证据层，作为验证时的锚点层。",
+    "A correct catalytic residue is not useful if it was mapped onto the wrong chain or numbering system.": "即使催化残基本身正确，如果映射到错误链或编号系统，也不能作为可靠证据。",
+    "Use geometry support to define the shell around evidence anchors.": "用几何支持定义证据锚点周围的口袋外壳。",
+    "Compare pocket boundary against neighboring cavities and hotspot overlap.": "对比邻近腔体和热点重叠，复核口袋边界。",
+    "Treat this as weak geometry; add ligand/contact context or rerun detection with broader settings.": "当前几何支持较弱；建议补充配体/接触上下文，或放宽参数重新识别。",
+    "Reliable pockets need both functional anchors and a physically plausible cavity boundary.": "可靠口袋需要同时具备功能锚点和物理上合理的腔体边界。",
+    "Keep the evidence route enabled; it improves this candidate's ranking.": "保留证据路径，它提升了该候选的排名。",
+    "Compare before/after rankings to understand why evidence lowered this pocket.": "对比证据加入前后的排名，确认为什么该口袋被下调。",
+    "Evidence exists but did not move the rank; inspect whether weights are too conservative.": "已有证据但排名未变化，需要检查权重是否过于保守。",
+    "Run literature/evidence/conservation comparison after adding functional evidence.": "补充功能证据后，再运行文献/证据路径/保守性对比。",
+    "A/B movement shows whether external evidence is actually changing the product recommendation.": "A/B 变化用于判断外部证据是否真正改变产品推荐结果。",
+    "Prioritize validation around the top evidence anchors.": "优先围绕最高证据锚点开展验证。",
+    "Review the listed risks before wet-lab or docking follow-up.": "开展湿实验或 docking 前，先复核列出的风险。",
+    "Do not treat this as a final active-site call yet.": "暂时不要把它当作最终活性位点结论。",
+    "The UI should end with an explicit next step instead of a raw score that users must interpret.": "界面应给出明确下一步，而不是只给用户一个需要自行解释的原始分数。",
+    "Proceed to validation around core evidence anchors.": "围绕核心证据锚点进入验证。",
+    "All reliability gates pass and the decision audit is ready.": "所有可靠性门槛均通过，决策审计已准备好。",
+    "Do not finalize; add or verify functional residue evidence first.": "不要定稿；先补充或验证功能残基证据。",
+    "The candidate lacks the residue-level enzyme evidence needed for a high-precision active-site call.": "该候选缺少高精度活性位点判断所需的残基层酶学证据。",
+    "Review chain/numbering/mapping before validation.": "验证前复核链、编号和映射关系。",
+    "Functional evidence exists, but residue mapping or neighborhood expansion can shift the pocket core.": "已有功能证据，但残基映射或邻域扩展可能改变口袋核心。",
+    "Check cavity boundary against alternate geometry and ligand/contact context.": "结合替代几何结果和配体/接触上下文检查腔体边界。",
+    "Evidence may be useful, but the physical pocket boundary is not yet stable.": "证据可能有用，但物理口袋边界尚不稳定。",
+    "Keep shortlisted and resolve the remaining review/missing gates.": "保留为候选，并解决剩余需复核/缺失项。",
+    "The pocket is plausible but still has unresolved evidence or actionability gaps.": "该口袋有一定合理性，但仍存在未解决的证据或可行动性缺口。",
+    "Use only as exploratory geometry until functional evidence is added.": "在补充功能证据前，仅作为探索性几何结果使用。",
+    "The candidate is dominated by geometry rather than enzyme-specific evidence.": "该候选主要由几何信号驱动，而非酶特异性证据。",
+    "Keep as a secondary candidate and compare with stronger evidence-led pockets.": "作为次级候选保留，并与证据更强的口袋比较。",
+    "No hard blocker is visible, but support is not strong enough for a primary validation call.": "目前没有硬性阻断项，但支持强度不足以作为首要验证结论。",
+    "No additional evidence required before validation.": "验证前无需额外证据。",
+}
+
+POCKET_DECISION_TEXT_REPLACEMENTS = [
+    ("M-CSA / UniProt active-site annotations / PubMed key residues / manual catalytic residues", "M-CSA / UniProt 活性位点注释 / PubMed 关键残基 / 人工催化残基"),
+    ("SIFTS chain mapping, insertion codes, UniProt offsets, and author numbering audit", "SIFTS 链映射、插入码、UniProt 偏移和作者编号审计"),
+    ("P2Rank/fpocket comparison, ligand-neighborhood contacts, or broader geometry detection", "P2Rank/fpocket 对比、配体邻域接触或更宽松的几何检测"),
+    ("literature/evidence-route/conservation A/B comparison", "文献/证据路径/保守性 A/B 对比"),
+    ("manual review note that turns the candidate into validate/review/explore", "人工复核说明，用于把候选转为验证/复核/探索状态"),
+    ("direct=", "直接锚点="),
+    ("route=", "路径锚点="),
+    ("quality=", "证据质量="),
+    ("functional=", "功能分="),
+    ("geometry=", "几何分="),
+    ("method_votes=", "方法票数="),
+    ("literature=", "文献="),
+    ("conservation=", "保守性="),
+    ("audit=", "审计="),
+    ("action=", "动作="),
+]
+
+POCKET_DECISION_COLUMN_LABELS = {
+    "decision_rank": "决策排名",
+    "pocket_id": "口袋 ID",
+    "decision_label": "判断结果",
+    "decision_score": "决策分数",
+    "functional_confidence": "功能证据分",
+    "geometry_confidence": "几何支持分",
+    "recommended_action": "建议动作",
+    "audit_status": "审计状态",
+    "evidence_quality_label": "证据质量",
+    "evidence_quality_score": "证据质量分",
+    "direct_anchor_count": "直接锚点数",
+    "route_anchor_count": "路径锚点数",
+    "anchor_residues": "锚点残基",
+    "method_vote_count": "方法票数",
+    "smart_rank_label": "智能排名标签",
+    "smart_rank_score": "智能排名分",
+    "literature_rank_delta": "文献排名变化",
+    "evidence_route_rank_delta": "证据路径排名变化",
+    "conservation_rank_delta": "保守性排名变化",
+    "risk_flags": "风险标签",
+    "supporting_evidence": "支持证据",
+    "next_step": "下一步",
+    "visual_focus": "可视化重点",
+}
+
+POCKET_RELIABILITY_COLUMN_LABELS = {
+    "pocket_id": "口袋 ID",
+    "check_order": "检查顺序",
+    "check": "检查项",
+    "status": "状态",
+    "signal": "信号",
+    "why_it_matters": "为什么重要",
+    "next_action": "下一步",
+}
+
+POCKET_TRIAGE_COLUMN_LABELS = {
+    "pocket_id": "口袋 ID",
+    "decision_rank": "决策排名",
+    "precision_tier": "精度分层",
+    "triage_priority": "处理优先级",
+    "triage_action": "处理动作",
+    "blocking_checks": "阻断项",
+    "review_checks": "需复核项",
+    "pass_count": "通过数",
+    "review_count": "复核数",
+    "missing_count": "缺失数",
+    "triage_reason": "处理原因",
+    "next_data_to_add": "建议补充数据",
+}
+
+
+def _localize_pocket_decision_text(value: object) -> object:
+    if value is None:
+        return value
+    if pd.api.types.is_scalar(value) and pd.isna(value):
+        return value
+    text = str(value).strip()
+    if not text:
+        return text
+    localized = POCKET_DECISION_VALUE_LABELS.get(text) or POCKET_DECISION_TEXT_LABELS.get(text)
+    if localized:
+        return localized
+    for source, target in POCKET_DECISION_VALUE_LABELS.items():
+        text = text.replace(source, target)
+    for source, target in POCKET_DECISION_TEXT_REPLACEMENTS:
+        text = text.replace(source, target)
+    return text
+
+
+def _localize_pocket_decision_list(value: object) -> str:
+    text = str(value or "").strip()
+    if not text or text.lower() == "none":
+        return "无"
+    parts = [part.strip() for part in text.split(",") if part.strip()]
+    return "，".join(str(_localize_pocket_decision_text(part)) for part in parts) if parts else "无"
+
+
+def _localize_pocket_decision_df(table: pd.DataFrame, column_labels: dict[str, str]) -> pd.DataFrame:
+    if table is None or getattr(table, "empty", True):
+        return table
+    display = table.copy()
+    for column in display.columns:
+        if pd.api.types.is_object_dtype(display[column]) or pd.api.types.is_string_dtype(display[column]):
+            display[column] = display[column].map(_localize_pocket_decision_text)
+    return display.rename(columns=column_labels)
+
+
 def _render_pocket_decision_panel(
     decision_df: pd.DataFrame,
     checklist_df: pd.DataFrame | None = None,
     triage_df: pd.DataFrame | None = None,
 ) -> None:
-    st.subheader("Active-site decision panel")
+    st.subheader("活性位点决策面板")
     st.caption(
-        "This panel turns pocket ranking into an auditable product view: functional evidence, geometry support, A/B movement, risk flags, and the next action."
+        "把口袋排名转换成可审计的产品视图：同时展示功能证据、几何支持、A/B 变化、风险标签和下一步动作。"
     )
     if decision_df is None or getattr(decision_df, "empty", True):
-        st.info("No decision panel is available yet. Run auto-pocket detection or add pocket evidence first.")
+        st.info("暂时没有可用的决策面板。请先运行自动口袋识别，或补充口袋证据。")
         return
 
     cards = []
@@ -410,62 +1344,74 @@ def _render_pocket_decision_panel(
         card_class = "ready" if audit_status == "ready-to-validate" else ("review" if "review" in audit_status or "needed" in audit_status else "explore")
         risk_flags = str(row.get("risk_flags") or "none")
         pills = "".join(
-            f'<span class="decision-pill">{html.escape(flag.strip())}</span>'
+            f'<span class="decision-pill">{html.escape(_localize_pocket_decision_list(flag.strip()))}</span>'
             for flag in risk_flags.split(",")
             if flag.strip()
         )
         cards.append(
             """
             <div class="decision-card {card_class}">
-              <div class="decision-kicker">Rank #{rank} | {audit_status}</div>
+              <div class="decision-kicker">排名 #{rank} | {audit_status}</div>
               <div class="decision-title">{pocket_id}</div>
               <div>{decision_label}</div>
               <div class="decision-score">{decision_score:.3f}</div>
               <div class="decision-meta">
-                Functional {functional:.3f} / Geometry {geometry:.3f}<br/>
-                Evidence: {quality}<br/>
-                Action: {action}<br/>
-                A/B: literature {lit_delta:+d}, route {route_delta:+d}, conservation {cons_delta:+d}
+                功能证据 {functional:.3f} / 几何支持 {geometry:.3f}<br/>
+                证据质量：{quality}<br/>
+                建议动作：{action}<br/>
+                A/B：文献 {lit_delta:+d}，证据路径 {route_delta:+d}，保守性 {cons_delta:+d}
               </div>
               <div style="margin-top:8px;">{pills}</div>
-              <div class="decision-meta"><strong>Next:</strong> {next_step}</div>
+              <div class="decision-meta"><strong>下一步：</strong>{next_step}</div>
             </div>
             """.format(
                 card_class=card_class,
                 rank=int(row.get("decision_rank") or 0),
-                audit_status=html.escape(audit_status or "-"),
+                audit_status=html.escape(str(_localize_pocket_decision_text(audit_status)) or "-"),
                 pocket_id=html.escape(str(row.get("pocket_id") or "-")),
-                decision_label=html.escape(str(row.get("decision_label") or "-")),
+                decision_label=html.escape(str(_localize_pocket_decision_text(row.get("decision_label") or "-"))),
                 decision_score=float(row.get("decision_score") or 0.0),
                 functional=float(row.get("functional_confidence") or 0.0),
                 geometry=float(row.get("geometry_confidence") or 0.0),
-                quality=html.escape(str(row.get("evidence_quality_label") or "-")),
-                action=html.escape(str(row.get("recommended_action") or "-")),
+                quality=html.escape(str(_localize_pocket_decision_text(row.get("evidence_quality_label") or "-"))),
+                action=html.escape(str(_localize_pocket_decision_text(row.get("recommended_action") or "-"))),
                 lit_delta=int(row.get("literature_rank_delta") or 0),
                 route_delta=int(row.get("evidence_route_rank_delta") or 0),
                 cons_delta=int(row.get("conservation_rank_delta") or 0),
-                pills=pills or '<span class="decision-pill">none</span>',
-                next_step=html.escape(str(row.get("next_step") or "-")),
+                pills=pills or '<span class="decision-pill">无风险标签</span>',
+                next_step=html.escape(str(_localize_pocket_decision_text(row.get("next_step") or "-"))),
             )
         )
     st.markdown(f'<div class="decision-grid">{"".join(cards)}</div>', unsafe_allow_html=True)
 
     if checklist_df is not None and not getattr(checklist_df, "empty", True):
-        st.markdown("##### Reliability checklist")
+        st.markdown("##### 可靠性检查表")
         st.caption(
-            "Pass = usable signal; Review = useful but needs inspection; Missing = precision gap before treating the pocket as an active-site call."
+            "通过 = 可用信号；需复核 = 有价值但需要人工检查；缺失 = 在认定为活性位点前仍有精度缺口。"
         )
-        st.dataframe(checklist_df, use_container_width=True, hide_index=True)
+        st.dataframe(
+            _localize_pocket_decision_df(checklist_df, POCKET_RELIABILITY_COLUMN_LABELS),
+            use_container_width=True,
+            hide_index=True,
+        )
 
     if triage_df is not None and not getattr(triage_df, "empty", True):
-        st.markdown("##### Precision triage")
+        st.markdown("##### 精度处理建议")
         st.caption(
-            "Triage compresses the checklist into a product-level action: validate, review mapping, add evidence, refine geometry, or keep exploratory."
+            "把检查结果压缩成产品级动作：进入验证、复核映射、补证据、复核几何边界，或仅保留为探索结果。"
         )
-        st.dataframe(triage_df, use_container_width=True, hide_index=True)
+        st.dataframe(
+            _localize_pocket_decision_df(triage_df, POCKET_TRIAGE_COLUMN_LABELS),
+            use_container_width=True,
+            hide_index=True,
+        )
 
-    with st.expander("Decision audit table", expanded=False):
-        st.dataframe(decision_df, use_container_width=True, hide_index=True)
+    with st.expander("决策审计明细", expanded=False):
+        st.dataframe(
+            _localize_pocket_decision_df(decision_df, POCKET_DECISION_COLUMN_LABELS),
+            use_container_width=True,
+            hide_index=True,
+        )
 
 
 POCKET_SOURCE_LABELS = {
@@ -627,15 +1573,15 @@ with st.sidebar:
             value=True,
             disabled=not PYKVFINDER_AVAILABLE,
         )
-        auto_use_p2rank = st.checkbox("Enable P2Rank boost when installed locally", value=False)
-        p2rank_profile = st.selectbox("P2Rank profile", ["default", "alphafold"], index=0)
+        auto_use_p2rank = st.checkbox("本地已安装时启用 P2Rank 增强", value=False)
+        p2rank_profile = st.selectbox("P2Rank 配置", ["default", "alphafold"], index=0)
         p2rank_executable = st.text_input(
-            "P2Rank executable path (optional)",
+            "P2Rank 可执行文件路径（可选）",
             value="",
-            placeholder="e.g. C:\\tools\\p2rank\\prank.bat",
+            placeholder="例如: C:\\tools\\p2rank\\prank.bat",
         )
         enable_p2rank_ab = st.checkbox(
-            "Show P2Rank A/B pocket comparison",
+            "显示 P2Rank A/B 口袋对比",
             value=False,
             disabled=not auto_use_p2rank,
         )
@@ -659,25 +1605,25 @@ with st.sidebar:
 
     with st.expander("外部关键位点证据（可选）", expanded=False):
         enable_uniprot_evidence = st.checkbox("启用 UniProt 功能位点增强", value=False)
-        enable_mcsa_evidence = st.checkbox("Enable M-CSA catalytic-site boost", value=False)
-        uniprot_accession = st.text_input("UniProt Accession", value="", placeholder="例如: P00533")
-        enzyme_ec_number = st.text_input("EC Number (optional)", value="", placeholder="e.g. 3.2.1.4")
+        enable_mcsa_evidence = st.checkbox("启用 M-CSA 催化位点增强", value=False)
+        uniprot_accession = st.text_input("UniProt 编号", value="", placeholder="例如: P00533")
+        enzyme_ec_number = st.text_input("EC 编号（可选）", value="", placeholder="例如: 3.2.1.4")
         uniprot_chain_hint = st.text_input("链提示（可选）", value="", placeholder="例如: A")
-        enable_literature_evidence = st.checkbox("Enable literature residue mining", value=False)
-        literature_query = st.text_input("Literature query override (optional)", value="", placeholder="e.g. enzyme name catalytic residue")
-        literature_protein_name = st.text_input("Protein name for literature search (optional)", value="")
+        enable_literature_evidence = st.checkbox("启用文献残基挖掘", value=False)
+        literature_query = st.text_input("文献检索词覆盖（可选）", value="", placeholder="例如: enzyme name catalytic residue")
+        literature_protein_name = st.text_input("用于文献检索的蛋白名称（可选）", value="")
         enable_europepmc_evidence = st.checkbox(
-            "Enable Europe PMC open-text mining",
+            "启用 Europe PMC 开放文本挖掘",
             value=False,
             disabled=not enable_literature_evidence,
         )
         include_europepmc_fulltext = st.checkbox(
-            "Include Europe PMC open full text",
+            "包含 Europe PMC 开放全文",
             value=True,
             disabled=not enable_literature_evidence or not enable_europepmc_evidence,
         )
         literature_max_articles = st.slider(
-            "Literature articles to scan",
+            "扫描文献数量",
             1,
             12,
             6,
@@ -685,7 +1631,7 @@ with st.sidebar:
             disabled=not enable_literature_evidence,
         )
         literature_max_fulltext = st.slider(
-            "Europe PMC full texts to scan",
+            "扫描 Europe PMC 全文数量",
             0,
             4,
             2,
@@ -693,50 +1639,50 @@ with st.sidebar:
             disabled=not enable_literature_evidence or not enable_europepmc_evidence or not include_europepmc_fulltext,
         )
         uploaded_literature = st.file_uploader(
-            "Upload literature text / abstracts (optional)",
+            "上传文献正文 / 摘要（可选）",
             type=["txt", "md", "xml"],
             accept_multiple_files=False,
         )
         literature_assume_structure_numbering = st.checkbox(
-            "Assume literature residue numbers match the uploaded PDB chain",
+            "假设文献残基编号与上传 PDB 链编号一致",
             value=False,
             disabled=not bool(str(uniprot_chain_hint or "").strip()),
         )
-        enable_ai_evidence = st.checkbox("Enable AI residue evidence assistant", value=False)
+        enable_ai_evidence = st.checkbox("启用 AI 残基证据助手", value=False)
         ai_context_text = st.text_area(
-            "AI source text / notes",
+            "AI 来源文本 / 备注",
             value="",
             height=120,
             disabled=not enable_ai_evidence,
-            placeholder="Paste abstracts, paper snippets, or reviewer notes. AI should extract only supported enzyme residues.",
+            placeholder="粘贴摘要、论文片段或审核备注。AI 只应提取有来源支持的酶残基。",
         )
         ai_payload_text = st.text_area(
-            "Paste AI residue JSON (optional)",
+            "粘贴 AI 残基 JSON（可选）",
             value="",
             height=110,
             disabled=not enable_ai_evidence,
             placeholder='{"residues":[{"resname":"SER","position_text":"Ser195","confidence":0.86,"evidence_snippet":"..."}]}',
         )
         ai_api_url = st.text_input(
-            "AI API URL (OpenAI-compatible, optional)",
+            "AI API 地址（兼容 OpenAI，可选）",
             value=os.getenv("AI_EVIDENCE_API_URL", ""),
             disabled=not enable_ai_evidence or bool(str(ai_payload_text or "").strip()),
             placeholder="https://.../v1/chat/completions",
         )
         ai_model = st.text_input(
-            "AI model",
+            "AI 模型",
             value=os.getenv("AI_EVIDENCE_MODEL", ""),
             disabled=not enable_ai_evidence or bool(str(ai_payload_text or "").strip()),
-            placeholder="model name",
+            placeholder="模型名称",
         )
         ai_api_key = st.text_input(
-            "AI API key (optional; env AI_EVIDENCE_API_KEY is also supported)",
+            "AI API Key（可选；也支持环境变量 AI_EVIDENCE_API_KEY）",
             value="",
             type="password",
             disabled=not enable_ai_evidence or bool(str(ai_payload_text or "").strip()),
         )
         ai_min_confidence = st.slider(
-            "AI residue min confidence",
+            "AI 残基最低置信度",
             0.20,
             0.90,
             0.35,
@@ -744,43 +1690,43 @@ with st.sidebar:
             disabled=not enable_ai_evidence,
         )
         ai_assume_structure_numbering = st.checkbox(
-            "Assume AI residue numbers match the uploaded PDB chain",
+            "假设 AI 残基编号与上传 PDB 链编号一致",
             value=False,
             disabled=not enable_ai_evidence or not bool(str(uniprot_chain_hint or "").strip()),
         )
         ai_allow_review_ranking = st.checkbox(
-            "Allow review-level AI evidence to influence ranking",
+            "允许复核级 AI 证据影响排名",
             value=False,
             disabled=not enable_ai_evidence,
         )
         uploaded_ai_review_decisions = st.file_uploader(
-            "Upload AI review decisions CSV/TSV (optional)",
+            "上传 AI 复核决策 CSV/TSV（可选）",
             type=["csv", "tsv", "txt"],
             accept_multiple_files=False,
             disabled=not enable_ai_evidence,
         )
-        st.caption("Decision columns: chain,resid,evidence_type,review_decision,verified_source,verified_snippet,review_note.")
+        st.caption("决策列：chain,resid,evidence_type,review_decision,verified_source,verified_snippet,review_note。")
         uploaded_consensus_rerank_release_decisions = st.file_uploader(
-            "Upload consensus rerank release decision CSV (optional)",
+            "上传共识重排发布决策 CSV（可选）",
             type=["csv", "tsv", "txt"],
             accept_multiple_files=False,
         )
-        st.caption("Release decision columns: decision_item_id,review_decision,reviewer,verified_anchor_residues,verified_sources,blocker_resolved.")
+        st.caption("发布决策列：decision_item_id,review_decision,reviewer,verified_anchor_residues,verified_sources,blocker_resolved。")
         uploaded_consensus_rerank_release_execution_receipt = st.file_uploader(
-            "Upload consensus rerank release execution receipt CSV (optional)",
+            "上传共识重排发布执行回执 CSV（可选）",
             type=["csv", "tsv", "txt"],
             accept_multiple_files=False,
         )
-        st.caption("Execution receipt columns: execution_item_id,execution_decision,applied_rank,operator,executed_at,plan_sha256.")
-        st.caption("AI evidence is audit-gated: conflicting/unsupported AI residues are kept for review/export but do not affect ranking.")
+        st.caption("执行回执列：execution_item_id,execution_decision,applied_rank,operator,executed_at,plan_sha256。")
+        st.caption("AI 证据受审计门控保护：冲突或无来源支持的 AI 残基会保留用于复核/导出，但不会影响排名。")
         enable_literature_ab = st.checkbox(
-            "Show literature A/B pocket comparison",
+            "显示文献 A/B 口袋对比",
             value=False,
             disabled=not enable_literature_evidence and uploaded_literature is None,
         )
-        auto_external_evidence_route = st.checkbox("Enable external evidence-guided pocket route", value=True)
+        auto_external_evidence_route = st.checkbox("启用外部证据引导的口袋路径", value=True)
         external_route_min_support = st.slider(
-            "Evidence route min support",
+            "证据路径最低支持度",
             0.30,
             1.00,
             0.58,
@@ -788,7 +1734,7 @@ with st.sidebar:
             disabled=not auto_external_evidence_route,
         )
         external_route_min_confidence = st.slider(
-            "Evidence route min mapping confidence",
+            "证据路径最低映射置信度",
             0.30,
             1.00,
             0.55,
@@ -796,7 +1742,7 @@ with st.sidebar:
             disabled=not auto_external_evidence_route,
         )
         external_route_min_quality = st.slider(
-            "Evidence route min mapping quality",
+            "证据路径最低映射质量",
             0.50,
             1.00,
             0.82,
@@ -804,14 +1750,14 @@ with st.sidebar:
             disabled=not auto_external_evidence_route,
         )
         external_route_radius_mode = st.selectbox(
-            "Evidence route neighborhood radius",
+            "证据路径邻域半径",
             ["auto", "manual"],
             index=0,
             disabled=not auto_external_evidence_route,
         )
         external_route_radius = (
             st.slider(
-                "Manual evidence route radius",
+                "手动证据路径半径",
                 3.5,
                 12.0,
                 6.0,
@@ -822,66 +1768,65 @@ with st.sidebar:
             else None
         )
         enable_evidence_route_ab = st.checkbox(
-            "Show evidence-route A/B pocket comparison",
+            "显示证据路径 A/B 口袋对比",
             value=False,
             disabled=not auto_external_evidence_route,
         )
-        st.caption("UniProt, M-CSA, and high-confidence literature residue evidence are used in auto-pocket detection and final reranking.")
+        st.caption("UniProt、M-CSA 和高置信文献残基证据会用于自动口袋识别和最终重排。")
 
-    with st.expander("Conservation Evidence (optional)", expanded=False):
+    with st.expander("保守性证据（可选）", expanded=False):
         uploaded_conservation = st.file_uploader(
-            "Upload ConSurf / conservation table",
+            "上传 ConSurf / 保守性表格",
             type=["csv", "tsv", "txt"],
             accept_multiple_files=False,
         )
-        conservation_source_name = st.text_input("Conservation source label", value="ConSurf")
+        conservation_source_name = st.text_input("保守性来源标签", value="ConSurf")
         enable_conservation_ab = st.checkbox(
-            "Show conservation A/B ranking comparison",
+            "显示保守性 A/B 排名对比",
             value=False,
             disabled=uploaded_conservation is None,
         )
-        st.caption("Imported conservation scores are kept as an independent rerank-only signal; they do not seed candidate generation.")
+        st.caption("导入的保守性分数只作为独立重排信号，不参与候选口袋生成。")
 
-    with st.expander("Benchmark Reference (optional)", expanded=False):
+    with st.expander("基准参考残基（可选）", expanded=False):
         uploaded_benchmark_reference = st.file_uploader(
-            "Upload curated catalytic residues CSV/TSV",
+            "上传人工整理的催化残基 CSV/TSV",
             type=["csv", "tsv", "txt"],
             accept_multiple_files=False,
         )
-        benchmark_source_name = st.text_input("Benchmark source label", value="Curated catalytic benchmark")
+        benchmark_source_name = st.text_input("基准来源标签", value="人工整理催化口袋基准")
         use_external_evidence_as_benchmark_reference = st.checkbox(
-            "Use loaded external evidence as provisional benchmark reference when no curated file is uploaded",
+            "未上传人工基准时，使用已加载外部证据作为临时基准参考",
             value=False,
         )
         use_reviewed_candidate_as_benchmark_reference = st.checkbox(
-            "Use accepted reviewed candidate references as benchmark reference when no curated file is uploaded",
+            "未上传人工基准时，使用已接受的复核候选作为基准参考",
             value=True,
         )
         uploaded_benchmark_reference_candidate_review_decisions = st.file_uploader(
-            "Upload benchmark reference candidate review decisions CSV/TSV",
+            "上传基准参考候选复核决策 CSV/TSV",
             type=["csv", "tsv", "txt"],
             accept_multiple_files=False,
         )
         uploaded_benchmark_reference_source_audit_case_decisions = st.file_uploader(
-            "Upload benchmark source audit case decisions CSV/TSV",
+            "上传基准来源审计案例决策 CSV/TSV",
             type=["csv", "tsv", "txt"],
             accept_multiple_files=False,
         )
         st.caption(
-            "Columns can include chain,resid,resname,reference_type,reference_source,reference_note,expected_pocket_id. "
-            "Blank chain is treated as wildcard. Provisional external-evidence references are useful for triage, "
-            "but should not be treated as independent accuracy proof until curated separately."
+            "可包含列：chain,resid,resname,reference_type,reference_source,reference_note,expected_pocket_id。"
+            "空 chain 会按通配处理。临时外部证据参考可用于分诊，但单独整理前不应作为独立准确率证明。"
         )
-        st.caption("Candidate review decisions need action_id,review_decision,reviewer,verified_source,verified_mapping,review_note.")
-        st.caption("Source audit case decisions need benchmark_id,source_decision,reviewer,verified_independence,decision_note.")
+        st.caption("候选复核决策需要：action_id,review_decision,reviewer,verified_source,verified_mapping,review_note。")
+        st.caption("来源审计案例决策需要：benchmark_id,source_decision,reviewer,verified_independence,decision_note。")
         st.download_button(
-            "Download benchmark reference template CSV",
+            "下载基准参考模板 CSV",
             data=_to_csv_bytes(benchmark_reference_template_df),
             file_name="pocket_benchmark_reference_template.csv",
             mime="text/csv",
         )
         st.download_button(
-            "Download benchmark reference template notes",
+            "下载基准参考模板说明",
             data=benchmark_reference_template_markdown.encode("utf-8"),
             file_name="pocket_benchmark_reference_template.md",
             mime="text/markdown",
@@ -902,7 +1847,7 @@ hotspot_df = (
 try:
     uploaded_pocket_df = parse_pocket_table(pocket_text) if pocket_text else pd.DataFrame()
 except Exception as exc:
-    st.warning(f"Pocket 文件解析失败：{exc}")
+    st.warning(f"口袋文件解析失败：{exc}")
     uploaded_pocket_df = pd.DataFrame()
 
 try:
@@ -1051,7 +1996,7 @@ structure_pdb_id = str(extract_pdb_id_from_text(pdb_text) or "").strip().upper()
 if (enable_uniprot_evidence and str(uniprot_accession or "").strip()) or (
     enable_mcsa_evidence and (str(uniprot_accession or "").strip() or str(enzyme_ec_number or "").strip())
 ):
-    with st.spinner("Loading external functional-site evidence..."):
+    with st.spinner("正在加载外部功能位点证据..."):
         external_site_df, external_site_meta = _load_external_evidence(
             str(uniprot_accession or "").strip(),
             str(uniprot_chain_hint or "").strip(),
@@ -1063,7 +2008,7 @@ if (enable_uniprot_evidence and str(uniprot_accession or "").strip()) or (
         )
 literature_manual_text = _read_uploaded_text(uploaded_literature) if uploaded_literature is not None else ""
 if bool(enable_literature_evidence) or literature_manual_text.strip():
-    with st.spinner("Loading literature residue evidence..."):
+    with st.spinner("正在加载文献残基证据..."):
         literature_site_df, literature_site_meta = _load_literature_evidence(
             str(literature_query or "").strip(),
             literature_manual_text,
@@ -1098,17 +2043,17 @@ if bool(enable_literature_evidence) or literature_manual_text.strip():
         }
 if bool(enable_literature_evidence) or literature_manual_text.strip():
     if literature_site_df.empty:
-        st.sidebar.caption("Literature residue mining did not produce usable high-confidence residues.")
+        st.sidebar.caption("文献残基挖掘未产生可用的高置信残基。")
     else:
         st.sidebar.caption(
-            f"Literature evidence: {len(literature_site_df)} rows / "
-            f"status {literature_site_meta.get('status') or '-'} / "
-            f"query {literature_site_meta.get('query') or '-'}"
+            f"文献证据：{len(literature_site_df)} 行 / "
+            f"状态 {_localize_status_text(literature_site_meta.get('status'))} / "
+            f"检索词 {literature_site_meta.get('query') or '-'}"
         )
 if bool(enable_ai_evidence):
     ai_source_text = str(ai_context_text or literature_manual_text or "").strip()
     reference_evidence_before_ai_df = external_site_df.copy()
-    with st.spinner("Loading AI residue evidence..."):
+    with st.spinner("正在加载 AI 残基证据..."):
         if str(ai_payload_text or "").strip():
             ai_evidence_df, ai_evidence_meta = parse_ai_residue_evidence_payload(
                 str(ai_payload_text or ""),
@@ -1276,64 +2221,64 @@ if bool(enable_ai_evidence):
             "ai_ranking": rankable_ai_evidence_meta,
         }
     if ai_evidence_df.empty:
-        st.sidebar.caption(f"AI evidence assistant: {ai_evidence_meta.get('status') or 'empty'}")
+        st.sidebar.caption(f"AI 证据助手：{_localize_status_text(ai_evidence_meta.get('status') or 'empty')}")
     else:
         audit_status_text = (
-            ", ".join(f"{status}:{count}" for status, count in ai_evidence_audit_df["audit_status"].astype(str).value_counts().to_dict().items())
+            ", ".join(f"{_localize_status_text(status)}:{count}" for status, count in ai_evidence_audit_df["audit_status"].astype(str).value_counts().to_dict().items())
             if not ai_evidence_audit_df.empty and "audit_status" in ai_evidence_audit_df.columns
-            else "none"
+            else "无"
         )
         st.sidebar.caption(
-            f"AI evidence: {len(ai_evidence_df)} rows / status {ai_evidence_meta.get('status') or '-'} / "
-            f"ranked {len(rankable_ai_evidence_df)} / manual review {ai_evidence_meta.get('manual_review_rows') or '0'} / audit {audit_status_text}"
+            f"AI 证据：{len(ai_evidence_df)} 行 / 状态 {_localize_status_text(ai_evidence_meta.get('status'))} / "
+            f"进入排名 {len(rankable_ai_evidence_df)} / 需人工复核 {ai_evidence_meta.get('manual_review_rows') or '0'} / 审计 {audit_status_text}"
         )
     if ai_review_decision_meta:
         st.sidebar.caption(
-            f"AI review decisions: {len(ai_review_decision_df)} rows / "
-            f"status {ai_review_decision_meta.get('status') or '-'} / "
-            f"applied {ai_review_decision_meta.get('applied_rows') or '0'} / "
-            f"accepted {ai_review_decision_meta.get('accepted_rows') or '0'} / "
-            f"rejected {ai_review_decision_meta.get('rejected_rows') or '0'}"
+            f"AI 复核决策：{len(ai_review_decision_df)} 行 / "
+            f"状态 {_localize_status_text(ai_review_decision_meta.get('status'))} / "
+            f"已应用 {ai_review_decision_meta.get('applied_rows') or '0'} / "
+            f"接受 {ai_review_decision_meta.get('accepted_rows') or '0'} / "
+            f"拒绝 {ai_review_decision_meta.get('rejected_rows') or '0'}"
         )
         if not ai_review_decision_validation_df.empty and "validation_status" in ai_review_decision_validation_df.columns:
             validation_text = ", ".join(
-                f"{status}:{count}"
+                f"{_localize_status_text(status)}:{count}"
                 for status, count in ai_review_decision_validation_df["validation_status"].astype(str).value_counts().to_dict().items()
             )
-            st.sidebar.caption(f"AI review validation: {validation_text}")
+            st.sidebar.caption(f"AI 复核校验：{validation_text}")
         if not ai_review_decision_outcome_df.empty and "applied_status" in ai_review_decision_outcome_df.columns:
             outcome_text = ", ".join(
-                f"{status}:{count}"
+                f"{_localize_status_text(status)}:{count}"
                 for status, count in ai_review_decision_outcome_df["applied_status"].astype(str).value_counts().to_dict().items()
             )
-            st.sidebar.caption(f"AI review outcomes: {outcome_text}")
+            st.sidebar.caption(f"AI 复核结果：{outcome_text}")
         if not ai_review_round_summary_df.empty:
             summary_row = ai_review_round_summary_df.iloc[0]
             st.sidebar.caption(
-                f"AI review round: {summary_row.get('review_round_status') or '-'} / "
-                f"rankable {summary_row.get('rankable_after_review_rows') or 0}"
+                f"AI 复核轮次：{_localize_status_text(summary_row.get('review_round_status'))} / "
+                f"可进入排名 {summary_row.get('rankable_after_review_rows') or 0}"
             )
         if not ai_review_ranking_delta_df.empty:
             delta_row = ai_review_ranking_delta_df.iloc[0]
             st.sidebar.caption(
-                f"AI review ranking delta: {delta_row.get('review_effect_status') or '-'} / "
+                f"AI 复核排名变化：{_localize_status_text(delta_row.get('review_effect_status'))} / "
                 f"+{delta_row.get('promoted_rows') or 0} / -{delta_row.get('removed_rows') or 0}"
             )
         if not ai_review_artifact_manifest_df.empty:
-            st.sidebar.caption(f"AI review artifact manifest: {len(ai_review_artifact_manifest_df)} files")
+            st.sidebar.caption(f"AI 复核产物清单：{len(ai_review_artifact_manifest_df)} 个文件")
         if ai_review_artifact_bundle_zip:
-            st.sidebar.caption("AI review artifact bundle: ready")
+            st.sidebar.caption("AI 复核产物包：已就绪")
         if not ai_review_bundle_verification_df.empty and "verification_status" in ai_review_bundle_verification_df.columns:
             failed_verification = int((ai_review_bundle_verification_df["verification_status"].astype(str) != "verified").sum())
-            st.sidebar.caption(f"AI review bundle verification: {len(ai_review_bundle_verification_df)} files / failed {failed_verification}")
+            st.sidebar.caption(f"AI 复核包校验：{len(ai_review_bundle_verification_df)} 个文件 / 失败 {failed_verification}")
         if not ai_review_bundle_verification_summary_df.empty:
             verify_row = ai_review_bundle_verification_summary_df.iloc[0]
             st.sidebar.caption(
-                f"AI review bundle verification summary: {verify_row.get('verification_status') or '-'} / "
-                f"failed {verify_row.get('failed_files') or 0}"
+                f"AI 复核包校验汇总：{_localize_status_text(verify_row.get('verification_status'))} / "
+                f"失败 {verify_row.get('failed_files') or 0}"
             )
         if ai_review_bundle_certificate_markdown:
-            st.sidebar.caption("AI review bundle handoff certificate: ready")
+            st.sidebar.caption("AI 复核包交接证书：已就绪")
 if not external_site_df.empty:
     benchmark_reference_candidate_df, benchmark_reference_candidate_meta = build_pocket_benchmark_reference_from_external_evidence(
         external_site_df,
@@ -1397,22 +2342,22 @@ if not external_site_df.empty:
     if not benchmark_reference_import_summary_df.empty:
         import_row = benchmark_reference_import_summary_df.iloc[0]
         st.sidebar.caption(
-            f"Benchmark reference candidate: {import_row.get('reference_rows') or 0} residues / "
-            f"{import_row.get('import_status') or '-'}."
+            f"基准参考候选：{import_row.get('reference_rows') or 0} 个残基 / "
+            f"{_localize_status_text(import_row.get('import_status'))}。"
         )
     if not benchmark_reference_candidate_review_queue_df.empty:
         st.sidebar.caption(
-            f"Benchmark reference candidate review: {len(benchmark_reference_candidate_review_queue_df)} actions."
+            f"基准参考候选复核：{len(benchmark_reference_candidate_review_queue_df)} 个动作。"
         )
     if benchmark_reference_candidate_review_decision_meta:
         st.sidebar.caption(
-            f"Benchmark reference candidate decisions: {benchmark_reference_candidate_review_decision_meta.get('decision_rows') or 0} rows / "
-            f"status {benchmark_reference_candidate_review_decision_meta.get('status') or '-'}."
+            f"基准参考候选决策：{benchmark_reference_candidate_review_decision_meta.get('decision_rows') or 0} 行 / "
+            f"状态 {_localize_status_text(benchmark_reference_candidate_review_decision_meta.get('status'))}。"
         )
 if uploaded_conservation is not None:
     conservation_text = _read_uploaded_text(uploaded_conservation)
     if conservation_text.strip():
-        with st.spinner("Loading conservation evidence..."):
+        with st.spinner("正在加载保守性证据..."):
             conservation_site_df, conservation_site_meta = parse_conservation_evidence_table(
                 conservation_text,
                 chain_hint=str(uniprot_chain_hint or "").strip(),
@@ -1440,11 +2385,11 @@ benchmark_reference_is_provisional = bool(benchmark_reference_selection.get("is_
 benchmark_reference_is_reviewed_candidate = bool(benchmark_reference_selection.get("is_reviewed_candidate"))
 benchmark_reference_source_mode = str(benchmark_reference_selection.get("source_mode") or "")
 if benchmark_reference_selection.get("message"):
-    st.sidebar.caption(str(benchmark_reference_selection.get("message")))
+    st.sidebar.caption(_localize_report_line(str(benchmark_reference_selection.get("message"))))
 if benchmark_reference_loaded:
     if benchmark_reference_df.empty:
         st.sidebar.caption(
-            f"Benchmark reference: no usable rows ({benchmark_reference_meta.get('reason') or benchmark_reference_meta.get('status') or '-'})."
+            f"基准参考：无可用行（{_localize_status_text(benchmark_reference_meta.get('reason') or benchmark_reference_meta.get('status'))}）。"
         )
     else:
         benchmark_reference_source_audit_df = build_pocket_benchmark_reference_source_audit(
@@ -1552,7 +2497,7 @@ if benchmark_reference_loaded:
         )
         if benchmark_reference_is_provisional:
             st.sidebar.caption(
-                "Benchmark reference warning: this candidate can overlap with detection inputs; curate separately before accuracy claims."
+                "基准参考提醒：当前候选可能与识别输入重叠，做精度声明前需要单独整理和复核。"
             )
         pocket_benchmark_reference_quality_issue_df = build_pocket_benchmark_reference_quality_issues(benchmark_reference_df)
         pocket_benchmark_reference_quality_summary_df = build_pocket_benchmark_reference_quality_summary(
@@ -1610,21 +2555,21 @@ if benchmark_reference_loaded:
             else 0
         )
         st.sidebar.caption(
-            f"Benchmark reference: {len(benchmark_reference_df)} residues / "
-            f"chain-specific {benchmark_reference_meta.get('chain_specific_rows') or 0} / "
-            f"wildcard {benchmark_reference_meta.get('wildcard_chain_rows') or 0}."
+            f"基准参考：{len(benchmark_reference_df)} 个残基 / "
+            f"指定链 {benchmark_reference_meta.get('chain_specific_rows') or 0} / "
+            f"通配链 {benchmark_reference_meta.get('wildcard_chain_rows') or 0}。"
         )
         st.sidebar.caption(
-            f"Benchmark reference curation: {len(pocket_benchmark_reference_quality_issue_df)} issues / P0-P1 {p1_quality_issues}."
+            f"基准参考整理：{len(pocket_benchmark_reference_quality_issue_df)} 个问题 / P0-P1 {p1_quality_issues}。"
         )
         st.sidebar.caption(
-            f"Benchmark reference structure validation: {len(pocket_benchmark_reference_structure_validation_df)} issues / P0-P1 {p1_structure_issues}."
+            f"基准参考结构校验：{len(pocket_benchmark_reference_structure_validation_df)} 个问题 / P0-P1 {p1_structure_issues}。"
         )
         if not pocket_benchmark_reference_readiness_summary_df.empty:
             readiness_row = pocket_benchmark_reference_readiness_summary_df.iloc[0]
             st.sidebar.caption(
-                f"Benchmark readiness: {readiness_row.get('readiness_status') or '-'} / "
-                f"blockers {readiness_row.get('p0_p1_issue_count') or 0} / review {readiness_row.get('p2_issue_count') or 0}."
+                f"基准就绪：{_localize_status_text(readiness_row.get('readiness_status'))} / "
+                f"阻断 {readiness_row.get('p0_p1_issue_count') or 0} / 复核 {readiness_row.get('p2_issue_count') or 0}。"
             )
 
 residue_evidence_consensus_df = build_residue_evidence_consensus(
@@ -1818,25 +2763,25 @@ if (
             level_series = external_site_df["mapping_level"].astype(str).str.lower()
             exact_rows = int((level_series == "exact").sum())
             weak_rows = int((level_series == "weak").sum())
-        mapping_status = str(external_site_meta.get("status") or external_site_meta.get("mapping_status") or "-")
+        mapping_status = _localize_status_text(external_site_meta.get("status") or external_site_meta.get("mapping_status"))
         mapping_pdb = str(external_site_meta.get("pdb_id") or structure_pdb_id or "-")
-        source_text = str(external_site_meta.get("sources") or "external")
+        source_text = _localize_status_text(external_site_meta.get("sources") or "external")
         st.sidebar.caption(
             f"已加载 {source_text} 位点证据 {len(external_site_df)} 条（精确 {exact_rows} / 弱命中 {weak_rows}，PDB {mapping_pdb}，{mapping_status}）。"
         )
 if uploaded_conservation is not None:
     if conservation_site_df.empty:
-        st.sidebar.caption("Conservation evidence file did not produce usable residue rows.")
+        st.sidebar.caption("保守性证据文件未产生可用残基行。")
     else:
         st.sidebar.caption(
-            f"Conservation import: {len(conservation_site_df)} rows / source {conservation_site_meta.get('source') or conservation_source_name} / "
-            f"mean score {conservation_site_meta.get('score_mean') or '-'}"
+            f"保守性导入：{len(conservation_site_df)} 行 / 来源 {conservation_site_meta.get('source') or conservation_source_name} / "
+            f"平均分 {conservation_site_meta.get('score_mean') or '-'}"
         )
 if not residue_evidence_consensus_df.empty:
     top_consensus = residue_evidence_consensus_df.iloc[0]
     st.sidebar.caption(
-        f"Residue evidence consensus: {len(residue_evidence_consensus_df)} residues / "
-        f"top {top_consensus.get('residue_anchor') or '-'} / {top_consensus.get('consensus_tier') or '-'}"
+        f"残基证据共识：{len(residue_evidence_consensus_df)} 个残基 / "
+        f"最高 {top_consensus.get('residue_anchor') or '-'} / {top_consensus.get('consensus_tier') or '-'}"
     )
 
 pocket_source_options: list[str] = []
@@ -3239,495 +4184,549 @@ if top_joint_candidate is not None:
         f"联合推荐 Top1：{top_joint_candidate['pocket_id']} / {top_joint_candidate['recommendation_label']} / {top_joint_candidate['recommendation_reason']}"
     )
 st.markdown(analysis_text)
-_render_pocket_decision_panel(pocket_decision_df, pocket_reliability_df, pocket_triage_df)
-if not ai_evidence_audit_df.empty:
-    with st.expander("AI evidence audit", expanded=False):
-        st.caption(
-            "AI residues are audited against non-AI evidence, source snippets, mapping confidence, and structure identity before they should be trusted."
-        )
-        st.dataframe(ai_evidence_audit_df, use_container_width=True, hide_index=True)
-if not residue_evidence_consensus_df.empty:
-    with st.expander("Residue evidence consensus", expanded=False):
-        st.caption(
-            "Aggregates external, literature, AI, and conservation residue evidence into one anchor-level table for precision review."
-        )
-        st.dataframe(residue_evidence_consensus_df, use_container_width=True, hide_index=True)
-if not pocket_consensus_coverage_df.empty:
-    with st.expander("Pocket consensus coverage", expanded=False):
-        st.caption(
-            "Maps residue-level consensus anchors back onto each pocket without changing the pocket ranking."
-        )
-        st.dataframe(pocket_consensus_coverage_df, use_container_width=True, hide_index=True)
-if not benchmark_reference_candidate_df.empty:
-    with st.expander("Benchmark reference candidate from external evidence", expanded=False):
-        st.caption(
-            "Generated from currently loaded UniProt/M-CSA/literature/AI residue evidence. Curate this table before using it as an independent benchmark."
-        )
-        if not benchmark_reference_import_summary_df.empty:
-            st.dataframe(benchmark_reference_import_summary_df, use_container_width=True, hide_index=True)
-        if not benchmark_reference_candidate_review_queue_df.empty:
-            st.caption("Review queue: fix these items before promoting candidates into a curated benchmark reference.")
-            st.dataframe(benchmark_reference_candidate_review_queue_df, use_container_width=True, hide_index=True)
-            if benchmark_reference_candidate_review_checklist_markdown:
-                with st.expander("Benchmark reference candidate review checklist", expanded=False):
-                    st.markdown(benchmark_reference_candidate_review_checklist_markdown)
-        if not benchmark_reference_candidate_review_decision_template_df.empty:
-            st.caption("Decision template: fill review_decision, reviewer and verification evidence, then upload it back.")
-            st.dataframe(benchmark_reference_candidate_review_decision_template_df, use_container_width=True, hide_index=True)
-        if not benchmark_reference_candidate_review_decision_validation_df.empty:
-            st.caption("Decision validation: blocked rows must be fixed before actions can promote references.")
-            st.dataframe(benchmark_reference_candidate_review_decision_validation_df, use_container_width=True, hide_index=True)
-        if not benchmark_reference_candidate_review_outcome_df.empty:
-            st.caption("Decision outcomes: accepted actions can promote candidate residues only when every risk action for that residue is accepted.")
-            st.dataframe(benchmark_reference_candidate_review_outcome_df, use_container_width=True, hide_index=True)
-        if not benchmark_reference_candidate_accepted_df.empty:
-            st.caption("Accepted reference candidates: clean rows plus candidate residues whose review actions were fully accepted.")
-            st.dataframe(benchmark_reference_candidate_accepted_df, use_container_width=True, hide_index=True)
-        st.dataframe(benchmark_reference_candidate_df, use_container_width=True, hide_index=True)
-if not benchmark_reference_source_audit_df.empty:
-    with st.expander("Benchmark reference source audit", expanded=False):
-        st.caption(
-            "Audits the final reference rows used for benchmark scoring, including source mode and whether they can support independent precision claims."
-        )
-        if not benchmark_reference_source_audit_summary_df.empty:
-            st.dataframe(benchmark_reference_source_audit_summary_df, use_container_width=True, hide_index=True)
-        if not benchmark_reference_source_audit_case_summary_df.empty:
-            st.caption("Source audit case summary: groups source-only blockers/review needs by benchmark_id.")
-            st.dataframe(benchmark_reference_source_audit_case_summary_df, use_container_width=True, hide_index=True)
-        if not benchmark_reference_source_audit_case_decision_template_df.empty:
-            st.caption("Source audit case decision template: fill one decision per affected benchmark_id before treating coverage as precision.")
-            st.dataframe(benchmark_reference_source_audit_case_decision_template_df, use_container_width=True, hide_index=True)
-        if not benchmark_reference_source_audit_case_decision_df.empty:
-            st.caption("Source audit case decisions: normalized reviewer decisions uploaded for source-risk closure.")
-            st.dataframe(benchmark_reference_source_audit_case_decision_df, use_container_width=True, hide_index=True)
-        if not benchmark_reference_source_audit_case_decision_validation_df.empty:
-            st.caption("Source audit case decision validation: blocked rows must be fixed before clearing source-risk cases.")
-            st.dataframe(benchmark_reference_source_audit_case_decision_validation_df, use_container_width=True, hide_index=True)
-        if not benchmark_reference_source_audit_case_decision_outcome_summary_df.empty:
-            st.caption("Source audit case decision outcome summary: closure status, open cases, and next action for source-risk decisions.")
-            st.dataframe(benchmark_reference_source_audit_case_decision_outcome_summary_df, use_container_width=True, hide_index=True)
-        if not benchmark_reference_source_audit_case_decision_closure_queue_df.empty:
-            st.caption("Source audit case decision closure queue: machine-readable open case actions after decision outcomes.")
-            st.dataframe(benchmark_reference_source_audit_case_decision_closure_queue_df, use_container_width=True, hide_index=True)
-        if not benchmark_reference_source_audit_case_decision_readiness_impact_summary_df.empty:
-            st.caption("Source audit case decision readiness impact summary: aggregate cleared/open readiness effects after decisions.")
-            st.dataframe(benchmark_reference_source_audit_case_decision_readiness_impact_summary_df, use_container_width=True, hide_index=True)
-        if not benchmark_reference_source_audit_case_decision_readiness_impact_df.empty:
-            st.caption("Source audit case decision readiness impact: original source issue versus decision-adjusted readiness issue by case.")
-            st.dataframe(benchmark_reference_source_audit_case_decision_readiness_impact_df, use_container_width=True, hide_index=True)
-        if benchmark_reference_source_audit_case_decision_closure_checklist_markdown:
-            with st.expander("Benchmark reference source audit decision closure checklist", expanded=False):
-                st.markdown(benchmark_reference_source_audit_case_decision_closure_checklist_markdown)
-        if not benchmark_reference_source_audit_case_decision_outcome_df.empty:
-            st.caption("Source audit case decision outcomes: applied status after validation for each source-risk case.")
-            st.dataframe(benchmark_reference_source_audit_case_decision_outcome_df, use_container_width=True, hide_index=True)
-        if benchmark_reference_source_audit_case_checklist_markdown:
-            with st.expander("Benchmark reference source audit case checklist", expanded=False):
-                st.markdown(benchmark_reference_source_audit_case_checklist_markdown)
-        if not benchmark_reference_source_audit_action_queue_df.empty:
-            st.caption("Source audit action queue: source-only remediation actions extracted from non-ready benchmark reference sources.")
-            st.dataframe(benchmark_reference_source_audit_action_queue_df, use_container_width=True, hide_index=True)
-        if benchmark_reference_source_audit_checklist_markdown:
-            with st.expander("Benchmark reference source audit checklist", expanded=False):
-                st.markdown(benchmark_reference_source_audit_checklist_markdown)
-        st.dataframe(benchmark_reference_source_audit_df, use_container_width=True, hide_index=True)
-if not pocket_benchmark_summary_df.empty:
-    with st.expander("Catalytic pocket benchmark", expanded=True):
-        st.caption(
-            "Compares the current ranked pockets against uploaded curated catalytic residues. This is an evaluation layer only and does not change ranking."
-        )
-        metric_cols = st.columns(3)
-        metric_cols[0].metric(
-            "Top-1 coverage",
-            f"{float(top1_benchmark.get('coverage_ratio') or 0.0):.2f}" if top1_benchmark is not None else "-",
-            str(top1_benchmark.get("benchmark_status") or "") if top1_benchmark is not None else "",
-        )
-        metric_cols[1].metric(
-            "Top-3 coverage",
-            f"{float(top3_benchmark.get('coverage_ratio') or 0.0):.2f}" if top3_benchmark is not None else "-",
-            str(top3_benchmark.get("benchmark_status") or "") if top3_benchmark is not None else "",
-        )
-        metric_cols[2].metric(
-            "Best hit rank",
-            str(top3_benchmark.get("best_rank") or "-") if top3_benchmark is not None else "-",
-            str(top3_benchmark.get("best_pocket_id") or "") if top3_benchmark is not None else "",
-        )
-        if not pocket_benchmark_reference_quality_issue_df.empty:
-            st.caption("Benchmark reference curation quality: review P1/P2 rows before trusting benchmark coverage.")
-            if not pocket_benchmark_reference_quality_summary_df.empty:
-                st.dataframe(pocket_benchmark_reference_quality_summary_df, use_container_width=True, hide_index=True)
-            st.dataframe(pocket_benchmark_reference_quality_issue_df, use_container_width=True, hide_index=True)
-            if pocket_benchmark_reference_quality_checklist_markdown:
-                with st.expander("Benchmark reference curation checklist", expanded=False):
-                    st.markdown(pocket_benchmark_reference_quality_checklist_markdown)
-        if not pocket_benchmark_reference_structure_validation_df.empty:
-            st.caption(
-                "Benchmark reference structure validation: verify reference residues against the uploaded PDB before treating misses as detection failures."
-            )
-            if not pocket_benchmark_reference_structure_validation_summary_df.empty:
-                st.dataframe(pocket_benchmark_reference_structure_validation_summary_df, use_container_width=True, hide_index=True)
-            st.dataframe(pocket_benchmark_reference_structure_validation_df, use_container_width=True, hide_index=True)
-            if pocket_benchmark_reference_structure_validation_checklist_markdown:
-                with st.expander("Benchmark reference structure validation checklist", expanded=False):
-                    st.markdown(pocket_benchmark_reference_structure_validation_checklist_markdown)
-        if not pocket_benchmark_reference_readiness_summary_df.empty:
-            st.caption("Benchmark reference readiness gate: one combined decision before using coverage as an accuracy claim.")
-            st.dataframe(pocket_benchmark_reference_readiness_summary_df, use_container_width=True, hide_index=True)
-            if not pocket_benchmark_reference_readiness_case_summary_df.empty:
-                st.dataframe(pocket_benchmark_reference_readiness_case_summary_df, use_container_width=True, hide_index=True)
-            if not pocket_benchmark_reference_readiness_queue_df.empty:
-                st.dataframe(pocket_benchmark_reference_readiness_queue_df, use_container_width=True, hide_index=True)
-            if pocket_benchmark_reference_readiness_checklist_markdown:
-                with st.expander("Benchmark reference readiness checklist", expanded=False):
-                    st.markdown(pocket_benchmark_reference_readiness_checklist_markdown)
-        if not pocket_benchmark_interpretation_df.empty:
-            st.caption("Benchmark interpretation: combines Top-N coverage with reference readiness before any accuracy claim.")
-            st.dataframe(pocket_benchmark_interpretation_df, use_container_width=True, hide_index=True)
-        if not pocket_benchmark_case_interpretation_df.empty:
-            st.caption("Benchmark case interpretation: combines case-level Top-N coverage with case-level readiness.")
-            st.dataframe(pocket_benchmark_case_interpretation_df, use_container_width=True, hide_index=True)
-        if not pocket_benchmark_case_interpretation_matrix_df.empty:
-            st.caption("Benchmark case interpretation matrix: one row per benchmark_id with Top-1/Top-3/Top-5 claim status and coverage.")
-            if not pocket_benchmark_case_interpretation_matrix_summary_df.empty:
-                st.dataframe(pocket_benchmark_case_interpretation_matrix_summary_df, use_container_width=True, hide_index=True)
-            if not pocket_benchmark_case_interpretation_matrix_queue_df.empty:
-                st.caption("Benchmark case interpretation matrix queue: one action per non-claim-ready case.")
-                st.dataframe(pocket_benchmark_case_interpretation_matrix_queue_df, use_container_width=True, hide_index=True)
-            st.dataframe(pocket_benchmark_case_interpretation_matrix_df, use_container_width=True, hide_index=True)
-        if not pocket_benchmark_dataset_interpretation_df.empty:
-            st.caption("Benchmark dataset interpretation: aggregates claim-ready, blocked and review-needed cases per Top-N.")
-            st.dataframe(pocket_benchmark_dataset_interpretation_df, use_container_width=True, hide_index=True)
-        if not pocket_benchmark_reference_source_audit_case_decision_dataset_impact_df.empty:
-            st.caption("Benchmark source-audit decision dataset impact: Top-N source-decision effects on dataset claim readiness.")
-            st.dataframe(pocket_benchmark_reference_source_audit_case_decision_dataset_impact_df, use_container_width=True, hide_index=True)
-        if not pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_df.empty:
-            st.caption("Benchmark source-audit decision dataset impact cases: per-case Top-N source-decision effects and gate mismatches.")
-            st.dataframe(pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_df, use_container_width=True, hide_index=True)
-        if not pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_df.empty:
-            st.caption("Benchmark source-audit decision dataset impact action queue: machine-readable blocker/review/mismatch case actions.")
-            if not pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_summary_df.empty:
-                st.dataframe(pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_summary_df, use_container_width=True, hide_index=True)
-            st.dataframe(pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_df, use_container_width=True, hide_index=True)
-            if pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_checklist_markdown:
-                with st.expander("Benchmark source-audit decision dataset impact case checklist", expanded=False):
-                    st.markdown(pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_checklist_markdown)
-        if pocket_benchmark_reference_source_audit_case_decision_dataset_impact_report_markdown:
-            with st.expander("Benchmark source-audit decision dataset impact report", expanded=False):
-                st.markdown(pocket_benchmark_reference_source_audit_case_decision_dataset_impact_report_markdown)
-        if not pocket_benchmark_reference_source_audit_case_decision_dataset_impact_artifact_manifest_df.empty:
-            st.caption("Benchmark source-audit decision dataset impact artifact manifest: integrity index for dataset impact review exports.")
-            st.dataframe(pocket_benchmark_reference_source_audit_case_decision_dataset_impact_artifact_manifest_df, use_container_width=True, hide_index=True)
-        if not pocket_benchmark_dataset_interpretation_queue_df.empty:
-            st.caption("Benchmark dataset interpretation queue: non-claim-ready cases that block or weaken dataset-level precision claims.")
-            st.dataframe(pocket_benchmark_dataset_interpretation_queue_df, use_container_width=True, hide_index=True)
-            if pocket_benchmark_dataset_interpretation_checklist_markdown:
-                with st.expander("Benchmark dataset interpretation checklist", expanded=False):
-                    st.markdown(pocket_benchmark_dataset_interpretation_checklist_markdown)
-        if pocket_benchmark_dataset_interpretation_report_markdown:
-            with st.expander("Benchmark dataset interpretation report", expanded=False):
-                st.markdown(pocket_benchmark_dataset_interpretation_report_markdown)
-        st.dataframe(pocket_benchmark_summary_df, use_container_width=True, hide_index=True)
-        if not pocket_benchmark_dataset_summary_df.empty:
-            st.caption("Benchmark dataset summary: case-level aggregation prevents large catalytic sets from dominating accuracy.")
-            st.dataframe(pocket_benchmark_dataset_summary_df, use_container_width=True, hide_index=True)
-        if not pocket_benchmark_case_summary_df.empty:
-            st.caption("Benchmark case summary: Top-N coverage is split by benchmark_id/case_id when provided.")
-            st.dataframe(pocket_benchmark_case_summary_df, use_container_width=True, hide_index=True)
-        if not pocket_benchmark_variant_comparison_df.empty:
-            st.caption(
-                "Benchmark variant comparison: negative coverage_delta or positive coverage_loss means removing that evidence path hurts catalytic coverage."
-            )
-            st.dataframe(pocket_benchmark_variant_comparison_df, use_container_width=True, hide_index=True)
-        if not pocket_benchmark_variant_dataset_comparison_df.empty:
-            st.caption("Benchmark variant dataset comparison: coverage loss aggregated across benchmark cases.")
-            st.dataframe(pocket_benchmark_variant_dataset_comparison_df, use_container_width=True, hide_index=True)
-        if not pocket_benchmark_variant_case_comparison_df.empty:
-            st.caption("Benchmark variant case comparison: inspect which cases lose coverage when an evidence path is removed.")
-            st.dataframe(pocket_benchmark_variant_case_comparison_df, use_container_width=True, hide_index=True)
-        if not pocket_benchmark_variant_detail_comparison_df.empty:
-            st.caption("Benchmark variant residue comparison: exact catalytic residues lost, gained or unchanged for each ablation.")
-            st.dataframe(pocket_benchmark_variant_detail_comparison_df, use_container_width=True, hide_index=True)
-        if not pocket_benchmark_variant_remediation_df.empty:
-            st.caption("Benchmark remediation queue: lost/current-missed catalytic residues converted into review actions.")
-            if not pocket_benchmark_variant_remediation_summary_df.empty:
-                st.dataframe(pocket_benchmark_variant_remediation_summary_df, use_container_width=True, hide_index=True)
-            st.dataframe(pocket_benchmark_variant_remediation_df, use_container_width=True, hide_index=True)
-            if pocket_benchmark_variant_remediation_checklist_markdown:
-                with st.expander("Benchmark remediation checklist", expanded=False):
-                    st.markdown(pocket_benchmark_variant_remediation_checklist_markdown)
-        if not pocket_benchmark_details_df.empty:
-            st.dataframe(pocket_benchmark_details_df, use_container_width=True, hide_index=True)
-if not consensus_rerank_suggestion_df.empty:
-    with st.expander("Consensus rerank suggestions", expanded=False):
-        st.caption(
-            "Conservative suggestions for whether consensus evidence should promote, keep, demote, or review a pocket. This does not change ranking automatically."
-        )
-        st.dataframe(consensus_rerank_suggestion_df, use_container_width=True, hide_index=True)
-if not consensus_rerank_preview_df.empty:
-    with st.expander("Consensus rerank preview", expanded=False):
-        st.caption(
-            "Simulates conservative score adjustments from consensus suggestions. This is a preview only and does not replace the active ranking."
-        )
-        st.dataframe(consensus_rerank_preview_df, use_container_width=True, hide_index=True)
-if not consensus_rerank_policy_gate_df.empty:
-    with st.expander("Consensus rerank policy gate", expanded=False):
-        st.caption(
-            "One-row safety gate for deciding whether the consensus rerank preview is ready to apply, needs review, or should remain blocked."
-        )
-        st.dataframe(consensus_rerank_policy_gate_df, use_container_width=True, hide_index=True)
-if not consensus_rerank_action_queue_df.empty:
-    with st.expander("Consensus rerank action queue", expanded=False):
-        st.caption(
-            "Actionable fixes required before consensus rerank can be trusted or enabled."
-        )
-        st.dataframe(consensus_rerank_action_queue_df, use_container_width=True, hide_index=True)
-if not consensus_rerank_apply_simulation_df.empty:
-    with st.expander("Consensus rerank apply simulation", expanded=False):
-        st.caption(
-            "Non-destructive simulation of the ranking after conservative consensus rerank rules. Blocked evidence remains diagnostic until fixed."
-        )
-        st.dataframe(consensus_rerank_apply_simulation_df, use_container_width=True, hide_index=True)
-if not consensus_rerank_simulation_delta_df.empty:
-    with st.expander("Consensus rerank simulation delta", expanded=False):
-        st.caption(
-            "Explains why each pocket moved, stayed, or was frozen in the non-destructive apply simulation."
-        )
-        st.dataframe(consensus_rerank_simulation_delta_df, use_container_width=True, hide_index=True)
-if not consensus_rerank_precision_scorecard_df.empty:
-    with st.expander("Consensus rerank precision scorecard", expanded=False):
-        st.caption(
-            "One-row summary of whether the simulated rerank likely improves precision, remains blocked, or should stay diagnostic."
-        )
-        st.dataframe(consensus_rerank_precision_scorecard_df, use_container_width=True, hide_index=True)
-if not consensus_rerank_precision_guardrail_df.empty:
-    with st.expander("Consensus rerank precision guardrail", expanded=False):
-        st.caption(
-            "Go/no-go guardrail for whether consensus rerank can be applied, needs manual review, or must remain diagnostic."
-        )
-        st.dataframe(consensus_rerank_precision_guardrail_df, use_container_width=True, hide_index=True)
-if consensus_rerank_precision_guardrail_report_markdown and not consensus_rerank_precision_guardrail_df.empty:
-    with st.expander("Consensus rerank precision guardrail report", expanded=False):
-        st.caption(
-            "Markdown handoff report for guardrail decision, scorecard counters, clearances, and release checklist."
-        )
-        st.markdown(consensus_rerank_precision_guardrail_report_markdown)
-if not consensus_rerank_guardrail_artifact_manifest_df.empty:
-    with st.expander("Consensus rerank guardrail artifact manifest", expanded=False):
-        st.caption(
-            "Integrity manifest for the rerank guardrail handoff ZIP, including byte size and SHA-256 for each artifact."
-        )
-        st.dataframe(consensus_rerank_guardrail_artifact_manifest_df, use_container_width=True, hide_index=True)
-if not consensus_rerank_guardrail_bundle_verification_summary_df.empty:
-    with st.expander("Consensus rerank guardrail bundle verification summary", expanded=False):
-        st.caption(
-            "One-row integrity check for the handoff ZIP against the manifest."
-        )
-        st.dataframe(consensus_rerank_guardrail_bundle_verification_summary_df, use_container_width=True, hide_index=True)
-if not consensus_rerank_guardrail_bundle_verification_df.empty:
-    with st.expander("Consensus rerank guardrail bundle verification", expanded=False):
-        st.caption(
-            "Per-file ZIP verification using manifest byte size and SHA-256."
-        )
-        st.dataframe(consensus_rerank_guardrail_bundle_verification_df, use_container_width=True, hide_index=True)
-if consensus_rerank_guardrail_handoff_certificate_markdown:
-    with st.expander("Consensus rerank guardrail handoff certificate", expanded=False):
-        st.caption(
-            "Detached certificate for the handoff ZIP identity, verification result, and guardrail release decision."
-        )
-        st.markdown(consensus_rerank_guardrail_handoff_certificate_markdown)
-if not consensus_rerank_release_decision_template_df.empty:
-    with st.expander("Consensus rerank release decision template", expanded=False):
-        st.caption(
-            "Reviewer sign-off template for release decision, blocker clearance, and key simulated rank changes."
-        )
-        st.dataframe(consensus_rerank_release_decision_template_df, use_container_width=True, hide_index=True)
-if uploaded_consensus_rerank_release_decisions is not None and consensus_rerank_release_decision_df.empty:
-    st.warning(
-        f"Consensus rerank release decision upload was not usable: {consensus_rerank_release_decision_meta.get('status') or 'unknown'}."
+
+def _render_evidence_context_panels() -> None:
+    has_content = (
+        (not ai_evidence_audit_df.empty)
+        or (not residue_evidence_consensus_df.empty)
+        or (not pocket_consensus_coverage_df.empty)
     )
-if not consensus_rerank_release_decision_summary_df.empty:
-    with st.expander("Consensus rerank release decision summary", expanded=False):
-        st.caption(
-            "One-row review result for the uploaded release decision CSV. Rerank is only releasable when this summary allows it."
-        )
-        st.dataframe(consensus_rerank_release_decision_summary_df, use_container_width=True, hide_index=True)
-if not consensus_rerank_release_apply_plan_df.empty:
-    with st.expander("Consensus rerank release apply plan", expanded=False):
-        st.caption(
-            "Approved manual rank order. This table is only generated when release review is approved and the current apply simulation is clean."
-        )
-        st.dataframe(consensus_rerank_release_apply_plan_df, use_container_width=True, hide_index=True)
-if consensus_rerank_release_apply_report_markdown:
-    with st.expander("Consensus rerank release apply report", expanded=False):
-        st.caption(
-            "Markdown execution worksheet for the approved manual rank order, including gate status, hash, order, and pre-apply checks."
-        )
-        st.markdown(consensus_rerank_release_apply_report_markdown)
-if not consensus_rerank_release_execution_template_df.empty:
-    with st.expander("Consensus rerank release execution template", expanded=False):
-        st.caption(
-            "Operator receipt template for recording whether each approved manual rank was actually applied."
-        )
-        st.dataframe(consensus_rerank_release_execution_template_df, use_container_width=True, hide_index=True)
-if uploaded_consensus_rerank_release_execution_receipt is not None and consensus_rerank_release_execution_receipt_df.empty:
-    st.warning(
-        f"Consensus rerank release execution receipt upload was not usable: {consensus_rerank_release_execution_receipt_meta.get('status') or 'unknown'}."
+    if not has_content:
+        return
+    st.subheader("证据复核与残基共识")
+    st.caption("这些表格用于解释外部证据、AI 证据、保守性证据如何落到残基层面；默认不直接覆盖当前口袋排名。")
+    if not ai_evidence_audit_df.empty:
+        with st.expander("AI 证据审计", expanded=False):
+            st.caption("AI 提取的残基会与非 AI 证据、来源片段、映射置信度和结构身份比对后，才允许进入排名信号。")
+            st.dataframe(ai_evidence_audit_df, use_container_width=True, hide_index=True)
+    if not residue_evidence_consensus_df.empty:
+        with st.expander("残基证据共识", expanded=False):
+            st.caption("把外部数据库、文献、AI 和保守性证据聚合到残基锚点层，用于精度复核。")
+            st.dataframe(residue_evidence_consensus_df, use_container_width=True, hide_index=True)
+    if not pocket_consensus_coverage_df.empty:
+        with st.expander("口袋共识覆盖", expanded=False):
+            st.caption("把残基层共识锚点映射回每个口袋，用于解释候选口袋是否覆盖关键残基；不改变原始排名。")
+            st.dataframe(pocket_consensus_coverage_df, use_container_width=True, hide_index=True)
+
+
+def _render_benchmark_review_panels() -> None:
+    has_content = (
+        (not benchmark_reference_candidate_df.empty)
+        or (not benchmark_reference_source_audit_df.empty)
+        or (not pocket_benchmark_summary_df.empty)
     )
-if not consensus_rerank_release_execution_summary_df.empty:
-    with st.expander("Consensus rerank release execution summary", expanded=False):
-        st.caption(
-            "One-row operational receipt result. Execution is complete only when every row was applied exactly as approved."
+    if not has_content:
+        return
+    st.subheader("基准参考与精度评估")
+    st.caption("这些面板用于评估当前口袋是否覆盖人工或外部证据整理出的催化残基；属于评测层，不会自动改变排名。")
+
+    if not benchmark_reference_candidate_df.empty:
+        with st.expander("从外部证据生成的基准参考候选", expanded=False):
+            st.caption("由当前加载的 UniProt、M-CSA、文献或 AI 残基证据生成。作为独立基准使用前，需要先人工整理。")
+            if not benchmark_reference_import_summary_df.empty:
+                st.dataframe(benchmark_reference_import_summary_df, use_container_width=True, hide_index=True)
+            if not benchmark_reference_candidate_review_queue_df.empty:
+                st.caption("候选复核队列：这些项目需要修复后，才能提升为可信基准参考。")
+                st.dataframe(benchmark_reference_candidate_review_queue_df, use_container_width=True, hide_index=True)
+                if benchmark_reference_candidate_review_checklist_markdown:
+                    with st.expander("基准参考候选复核清单", expanded=False):
+                        st.markdown(benchmark_reference_candidate_review_checklist_markdown)
+            if not benchmark_reference_candidate_review_decision_template_df.empty:
+                st.caption("决策模板：填写 review_decision、审核人和验证证据后，再上传回系统。")
+                st.dataframe(benchmark_reference_candidate_review_decision_template_df, use_container_width=True, hide_index=True)
+            if not benchmark_reference_candidate_review_decision_validation_df.empty:
+                st.caption("决策校验：存在阻断行时，不能把候选提升为正式参考。")
+                st.dataframe(benchmark_reference_candidate_review_decision_validation_df, use_container_width=True, hide_index=True)
+            if not benchmark_reference_candidate_review_outcome_df.empty:
+                st.caption("决策结果：只有该残基的所有风险动作都被接受时，候选残基才可提升。")
+                st.dataframe(benchmark_reference_candidate_review_outcome_df, use_container_width=True, hide_index=True)
+            if not benchmark_reference_candidate_accepted_df.empty:
+                st.caption("已接受参考候选：包含干净行，以及复核动作全部通过的候选残基。")
+                st.dataframe(benchmark_reference_candidate_accepted_df, use_container_width=True, hide_index=True)
+            st.dataframe(benchmark_reference_candidate_df, use_container_width=True, hide_index=True)
+
+    if not benchmark_reference_source_audit_df.empty:
+        with st.expander("基准参考来源审计", expanded=False):
+            st.caption("审计最终用于基准评分的参考行，包括来源模式，以及能否支撑独立精度声明。")
+            if not benchmark_reference_source_audit_summary_df.empty:
+                st.dataframe(benchmark_reference_source_audit_summary_df, use_container_width=True, hide_index=True)
+            if not benchmark_reference_source_audit_case_summary_df.empty:
+                st.caption("来源审计案例汇总：按 benchmark_id 汇总仅来源导致的阻断或复核需求。")
+                st.dataframe(benchmark_reference_source_audit_case_summary_df, use_container_width=True, hide_index=True)
+            if not benchmark_reference_source_audit_case_decision_template_df.empty:
+                st.caption("来源审计案例决策模板：在把覆盖率当作精度前，需要为每个受影响 benchmark_id 填写一条决策。")
+                st.dataframe(benchmark_reference_source_audit_case_decision_template_df, use_container_width=True, hide_index=True)
+            if not benchmark_reference_source_audit_case_decision_df.empty:
+                st.caption("来源审计案例决策：上传的来源风险关闭决策标准化结果。")
+                st.dataframe(benchmark_reference_source_audit_case_decision_df, use_container_width=True, hide_index=True)
+            if not benchmark_reference_source_audit_case_decision_validation_df.empty:
+                st.caption("来源审计案例决策校验：存在阻断行时，不能清除来源风险案例。")
+                st.dataframe(benchmark_reference_source_audit_case_decision_validation_df, use_container_width=True, hide_index=True)
+            if not benchmark_reference_source_audit_case_decision_outcome_summary_df.empty:
+                st.caption("来源审计案例决策结果汇总：展示关闭状态、开放案例和下一步动作。")
+                st.dataframe(benchmark_reference_source_audit_case_decision_outcome_summary_df, use_container_width=True, hide_index=True)
+            if not benchmark_reference_source_audit_case_decision_closure_queue_df.empty:
+                st.caption("来源审计案例决策关闭队列：决策结果后的机器可读开放案例动作。")
+                st.dataframe(benchmark_reference_source_audit_case_decision_closure_queue_df, use_container_width=True, hide_index=True)
+            if not benchmark_reference_source_audit_case_decision_readiness_impact_summary_df.empty:
+                st.caption("来源审计案例决策就绪影响汇总：决策后被清除或仍开放的就绪影响。")
+                st.dataframe(benchmark_reference_source_audit_case_decision_readiness_impact_summary_df, use_container_width=True, hide_index=True)
+            if not benchmark_reference_source_audit_case_decision_readiness_impact_df.empty:
+                st.caption("来源审计案例决策就绪影响：逐案例对比原始来源问题和决策调整后的就绪问题。")
+                st.dataframe(benchmark_reference_source_audit_case_decision_readiness_impact_df, use_container_width=True, hide_index=True)
+            if benchmark_reference_source_audit_case_decision_closure_checklist_markdown:
+                with st.expander("基准参考来源审计决策关闭清单", expanded=False):
+                    st.markdown(benchmark_reference_source_audit_case_decision_closure_checklist_markdown)
+            if not benchmark_reference_source_audit_case_decision_outcome_df.empty:
+                st.caption("来源审计案例决策结果：每个来源风险案例在校验后的应用状态。")
+                st.dataframe(benchmark_reference_source_audit_case_decision_outcome_df, use_container_width=True, hide_index=True)
+            if benchmark_reference_source_audit_case_checklist_markdown:
+                with st.expander("基准参考来源审计案例清单", expanded=False):
+                    st.markdown(benchmark_reference_source_audit_case_checklist_markdown)
+            if not benchmark_reference_source_audit_action_queue_df.empty:
+                st.caption("来源审计行动队列：从非就绪基准参考来源中提取的来源修复动作。")
+                st.dataframe(benchmark_reference_source_audit_action_queue_df, use_container_width=True, hide_index=True)
+            if benchmark_reference_source_audit_checklist_markdown:
+                with st.expander("基准参考来源审计清单", expanded=False):
+                    st.markdown(benchmark_reference_source_audit_checklist_markdown)
+            st.dataframe(benchmark_reference_source_audit_df, use_container_width=True, hide_index=True)
+
+    if not pocket_benchmark_summary_df.empty:
+        with st.expander("催化口袋 Benchmark", expanded=False):
+            st.caption("把当前口袋排名与上传或整理出的催化残基参考集比较。这里只做评估，不改变排名。")
+            benchmark_metric_cols = st.columns(3)
+            benchmark_metric_cols[0].metric(
+                "Top-1 覆盖率",
+                f"{float(top1_benchmark.get('coverage_ratio') or 0.0):.2f}" if top1_benchmark is not None else "-",
+                str(top1_benchmark.get("benchmark_status") or "") if top1_benchmark is not None else "",
+            )
+            benchmark_metric_cols[1].metric(
+                "Top-3 覆盖率",
+                f"{float(top3_benchmark.get('coverage_ratio') or 0.0):.2f}" if top3_benchmark is not None else "-",
+                str(top3_benchmark.get("benchmark_status") or "") if top3_benchmark is not None else "",
+            )
+            benchmark_metric_cols[2].metric(
+                "最佳命中排名",
+                str(top3_benchmark.get("best_rank") or "-") if top3_benchmark is not None else "-",
+                str(top3_benchmark.get("best_pocket_id") or "") if top3_benchmark is not None else "",
+            )
+            if not pocket_benchmark_reference_quality_issue_df.empty:
+                st.caption("基准参考整理质量：信任覆盖率前，先复核 P1/P2 问题行。")
+                if not pocket_benchmark_reference_quality_summary_df.empty:
+                    st.dataframe(pocket_benchmark_reference_quality_summary_df, use_container_width=True, hide_index=True)
+                st.dataframe(pocket_benchmark_reference_quality_issue_df, use_container_width=True, hide_index=True)
+                if pocket_benchmark_reference_quality_checklist_markdown:
+                    with st.expander("基准参考整理清单", expanded=False):
+                        st.markdown(pocket_benchmark_reference_quality_checklist_markdown)
+            if not pocket_benchmark_reference_structure_validation_df.empty:
+                st.caption("基准参考结构校验：把漏检视为检测失败前，先确认参考残基确实存在于上传 PDB 中。")
+                if not pocket_benchmark_reference_structure_validation_summary_df.empty:
+                    st.dataframe(pocket_benchmark_reference_structure_validation_summary_df, use_container_width=True, hide_index=True)
+                st.dataframe(pocket_benchmark_reference_structure_validation_df, use_container_width=True, hide_index=True)
+                if pocket_benchmark_reference_structure_validation_checklist_markdown:
+                    with st.expander("基准参考结构校验清单", expanded=False):
+                        st.markdown(pocket_benchmark_reference_structure_validation_checklist_markdown)
+            if not pocket_benchmark_reference_readiness_summary_df.empty:
+                st.caption("基准参考就绪门控：在把覆盖率作为准确率声明前，先给出综合决策。")
+                st.dataframe(pocket_benchmark_reference_readiness_summary_df, use_container_width=True, hide_index=True)
+                if not pocket_benchmark_reference_readiness_case_summary_df.empty:
+                    st.dataframe(pocket_benchmark_reference_readiness_case_summary_df, use_container_width=True, hide_index=True)
+                if not pocket_benchmark_reference_readiness_queue_df.empty:
+                    st.dataframe(pocket_benchmark_reference_readiness_queue_df, use_container_width=True, hide_index=True)
+                if pocket_benchmark_reference_readiness_checklist_markdown:
+                    with st.expander("基准参考就绪清单", expanded=False):
+                        st.markdown(pocket_benchmark_reference_readiness_checklist_markdown)
+            if not pocket_benchmark_interpretation_df.empty:
+                st.caption("基准解释：结合 Top-N 覆盖率与参考就绪状态，再决定是否可做准确率声明。")
+                st.dataframe(pocket_benchmark_interpretation_df, use_container_width=True, hide_index=True)
+            if not pocket_benchmark_case_interpretation_df.empty:
+                st.caption("基准案例解释：按案例结合 Top-N 覆盖率和案例级就绪状态。")
+                st.dataframe(pocket_benchmark_case_interpretation_df, use_container_width=True, hide_index=True)
+            if not pocket_benchmark_case_interpretation_matrix_df.empty:
+                st.caption("基准案例解释矩阵：每个 benchmark_id 一行，展示 Top-1/Top-3/Top-5 声明状态和覆盖率。")
+                if not pocket_benchmark_case_interpretation_matrix_summary_df.empty:
+                    st.dataframe(pocket_benchmark_case_interpretation_matrix_summary_df, use_container_width=True, hide_index=True)
+                if not pocket_benchmark_case_interpretation_matrix_queue_df.empty:
+                    st.caption("基准案例解释矩阵队列：每个未达到可声明状态的案例对应一条动作。")
+                    st.dataframe(pocket_benchmark_case_interpretation_matrix_queue_df, use_container_width=True, hide_index=True)
+                st.dataframe(pocket_benchmark_case_interpretation_matrix_df, use_container_width=True, hide_index=True)
+            if not pocket_benchmark_dataset_interpretation_df.empty:
+                st.caption("基准数据集解释：按 Top-N 汇总可声明、阻断和需复核 case。")
+                st.dataframe(pocket_benchmark_dataset_interpretation_df, use_container_width=True, hide_index=True)
+            if not pocket_benchmark_reference_source_audit_case_decision_dataset_impact_df.empty:
+                st.caption("基准来源审计决策数据集影响：Top-N 来源决策对数据集声明就绪性的影响。")
+                st.dataframe(pocket_benchmark_reference_source_audit_case_decision_dataset_impact_df, use_container_width=True, hide_index=True)
+            if not pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_df.empty:
+                st.caption("基准来源审计决策数据集影响案例：逐案例展示 Top-N 来源决策影响和门控不一致。")
+                st.dataframe(pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_df, use_container_width=True, hide_index=True)
+            if not pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_df.empty:
+                st.caption("基准来源审计决策数据集影响行动队列：机器可读的阻断/复核/不一致案例动作。")
+                if not pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_summary_df.empty:
+                    st.dataframe(pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_summary_df, use_container_width=True, hide_index=True)
+                st.dataframe(pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_df, use_container_width=True, hide_index=True)
+                if pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_checklist_markdown:
+                    with st.expander("基准来源审计决策数据集影响案例清单", expanded=False):
+                        st.markdown(pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_checklist_markdown)
+            if pocket_benchmark_reference_source_audit_case_decision_dataset_impact_report_markdown:
+                with st.expander("基准来源审计决策数据集影响报告", expanded=False):
+                    st.markdown(pocket_benchmark_reference_source_audit_case_decision_dataset_impact_report_markdown)
+            if not pocket_benchmark_reference_source_audit_case_decision_dataset_impact_artifact_manifest_df.empty:
+                st.caption("基准来源审计决策数据集影响产物清单：数据集影响复核导出的完整性索引。")
+                st.dataframe(pocket_benchmark_reference_source_audit_case_decision_dataset_impact_artifact_manifest_df, use_container_width=True, hide_index=True)
+            if not pocket_benchmark_dataset_interpretation_queue_df.empty:
+                st.caption("基准数据集解释队列：阻断或削弱数据集级精度声明的非就绪 case。")
+                st.dataframe(pocket_benchmark_dataset_interpretation_queue_df, use_container_width=True, hide_index=True)
+                if pocket_benchmark_dataset_interpretation_checklist_markdown:
+                    with st.expander("基准数据集解释清单", expanded=False):
+                        st.markdown(pocket_benchmark_dataset_interpretation_checklist_markdown)
+            if pocket_benchmark_dataset_interpretation_report_markdown:
+                with st.expander("基准数据集解释报告", expanded=False):
+                    st.markdown(pocket_benchmark_dataset_interpretation_report_markdown)
+            st.dataframe(pocket_benchmark_summary_df, use_container_width=True, hide_index=True)
+            if not pocket_benchmark_dataset_summary_df.empty:
+                st.caption("基准数据集汇总：按案例聚合，避免大型催化残基集合主导准确率。")
+                st.dataframe(pocket_benchmark_dataset_summary_df, use_container_width=True, hide_index=True)
+            if not pocket_benchmark_case_summary_df.empty:
+                st.caption("基准案例汇总：提供 benchmark_id/case_id 时，Top-N 覆盖率按案例拆分。")
+                st.dataframe(pocket_benchmark_case_summary_df, use_container_width=True, hide_index=True)
+            if not pocket_benchmark_variant_comparison_df.empty:
+                st.caption("基准变体对比：coverage_delta 为负或 coverage_loss 为正，说明移除该证据路径会损伤催化残基覆盖。")
+                st.dataframe(pocket_benchmark_variant_comparison_df, use_container_width=True, hide_index=True)
+            if not pocket_benchmark_variant_dataset_comparison_df.empty:
+                st.caption("基准变体数据集对比：跨基准案例汇总覆盖损失。")
+                st.dataframe(pocket_benchmark_variant_dataset_comparison_df, use_container_width=True, hide_index=True)
+            if not pocket_benchmark_variant_case_comparison_df.empty:
+                st.caption("基准变体案例对比：检查移除某条证据路径时，哪些案例失去覆盖。")
+                st.dataframe(pocket_benchmark_variant_case_comparison_df, use_container_width=True, hide_index=True)
+            if not pocket_benchmark_variant_detail_comparison_df.empty:
+                st.caption("基准变体残基对比：逐一列出每次消融中丢失、获得或保持不变的催化残基。")
+                st.dataframe(pocket_benchmark_variant_detail_comparison_df, use_container_width=True, hide_index=True)
+            if not pocket_benchmark_variant_remediation_df.empty:
+                st.caption("基准修复队列：把丢失或当前漏检的催化残基转换成复核动作。")
+                if not pocket_benchmark_variant_remediation_summary_df.empty:
+                    st.dataframe(pocket_benchmark_variant_remediation_summary_df, use_container_width=True, hide_index=True)
+                st.dataframe(pocket_benchmark_variant_remediation_df, use_container_width=True, hide_index=True)
+                if pocket_benchmark_variant_remediation_checklist_markdown:
+                    with st.expander("基准修复清单", expanded=False):
+                        st.markdown(pocket_benchmark_variant_remediation_checklist_markdown)
+            if not pocket_benchmark_details_df.empty:
+                st.dataframe(pocket_benchmark_details_df, use_container_width=True, hide_index=True)
+def _render_consensus_rerank_review_panels() -> None:
+    def show_df(title: str, caption: str, table: pd.DataFrame) -> None:
+        if table is None or getattr(table, "empty", True):
+            return
+        with st.expander(title, expanded=False):
+            if caption:
+                st.caption(caption)
+            st.dataframe(table, use_container_width=True, hide_index=True)
+
+    def show_markdown(title: str, caption: str, markdown_text: str) -> None:
+        if not markdown_text:
+            return
+        with st.expander(title, expanded=False):
+            if caption:
+                st.caption(caption)
+            st.markdown(markdown_text)
+
+    consensus_tables = [
+        consensus_rerank_suggestion_df,
+        consensus_rerank_preview_df,
+        consensus_rerank_policy_gate_df,
+        consensus_rerank_action_queue_df,
+        consensus_rerank_apply_simulation_df,
+        consensus_rerank_simulation_delta_df,
+        consensus_rerank_precision_scorecard_df,
+        consensus_rerank_precision_guardrail_df,
+        consensus_rerank_guardrail_artifact_manifest_df,
+        consensus_rerank_guardrail_bundle_verification_summary_df,
+        consensus_rerank_guardrail_bundle_verification_df,
+        consensus_rerank_release_decision_template_df,
+        consensus_rerank_release_decision_summary_df,
+        consensus_rerank_release_apply_plan_df,
+        consensus_rerank_release_execution_template_df,
+        consensus_rerank_release_execution_summary_df,
+        consensus_rerank_release_closure_summary_df,
+        consensus_rerank_release_closure_blocker_df,
+        consensus_rerank_release_closure_detached_manifest_df,
+        consensus_rerank_release_closure_ledger_df,
+        consensus_rerank_release_execution_validation_df,
+        consensus_rerank_release_execution_receipt_df,
+        consensus_rerank_release_decision_validation_df,
+        consensus_rerank_release_decision_df,
+    ]
+    consensus_markdown = [
+        consensus_rerank_precision_guardrail_report_markdown,
+        consensus_rerank_guardrail_handoff_certificate_markdown,
+        consensus_rerank_release_apply_report_markdown,
+        consensus_rerank_release_execution_report_markdown,
+        consensus_rerank_release_closure_certificate_markdown,
+        consensus_rerank_release_closure_remediation_checklist_markdown,
+        consensus_rerank_action_checklist_markdown if not consensus_rerank_action_queue_df.empty else "",
+    ]
+    has_failed_upload = (
+        uploaded_consensus_rerank_release_decisions is not None
+        and consensus_rerank_release_decision_df.empty
+    ) or (
+        uploaded_consensus_rerank_release_execution_receipt is not None
+        and consensus_rerank_release_execution_receipt_df.empty
+    )
+    if not (
+        any(table is not None and not getattr(table, "empty", True) for table in consensus_tables)
+        or any(bool(markdown) for markdown in consensus_markdown)
+        or has_failed_upload
+    ):
+        return
+
+    st.subheader("共识重排审计")
+    st.caption(
+        "这些面板用于审计证据共识是否应该改变口袋排序，默认不会自动覆盖当前排名；适合放在主识别结果和活性位点判断之后复核。"
+    )
+
+    show_df(
+        "共识重排建议",
+        "保守判断共识证据是否应提升、保留、下调或复核某个口袋；不会自动修改排名。",
+        consensus_rerank_suggestion_df,
+    )
+    show_df(
+        "共识重排预览",
+        "模拟共识证据带来的保守分数调整；只是预览，不替代当前有效排名。",
+        consensus_rerank_preview_df,
+    )
+    show_df(
+        "共识重排策略门控",
+        "单行安全门控：判断重排预览是否可应用、需要复核，或应保持阻断。",
+        consensus_rerank_policy_gate_df,
+    )
+    show_df(
+        "共识重排行动队列",
+        "在共识重排可信或启用前必须处理的可执行修复项。",
+        consensus_rerank_action_queue_df,
+    )
+    show_df(
+        "共识重排应用模拟",
+        "非破坏性模拟保守重排规则后的排序；被阻断的证据会继续作为诊断信息，直到修复。",
+        consensus_rerank_apply_simulation_df,
+    )
+    show_df(
+        "共识重排变化明细",
+        "解释每个口袋在非破坏性应用模拟中为何上升、保持不变或被冻结。",
+        consensus_rerank_simulation_delta_df,
+    )
+    show_df(
+        "共识重排精度评分卡",
+        "单行汇总：模拟重排是否可能提升精度、仍被阻断，或只能保持诊断状态。",
+        consensus_rerank_precision_scorecard_df,
+    )
+    show_df(
+        "共识重排精度护栏",
+        "Go/No-Go 护栏：判断共识重排可否应用、是否需要人工复核，或必须继续仅作诊断。",
+        consensus_rerank_precision_guardrail_df,
+    )
+    if not consensus_rerank_precision_guardrail_df.empty:
+        show_markdown(
+            "共识重排精度护栏报告",
+            "用于交接的 Markdown 报告，包含护栏决策、评分卡计数、放行情况和发布检查清单。",
+            consensus_rerank_precision_guardrail_report_markdown,
         )
-        st.dataframe(consensus_rerank_release_execution_summary_df, use_container_width=True, hide_index=True)
-if consensus_rerank_release_execution_report_markdown:
-    with st.expander("Consensus rerank release execution report", expanded=False):
-        st.caption(
-            "Markdown operational receipt report for execution status, receipt hash, operators, row outcomes, and archival checks."
+    show_df(
+        "共识重排护栏产物清单",
+        "重排护栏交接 ZIP 的完整性清单，记录每个产物的字节数和 SHA-256。",
+        consensus_rerank_guardrail_artifact_manifest_df,
+    )
+    show_df(
+        "共识重排护栏包校验汇总",
+        "针对交接 ZIP 与清单的一行完整性校验结果。",
+        consensus_rerank_guardrail_bundle_verification_summary_df,
+    )
+    show_df(
+        "共识重排护栏包逐文件校验",
+        "按清单中的字节数和 SHA-256 对 ZIP 内每个文件进行校验。",
+        consensus_rerank_guardrail_bundle_verification_df,
+    )
+    show_markdown(
+        "共识重排护栏交接证书",
+        "独立交接证书，记录 ZIP 身份、校验结果和护栏发布决策。",
+        consensus_rerank_guardrail_handoff_certificate_markdown,
+    )
+    show_df(
+        "共识重排发布决策模板",
+        "审核人签核模板，用于记录发布决策、阻断项清理和关键模拟排名变化。",
+        consensus_rerank_release_decision_template_df,
+    )
+    if uploaded_consensus_rerank_release_decisions is not None and consensus_rerank_release_decision_df.empty:
+        st.warning(
+            f"共识重排发布决策上传不可用：{consensus_rerank_release_decision_meta.get('status') or '未知'}。"
         )
-        st.markdown(consensus_rerank_release_execution_report_markdown)
-if consensus_rerank_release_closure_certificate_markdown:
-    with st.expander("Consensus rerank release closure certificate", expanded=False):
-        st.caption(
-            "Detached closure certificate tying approved apply plan, release review, execution receipt, execution report, and final closure status."
+    show_df(
+        "共识重排发布决策汇总",
+        "上传发布决策 CSV 后的一行审核结果；只有该汇总允许时，重排才可发布。",
+        consensus_rerank_release_decision_summary_df,
+    )
+    show_df(
+        "共识重排发布应用计划",
+        "获批的人工排序顺序；仅在发布审核通过且当前应用模拟干净时生成。",
+        consensus_rerank_release_apply_plan_df,
+    )
+    show_markdown(
+        "共识重排发布应用报告",
+        "获批人工排序的执行工作表，包含门控状态、哈希、排序和应用前检查。",
+        consensus_rerank_release_apply_report_markdown,
+    )
+    show_df(
+        "共识重排发布执行模板",
+        "操作员回执模板，用于记录每个获批人工排名是否实际应用。",
+        consensus_rerank_release_execution_template_df,
+    )
+    if uploaded_consensus_rerank_release_execution_receipt is not None and consensus_rerank_release_execution_receipt_df.empty:
+        st.warning(
+            f"共识重排发布执行回执上传不可用：{consensus_rerank_release_execution_receipt_meta.get('status') or '未知'}。"
         )
-        st.markdown(consensus_rerank_release_closure_certificate_markdown)
-if not consensus_rerank_release_closure_summary_df.empty:
-    with st.expander("Consensus rerank release closure readiness summary", expanded=False):
-        st.caption(
-            "One-row release closure gate combining ledger completeness with handoff ZIP verification."
+    show_df(
+        "共识重排发布执行汇总",
+        "一行操作回执结果；只有每一行都按批准计划精确应用时，执行才算完成。",
+        consensus_rerank_release_execution_summary_df,
+    )
+    show_markdown(
+        "共识重排发布执行报告",
+        "操作回执报告，包含执行状态、回执哈希、操作员、逐行结果和归档检查。",
+        consensus_rerank_release_execution_report_markdown,
+    )
+    show_markdown(
+        "共识重排发布关闭证书",
+        "独立关闭证书，关联应用计划、发布审核、执行回执、执行报告和最终关闭状态。",
+        consensus_rerank_release_closure_certificate_markdown,
+    )
+    show_df(
+        "共识重排发布关闭就绪汇总",
+        "一行发布关闭门控，综合闭环台账完整性和交接 ZIP 校验。",
+        consensus_rerank_release_closure_summary_df,
+    )
+    show_df(
+        "共识重排发布关闭阻断队列",
+        "从闭环台账和交接 ZIP 校验中提取的可执行阻断项；发布关闭前需要解决。",
+        consensus_rerank_release_closure_blocker_df,
+    )
+    show_markdown(
+        "共识重排发布关闭修复清单",
+        "由关闭阻断项生成的人工修复清单；每次修复后需要重新运行关闭就绪检查。",
+        consensus_rerank_release_closure_remediation_checklist_markdown,
+    )
+    show_df(
+        "共识重排发布关闭外置清单",
+        "交接 ZIP 校验后生成的 ZIP 外部关闭产物清单。",
+        consensus_rerank_release_closure_detached_manifest_df,
+    )
+    show_df(
+        "共识重排发布关闭台账",
+        "机器可读的关闭证据台账，包含状态、行数、字节数、SHA-256 和关闭检查结果。",
+        consensus_rerank_release_closure_ledger_df,
+    )
+    show_df(
+        "共识重排发布执行校验",
+        "逐行校验执行回执中的排名匹配、操作员、时间戳、模板项和获批应用计划哈希。",
+        consensus_rerank_release_execution_validation_df,
+    )
+    show_df(
+        "共识重排发布执行回执",
+        "从 CSV/TSV 解析出的操作员上传执行回执标准化行。",
+        consensus_rerank_release_execution_receipt_df,
+    )
+    show_df(
+        "共识重排发布决策校验",
+        "逐行校验审核人、来源证据、锚点残基、阻断项清理、模板匹配和护栏权限。",
+        consensus_rerank_release_decision_validation_df,
+    )
+    show_df(
+        "共识重排发布决策上传结果",
+        "从 CSV/TSV 解析出的审核人上传发布决策标准化行。",
+        consensus_rerank_release_decision_df,
+    )
+    if not consensus_rerank_action_queue_df.empty:
+        show_markdown(
+            "共识重排行动检查清单",
+            "用于验证重排阻断项、锚点残基和应用就绪性的 Markdown 交接清单。",
+            consensus_rerank_action_checklist_markdown,
         )
-        st.dataframe(consensus_rerank_release_closure_summary_df, use_container_width=True, hide_index=True)
-if not consensus_rerank_release_closure_blocker_df.empty:
-    with st.expander("Consensus rerank release closure blocker queue", expanded=False):
-        st.caption(
-            "Actionable blockers extracted from closure ledger and handoff ZIP verification. Resolve these before release closure."
-        )
-        st.dataframe(consensus_rerank_release_closure_blocker_df, use_container_width=True, hide_index=True)
-if consensus_rerank_release_closure_remediation_checklist_markdown:
-    with st.expander("Consensus rerank release closure remediation checklist", expanded=False):
-        st.caption(
-            "Human repair checklist generated from closure blockers. Re-run closure readiness after every checked fix."
-        )
-        st.markdown(consensus_rerank_release_closure_remediation_checklist_markdown)
-if not consensus_rerank_release_closure_detached_manifest_df.empty:
-    with st.expander("Consensus rerank release closure detached manifest", expanded=False):
-        st.caption(
-            "Detached manifest for ZIP-external closure artifacts produced after handoff ZIP verification."
-        )
-        st.dataframe(consensus_rerank_release_closure_detached_manifest_df, use_container_width=True, hide_index=True)
-if not consensus_rerank_release_closure_ledger_df.empty:
-    with st.expander("Consensus rerank release closure ledger", expanded=False):
-        st.caption(
-            "Machine-readable closure evidence ledger with status, row count, byte size, SHA-256, and closure check for each release artifact."
-        )
-        st.dataframe(consensus_rerank_release_closure_ledger_df, use_container_width=True, hide_index=True)
-if not consensus_rerank_release_execution_validation_df.empty:
-    with st.expander("Consensus rerank release execution validation", expanded=False):
-        st.caption(
-            "Per-row execution receipt validation for rank match, operator, timestamp, template item, and approved apply-plan hash."
-        )
-        st.dataframe(consensus_rerank_release_execution_validation_df, use_container_width=True, hide_index=True)
-if not consensus_rerank_release_execution_receipt_df.empty:
-    with st.expander("Consensus rerank release execution receipt uploaded", expanded=False):
-        st.caption(
-            "Normalized operator-uploaded execution receipt rows parsed from CSV/TSV."
-        )
-        st.dataframe(consensus_rerank_release_execution_receipt_df, use_container_width=True, hide_index=True)
-if not consensus_rerank_release_decision_validation_df.empty:
-    with st.expander("Consensus rerank release decision validation", expanded=False):
-        st.caption(
-            "Per-row validation for reviewer, source evidence, anchor residues, blocker clearance, template matching, and guardrail permission."
-        )
-        st.dataframe(consensus_rerank_release_decision_validation_df, use_container_width=True, hide_index=True)
-if not consensus_rerank_release_decision_df.empty:
-    with st.expander("Consensus rerank release decisions uploaded", expanded=False):
-        st.caption(
-            "Normalized reviewer-uploaded release decisions parsed from CSV/TSV."
-        )
-        st.dataframe(consensus_rerank_release_decision_df, use_container_width=True, hide_index=True)
-if consensus_rerank_action_checklist_markdown and not consensus_rerank_action_queue_df.empty:
-    with st.expander("Consensus rerank action checklist", expanded=False):
-        st.caption(
-            "Markdown handoff checklist for validating rerank blockers, anchor residues, and apply readiness."
-        )
-        st.markdown(consensus_rerank_action_checklist_markdown)
-if not ai_review_decision_df.empty:
-    with st.expander("AI review decisions applied", expanded=False):
-        st.caption(
-            "Manual decisions are applied conservatively: accepts need verified source and snippet, and structure conflicts remain blocked."
-        )
-        st.dataframe(ai_review_decision_df, use_container_width=True, hide_index=True)
-if not ai_review_round_summary_df.empty:
-    with st.expander("AI review round summary", expanded=False):
-        st.caption(
-            "One-row summary of this manual-review upload: whether it is blocked, needs more review, or was safely applied."
-        )
-        st.dataframe(ai_review_round_summary_df, use_container_width=True, hide_index=True)
-if not ai_review_ranking_delta_df.empty:
-    with st.expander("AI review ranking delta", expanded=False):
-        st.caption(
-            "Compares ranking-gated AI residues before and after the manual-review upload."
-        )
-        st.dataframe(ai_review_ranking_delta_df, use_container_width=True, hide_index=True)
-if ai_review_round_report_markdown:
-    with st.expander("AI review round report", expanded=False):
-        st.markdown(ai_review_round_report_markdown)
-if not ai_review_artifact_manifest_df.empty:
-    with st.expander("AI review artifact manifest", expanded=False):
-        st.caption(
-            "Index of generated AI review artifacts, including file names, row counts, status, purpose, and recommended use."
-        )
-        st.dataframe(ai_review_artifact_manifest_df, use_container_width=True, hide_index=True)
-if ai_review_bundle_readme_markdown:
-    with st.expander("AI review bundle README", expanded=False):
-        st.markdown(ai_review_bundle_readme_markdown)
-if ai_review_artifact_bundle_zip:
-    st.caption("AI review artifact bundle is ready for one-click export from the Export tab.")
-if not ai_review_bundle_verification_df.empty:
-    with st.expander("AI review bundle verification", expanded=False):
-        st.caption(
-            "Automatic ZIP self-check against manifest byte size and SHA-256 values."
-        )
-        st.dataframe(ai_review_bundle_verification_df, use_container_width=True, hide_index=True)
-if not ai_review_bundle_verification_summary_df.empty:
-    with st.expander("AI review bundle verification summary", expanded=False):
-        st.caption(
-            "One-row bundle integrity status derived from ZIP verification results."
-        )
-        st.dataframe(ai_review_bundle_verification_summary_df, use_container_width=True, hide_index=True)
-if ai_review_bundle_certificate_markdown:
-    with st.expander("AI review bundle handoff certificate", expanded=False):
-        st.markdown(ai_review_bundle_certificate_markdown)
-if not ai_review_decision_validation_df.empty:
-    with st.expander("AI review decision validation", expanded=False):
-        st.caption(
-            "Pre-apply checks for duplicate, conflicting, unmatched, or under-sourced manual decisions. Conflicting duplicate rows are not applied."
-        )
-        st.dataframe(ai_review_decision_validation_df, use_container_width=True, hide_index=True)
-if not ai_review_decision_outcome_df.empty:
-    with st.expander("AI review decision outcomes", expanded=False):
-        st.caption(
-            "Per-row feedback for uploaded review decisions, including accepted, rejected, blocked, missing-source, and unmatched decisions."
-        )
-        st.dataframe(ai_review_decision_outcome_df, use_container_width=True, hide_index=True)
-if not ai_evidence_review_queue_df.empty:
-    with st.expander("AI evidence review queue", expanded=False):
-        st.caption(
-            "Actionable queue for AI residues that cannot safely increase ranking confidence yet."
-        )
-        st.dataframe(ai_evidence_review_queue_df, use_container_width=True, hide_index=True)
-if not ai_ranking_impact_df.empty:
-    with st.expander("AI ranking impact summary", expanded=False):
-        st.caption(
-            "This summary separates AI evidence collection from actual ranking influence, so excluded AI rows cannot silently affect Top pocket interpretation."
-        )
-        st.dataframe(ai_ranking_impact_df, use_container_width=True, hide_index=True)
-if not ai_followup_plan_df.empty:
-    with st.expander("AI follow-up evidence plan", expanded=False):
-        st.caption(
-            "Use this plan to collect the next round of literature/database evidence. The generated prompt expects retrieved source text, not unsupported model memory."
-        )
-        st.dataframe(ai_followup_plan_df, use_container_width=True, hide_index=True)
+
+
+def _render_ai_review_panels() -> None:
+    has_content = (
+        (not ai_review_decision_df.empty)
+        or (not ai_review_round_summary_df.empty)
+        or (not ai_review_ranking_delta_df.empty)
+        or bool(ai_review_round_report_markdown)
+        or (not ai_review_artifact_manifest_df.empty)
+        or bool(ai_review_bundle_readme_markdown)
+        or bool(ai_review_artifact_bundle_zip)
+        or (not ai_review_bundle_verification_df.empty)
+        or (not ai_review_bundle_verification_summary_df.empty)
+        or bool(ai_review_bundle_certificate_markdown)
+        or (not ai_review_decision_validation_df.empty)
+        or (not ai_review_decision_outcome_df.empty)
+        or (not ai_evidence_review_queue_df.empty)
+        or (not ai_ranking_impact_df.empty)
+        or (not ai_followup_plan_df.empty)
+    )
+    if not has_content:
+        return
+
+    st.subheader("AI 证据复核")
+    st.caption("这些面板用于人工复核 AI 提取的关键残基证据。未通过来源、片段和结构校验的 AI 证据不会直接影响排名。")
+    if not ai_review_decision_df.empty:
+        with st.expander("AI 复核决策应用结果", expanded=False):
+            st.caption("人工决策会被保守应用：接受项必须有已验证来源和片段，结构冲突仍保持阻断。")
+            st.dataframe(ai_review_decision_df, use_container_width=True, hide_index=True)
+    if not ai_review_round_summary_df.empty:
+        with st.expander("AI 复核轮次汇总", expanded=False):
+            st.caption("本次人工复核上传的一行汇总：是否被阻断、是否仍需复核，或是否已安全应用。")
+            st.dataframe(ai_review_round_summary_df, use_container_width=True, hide_index=True)
+    if not ai_review_ranking_delta_df.empty:
+        with st.expander("AI 复核排名变化", expanded=False):
+            st.caption("比较人工复核上传前后，允许进入排名的 AI 残基发生了哪些变化。")
+            st.dataframe(ai_review_ranking_delta_df, use_container_width=True, hide_index=True)
+    if ai_review_round_report_markdown:
+        with st.expander("AI 复核轮次报告", expanded=False):
+            st.markdown(ai_review_round_report_markdown)
+    if not ai_review_artifact_manifest_df.empty:
+        with st.expander("AI 复核产物清单", expanded=False):
+            st.caption("生成的 AI 复核产物索引，包含文件名、行数、状态、用途和推荐使用方式。")
+            st.dataframe(ai_review_artifact_manifest_df, use_container_width=True, hide_index=True)
+    if ai_review_bundle_readme_markdown:
+        with st.expander("AI 复核包 README", expanded=False):
+            st.markdown(ai_review_bundle_readme_markdown)
+    if ai_review_artifact_bundle_zip:
+        st.caption("AI 复核产物包已生成，可在“导出”页签中一键导出。")
+    if not ai_review_bundle_verification_df.empty:
+        with st.expander("AI 复核包逐文件校验", expanded=False):
+            st.caption("根据清单中的字节数和 SHA-256 对 ZIP 进行自动自检。")
+            st.dataframe(ai_review_bundle_verification_df, use_container_width=True, hide_index=True)
+    if not ai_review_bundle_verification_summary_df.empty:
+        with st.expander("AI 复核包校验汇总", expanded=False):
+            st.caption("由 ZIP 校验结果生成的一行完整性状态。")
+            st.dataframe(ai_review_bundle_verification_summary_df, use_container_width=True, hide_index=True)
+    if ai_review_bundle_certificate_markdown:
+        with st.expander("AI 复核包交接证书", expanded=False):
+            st.markdown(ai_review_bundle_certificate_markdown)
+    if not ai_review_decision_validation_df.empty:
+        with st.expander("AI 复核决策校验", expanded=False):
+            st.caption("上传决策应用前检查重复、冲突、未匹配或来源不足的人工决策；冲突重复行不会应用。")
+            st.dataframe(ai_review_decision_validation_df, use_container_width=True, hide_index=True)
+    if not ai_review_decision_outcome_df.empty:
+        with st.expander("AI 复核决策结果", expanded=False):
+            st.caption("逐行反馈上传决策的应用结果，包括接受、拒绝、阻断、缺少来源和未匹配。")
+            st.dataframe(ai_review_decision_outcome_df, use_container_width=True, hide_index=True)
+    if not ai_evidence_review_queue_df.empty:
+        with st.expander("AI 证据复核队列", expanded=False):
+            st.caption("这些 AI 残基暂时不能安全提升排名置信度，需要先处理队列中的修复项。")
+            st.dataframe(ai_evidence_review_queue_df, use_container_width=True, hide_index=True)
+    if not ai_ranking_impact_df.empty:
+        with st.expander("AI 排名影响汇总", expanded=False):
+            st.caption("区分 AI 证据收集和真实排名影响，避免被排除的 AI 行悄悄影响 Top 口袋解释。")
+            st.dataframe(ai_ranking_impact_df, use_container_width=True, hide_index=True)
+    if not ai_followup_plan_df.empty:
+        with st.expander("AI 后续取证计划", expanded=False):
+            st.caption("用于收集下一轮文献或数据库证据；生成的提示词预期输入检索到的来源文本，而不是无来源模型记忆。")
+            st.dataframe(ai_followup_plan_df, use_container_width=True, hide_index=True)
 
 tab_auto, tab_overview, tab_annotations, tab_overlap, tab_export = st.tabs(["自动识别", "总览", "界面注释", "交集分析", "导出"])
 
@@ -3891,20 +4890,20 @@ with tab_auto:
         with st.expander("自动检测诊断", expanded=False):
             methods_used_text = str(auto_detection_summary.get("auto_detection_methods_used") or "-")
             status_text = str(auto_detection_summary.get("auto_detection_status_summary") or "-")
-            st.caption(f"Methods: {methods_used_text}")
-            st.caption(f"Status: {status_text}")
+            st.caption(f"识别方法：{methods_used_text}")
+            st.caption(f"运行状态：{status_text}")
             p2rank_status_text = str(auto_detection_summary.get("auto_detection_p2rank_status") or "").strip()
             if p2rank_status_text:
                 st.caption(
-                    f"P2Rank: {p2rank_status_text} / pred {int(auto_detection_summary.get('auto_detection_p2rank_prediction_rows', 0) or 0)} / "
-                    f"res {int(auto_detection_summary.get('auto_detection_p2rank_residue_rows', 0) or 0)}"
+                    f"P2Rank：{p2rank_status_text} / 预测口袋 {int(auto_detection_summary.get('auto_detection_p2rank_prediction_rows', 0) or 0)} / "
+                    f"残基 {int(auto_detection_summary.get('auto_detection_p2rank_residue_rows', 0) or 0)}"
                 )
             if int(auto_detection_summary.get("auto_detection_external_rows", 0) or 0) > 0:
                 external_text = str(auto_detection_summary.get("auto_detection_external_sources") or "external")
                 st.caption(
-                    f"External evidence: {int(auto_detection_summary.get('auto_detection_external_rows', 0) or 0)} rows / "
-                    f"exact {int(auto_detection_summary.get('auto_detection_external_exact_rows', 0) or 0)} / "
-                    f"weak {int(auto_detection_summary.get('auto_detection_external_weak_rows', 0) or 0)} "
+                    f"外部证据：{int(auto_detection_summary.get('auto_detection_external_rows', 0) or 0)} 行 / "
+                    f"精确映射 {int(auto_detection_summary.get('auto_detection_external_exact_rows', 0) or 0)} / "
+                    f"弱映射 {int(auto_detection_summary.get('auto_detection_external_weak_rows', 0) or 0)} "
                     f"({external_text})"
                 )
             if not external_site_df.empty:
@@ -3930,7 +4929,7 @@ with tab_auto:
                     if column in external_site_df.columns
                 ]
                 if source_detail_columns:
-                    st.caption("External evidence source details: structured citations, snippets and manual-review flags used by the pocket rerank.")
+                    st.caption("外部证据来源明细：展示口袋重排使用的结构化引用、片段和人工复核标记。")
                     st.dataframe(
                         external_site_df[source_detail_columns].head(80),
                         use_container_width=True,
@@ -3943,47 +4942,53 @@ with tab_auto:
                     mime="text/csv",
                 )
             if p2rank_ab_enabled:
-                st.caption("P2Rank A/B: base = P2Rank disabled and auto detection rerun; positive rank_delta means P2Rank moved the pocket up.")
+                st.caption("P2Rank A/B：基线为关闭 P2Rank 后重新自动识别；排名变化值为正表示 P2Rank 提升了该口袋排名。")
                 if p2rank_ab_df.empty:
-                    st.caption("P2Rank A/B: no comparable pocket ranking rows.")
+                    st.caption("P2Rank A/B：没有可比较的口袋排名行。")
                 else:
                     st.dataframe(p2rank_ab_df, use_container_width=True, hide_index=True)
-            route_status_text = str(auto_detection_summary.get("auto_detection_external_route_status") or "").strip()
+            route_status_text = _localize_status_text(auto_detection_summary.get("auto_detection_external_route_status"), default="")
             if route_status_text:
                 st.caption(
-                    f"Evidence route: {route_status_text} / "
-                    f"support>={float(auto_detection_summary.get('auto_detection_external_route_min_support') or 0.0):.2f} / "
-                    f"confidence>={float(auto_detection_summary.get('auto_detection_external_route_min_confidence') or 0.0):.2f} / "
-                    f"quality>={float(auto_detection_summary.get('auto_detection_external_route_min_mapping_quality') or 0.0):.2f}"
+                    f"证据路径：{route_status_text} / "
+                    f"支持度>={float(auto_detection_summary.get('auto_detection_external_route_min_support') or 0.0):.2f} / "
+                    f"置信度>={float(auto_detection_summary.get('auto_detection_external_route_min_confidence') or 0.0):.2f} / "
+                    f"映射质量>={float(auto_detection_summary.get('auto_detection_external_route_min_mapping_quality') or 0.0):.2f}"
                 )
             if literature_ab_enabled:
-                st.caption("Literature A/B: base = literature evidence removed and auto detection rerun; positive rank_delta means literature moved the pocket up.")
+                st.caption("文献 A/B：基线为移除文献证据后重新自动识别；排名变化值为正表示文献证据提升了该口袋排名。")
                 if literature_ab_df.empty:
-                    st.caption("Literature A/B: no comparable pocket ranking rows.")
+                    st.caption("文献 A/B：没有可比较的口袋排名行。")
                 else:
                     st.dataframe(literature_ab_df, use_container_width=True, hide_index=True)
             if evidence_route_ab_enabled:
-                st.caption("Evidence-route A/B: base = same external evidence but route disabled; positive rank_delta means the evidence route moved the pocket up.")
+                st.caption("证据路径 A/B：基线为保留相同外部证据但关闭证据路径；排名变化值为正表示证据路径提升了该口袋排名。")
                 if evidence_route_ab_df.empty:
-                    st.caption("Evidence-route A/B: no comparable pocket ranking rows.")
+                    st.caption("证据路径 A/B：没有可比较的口袋排名行。")
                 else:
                     st.dataframe(evidence_route_ab_df, use_container_width=True, hide_index=True)
             if int(auto_detection_summary.get("auto_detection_conservation_rows", 0) or 0) > 0:
                 conservation_text = str(auto_detection_summary.get("auto_detection_conservation_sources") or "conservation")
                 st.caption(
-                    f"Conservation: {int(auto_detection_summary.get('auto_detection_conservation_rows', 0) or 0)} rows "
-                    f"({conservation_text}, rerank-only)"
+                    f"保守性：{int(auto_detection_summary.get('auto_detection_conservation_rows', 0) or 0)} 行 "
+                    f"({conservation_text}，仅用于重排)"
                 )
             if conservation_ab_enabled:
-                st.caption("Conservation A/B: base = conservation columns zeroed; positive rank_delta means the pocket moved up.")
+                st.caption("保守性 A/B：基线为保守性列置零；排名变化值为正表示该口袋排名上升。")
                 if conservation_ab_df.empty:
-                    st.caption("Conservation A/B: no comparable pocket ranking rows.")
+                    st.caption("保守性 A/B：没有可比较的口袋排名行。")
                 else:
                     st.dataframe(conservation_ab_df, use_container_width=True, hide_index=True)
             if not auto_detection_diag_df.empty:
                 st.dataframe(auto_detection_diag_df, use_container_width=True, hide_index=True)
             elif auto_detection_meta:
-                st.json(auto_detection_meta)
+                st.json(_localize_json_for_display(auto_detection_meta))
+
+_render_pocket_decision_panel(pocket_decision_df, pocket_reliability_df, pocket_triage_df)
+_render_evidence_context_panels()
+_render_consensus_rerank_review_panels()
+_render_ai_review_panels()
+_render_benchmark_review_panels()
 
 with tab_overview:
     st.subheader("主分析总览")
@@ -4005,7 +5010,11 @@ with tab_overview:
         chart_df = interface_summary.set_index("region_type")[
             [column for column in ["residue_count", "pocket_count", "hotspot_count", "overlap_count"] if column in interface_summary.columns]
         ]
-        st.subheader("region_type 计数对比")
+        chart_df = chart_df.rename(
+            index=lambda value: _localize_status_text(value),
+            columns=lambda column: _localize_dataframe_column(column),
+        )
+        st.subheader("区域类型计数对比")
         st.bar_chart(chart_df)
 
     st.subheader("联合推荐")
@@ -4081,7 +5090,7 @@ with tab_annotations:
         region_options = sorted(
             value for value in enriched_annotations.get("region_type", pd.Series(dtype=str)).dropna().astype(str).unique().tolist() if value
         )
-        selected_regions = st.multiselect("region_type 过滤", region_options, default=region_options)
+        selected_regions = st.multiselect("区域类型过滤", region_options, default=region_options)
 
         view = enriched_annotations.copy()
         if selected_regions:
@@ -4138,7 +5147,10 @@ with tab_overlap:
     overlap_metric_cols[3].metric("界面 ∩ 口袋 ∩ 热点", len(triple_overlap_df))
 
     if not overlap_summary.empty:
-        st.bar_chart(overlap_summary.set_index("category"))
+        overlap_chart_df = overlap_summary.copy()
+        overlap_chart_df["category"] = overlap_chart_df["category"].map(_localize_status_text)
+        overlap_chart_df = overlap_chart_df.rename(columns={"category": "类别", "count": "数量"})
+        st.bar_chart(overlap_chart_df.set_index("类别"))
 
     overlap_cols = st.columns(2)
     with overlap_cols[0]:
@@ -4209,21 +5221,21 @@ with tab_export:
             )
         if not pocket_decision_df.empty:
             st.download_button(
-                "Export active-site decision CSV",
+                "导出活性位点决策 CSV",
                 data=_to_csv_bytes(pocket_decision_df),
                 file_name="active_site_decision.csv",
                 mime="text/csv",
             )
         if not pocket_reliability_df.empty:
             st.download_button(
-                "Export reliability checklist CSV",
+                "导出可靠性检查表 CSV",
                 data=_to_csv_bytes(pocket_reliability_df),
                 file_name="pocket_reliability_checklist.csv",
                 mime="text/csv",
             )
         if not pocket_triage_df.empty:
             st.download_button(
-                "Export precision triage CSV",
+                "导出精度处理建议 CSV",
                 data=_to_csv_bytes(pocket_triage_df),
                 file_name="pocket_precision_triage.csv",
                 mime="text/csv",
@@ -5226,6 +6238,7 @@ with tab_export:
                 f"Next step: {top_pocket_decision.get('next_step')}",
             ]
         )
+    report_lines = [_localize_report_line(line) for line in report_lines]
     report_text = "\n".join(report_lines)
     if PDF_EXPORT_AVAILABLE:
         st.download_button(
