@@ -158,6 +158,15 @@ BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_TEMPLATE_COLUMNS = [
     "decision_note",
 ]
 
+BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_VALIDATION_COLUMNS = [
+    "row_index",
+    "benchmark_id",
+    "source_decision",
+    "validation_status",
+    "issue_flags",
+    "required_fix",
+]
+
 BENCHMARK_DETAIL_COLUMNS = [
     *BENCHMARK_REFERENCE_COLUMNS,
     "residue_label",
@@ -631,6 +640,10 @@ def _empty_reference_source_audit_case_summary_df() -> pd.DataFrame:
 
 def _empty_reference_source_audit_case_decision_template_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_TEMPLATE_COLUMNS)
+
+
+def _empty_reference_source_audit_case_decision_validation_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_VALIDATION_COLUMNS)
 
 
 def _empty_detail_df() -> pd.DataFrame:
@@ -2293,6 +2306,188 @@ def build_pocket_benchmark_reference_source_audit_case_decision_template(
     template["replacement_reference_source"] = ""
     template["decision_note"] = ""
     return template[BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_TEMPLATE_COLUMNS].reset_index(drop=True)
+
+
+def _normalize_source_audit_case_decision(value: object) -> str:
+    text = _safe_text(value).lower()
+    if text in {"accept", "accepted", "approve", "approved", "resolved", "source-ready", "ready", "yes", "pass"}:
+        return "accept"
+    if text in {"replace", "replaced", "curate", "curated", "source-replaced", "replacement"}:
+        return "replace"
+    if text in {"hold", "held", "defer", "deferred", "blocked", "block", "reject", "rejected", "no", "fail"}:
+        return "hold"
+    if text in {"", "review", "needs-review", "pending"}:
+        return "review"
+    return "unknown"
+
+
+def parse_pocket_benchmark_reference_source_audit_case_decision_table(
+    decision_text: str | bytes | None,
+) -> tuple[pd.DataFrame, dict[str, str]]:
+    """Parse reviewer decisions for source-audit case remediation."""
+
+    if decision_text is None:
+        return _empty_reference_source_audit_case_decision_template_df(), {
+            "status": "empty",
+            "decision_rows": "0",
+            "reason": "No source-audit case decision table was provided.",
+        }
+    if isinstance(decision_text, bytes):
+        decision_text = decision_text.decode("utf-8", errors="ignore")
+    frame = _read_delimited_table(str(decision_text or ""))
+    if frame.empty:
+        return _empty_reference_source_audit_case_decision_template_df(), {
+            "status": "empty",
+            "decision_rows": "0",
+            "reason": "No source-audit case decision rows could be parsed.",
+        }
+
+    column_aliases: dict[str, Sequence[str]] = {
+        "benchmark_id": ("benchmark_id", "case_id", "enzyme_id", "pdb_id", "case"),
+        "source_decision": ("source_decision", "decision", "review_decision", "status", "approval"),
+        "reviewer": ("reviewer", "reviewer_name", "curator", "user"),
+        "decision_date": ("decision_date", "review_date", "date", "reviewed_at"),
+        "verified_source_mode": ("verified_source_mode", "source_mode", "verified_mode", "source"),
+        "verified_independence": ("verified_independence", "independence", "independent", "independence_status"),
+        "replacement_reference_source": (
+            "replacement_reference_source",
+            "replacement_source",
+            "curated_source",
+            "verified_reference_source",
+        ),
+        "decision_note": ("decision_note", "note", "notes", "comment", "comments", "review_note"),
+    }
+    selected = {column: _find_column_in_order(frame, aliases) for column, aliases in column_aliases.items()}
+    if not selected["benchmark_id"] or not selected["source_decision"]:
+        return _empty_reference_source_audit_case_decision_template_df(), {
+            "status": "invalid",
+            "decision_rows": "0",
+            "reason": "benchmark_id and source_decision columns are required.",
+        }
+
+    rows: list[dict[str, object]] = []
+    for _, row in frame.iterrows():
+        row_dict = row.to_dict()
+        benchmark_id = _safe_text(row_dict.get(selected["benchmark_id"]))
+        if not benchmark_id:
+            continue
+        parsed_row: dict[str, object] = {
+            "benchmark_id": benchmark_id,
+            "source_decision": _normalize_source_audit_case_decision(row_dict.get(selected["source_decision"])),
+            "reviewer": _safe_text(row_dict.get(selected["reviewer"])) if selected["reviewer"] else "",
+            "decision_date": _safe_text(row_dict.get(selected["decision_date"])) if selected["decision_date"] else "",
+            "verified_source_mode": _safe_text(row_dict.get(selected["verified_source_mode"])) if selected["verified_source_mode"] else "",
+            "verified_independence": _safe_text(row_dict.get(selected["verified_independence"])) if selected["verified_independence"] else "",
+            "replacement_reference_source": _safe_text(row_dict.get(selected["replacement_reference_source"]))
+            if selected["replacement_reference_source"]
+            else "",
+            "decision_note": _safe_text(row_dict.get(selected["decision_note"])) if selected["decision_note"] else "",
+        }
+        for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_SUMMARY_COLUMNS:
+            if column not in parsed_row:
+                parsed_row[column] = _safe_text(row_dict.get(_find_column_in_order(frame, (column,)))) if column in frame.columns else ""
+        rows.append(parsed_row)
+
+    if not rows:
+        return _empty_reference_source_audit_case_decision_template_df(), {
+            "status": "empty",
+            "decision_rows": "0",
+            "reason": "No valid benchmark_id rows were found.",
+        }
+
+    decisions = pd.DataFrame(rows)
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_TEMPLATE_COLUMNS:
+        if column not in decisions.columns:
+            decisions[column] = ""
+    decision_counts = decisions["source_decision"].astype(str).value_counts().to_dict()
+    return decisions[BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_TEMPLATE_COLUMNS], {
+        "status": "ok",
+        "decision_rows": str(len(decisions)),
+        "accept_rows": str(int(decision_counts.get("accept", 0))),
+        "replace_rows": str(int(decision_counts.get("replace", 0))),
+        "hold_rows": str(int(decision_counts.get("hold", 0))),
+        "review_rows": str(int(decision_counts.get("review", 0))),
+        "unknown_rows": str(int(decision_counts.get("unknown", 0))),
+    }
+
+
+def build_pocket_benchmark_reference_source_audit_case_decision_validation(
+    decision_df: Optional[pd.DataFrame],
+    case_summary_df: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    """Validate source-audit case decisions before they are used to clear benchmark source risks."""
+
+    if decision_df is None or getattr(decision_df, "empty", True):
+        return _empty_reference_source_audit_case_decision_validation_df()
+    decisions = decision_df.copy()
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_TEMPLATE_COLUMNS:
+        if column not in decisions.columns:
+            decisions[column] = ""
+    summary = (
+        case_summary_df.copy()
+        if case_summary_df is not None and not getattr(case_summary_df, "empty", True)
+        else _empty_reference_source_audit_case_summary_df()
+    )
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_SUMMARY_COLUMNS:
+        if column not in summary.columns:
+            summary[column] = ""
+    valid_case_ids = set(summary["benchmark_id"].map(_safe_text).replace("", pd.NA).dropna().tolist())
+    duplicate_decisions: dict[str, set[str]] = {}
+    for _, row in decisions.iterrows():
+        benchmark_id = _safe_text(row.get("benchmark_id"))
+        if benchmark_id:
+            duplicate_decisions.setdefault(benchmark_id, set()).add(_safe_text(row.get("source_decision")))
+
+    rows: list[dict[str, object]] = []
+    for index, decision in decisions.reset_index(drop=True).iterrows():
+        benchmark_id = _safe_text(decision.get("benchmark_id"))
+        source_decision = _normalize_source_audit_case_decision(decision.get("source_decision"))
+        reviewer = _safe_text(decision.get("reviewer"))
+        verified_independence = _safe_text(decision.get("verified_independence")).lower()
+        verified_source_mode = _safe_text(decision.get("verified_source_mode"))
+        replacement_source = _safe_text(decision.get("replacement_reference_source"))
+        decision_note = _safe_text(decision.get("decision_note"))
+        issues: list[str] = []
+        fixes: list[str] = []
+
+        if not benchmark_id:
+            issues.append("missing-benchmark-id")
+            fixes.append("Fill benchmark_id from the exported source-audit case decision template.")
+        elif valid_case_ids and benchmark_id not in valid_case_ids:
+            issues.append("unknown-benchmark-id")
+            fixes.append("Use benchmark_id values from the current source-audit case summary.")
+        if len(duplicate_decisions.get(benchmark_id, set())) > 1:
+            issues.append("conflicting-duplicate")
+            fixes.append("Keep only one source decision per benchmark_id.")
+        if source_decision == "unknown":
+            issues.append("unknown-decision")
+            fixes.append("Use accept, replace, hold, or review.")
+        if source_decision in {"accept", "replace", "hold"} and not reviewer:
+            issues.append("missing-reviewer")
+            fixes.append("Fill reviewer for every non-review source decision.")
+        if source_decision == "accept" and verified_independence not in {"yes", "y", "true", "independent", "verified"}:
+            issues.append("missing-independence-evidence")
+            fixes.append("Set verified_independence to yes/independent after confirming the benchmark source is independent.")
+        if source_decision == "replace" and not (replacement_source or verified_source_mode):
+            issues.append("missing-replacement-source")
+            fixes.append("Fill replacement_reference_source or verified_source_mode for replacement decisions.")
+        if source_decision == "hold" and not decision_note:
+            issues.append("missing-hold-note")
+            fixes.append("Explain why this case remains blocked or deferred in decision_note.")
+
+        validation_status = "blocked" if issues else ("review" if source_decision == "review" else "ok")
+        rows.append(
+            {
+                "row_index": int(index + 1),
+                "benchmark_id": benchmark_id,
+                "source_decision": source_decision,
+                "validation_status": validation_status,
+                "issue_flags": ";".join(dict.fromkeys(issues)),
+                "required_fix": " ".join(dict.fromkeys(fixes)),
+            }
+        )
+
+    return pd.DataFrame(rows, columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_VALIDATION_COLUMNS)
 
 
 def _normalize_pocket_rows(pocket_df: Optional[pd.DataFrame]) -> pd.DataFrame:

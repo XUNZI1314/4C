@@ -70,6 +70,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_source_audit_action_queue,
     build_pocket_benchmark_reference_source_audit_case_checklist_markdown,
     build_pocket_benchmark_reference_source_audit_case_decision_template,
+    build_pocket_benchmark_reference_source_audit_case_decision_validation,
     build_pocket_benchmark_reference_source_audit_case_summary,
     build_pocket_benchmark_reference_source_audit_checklist_markdown,
     build_pocket_benchmark_reference_source_audit_summary,
@@ -92,6 +93,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_variant_remediation_summary,
     parse_benchmark_reference_table,
     parse_pocket_benchmark_reference_candidate_review_decision_table,
+    parse_pocket_benchmark_reference_source_audit_case_decision_table,
     select_pocket_benchmark_reference_source,
 )
 from protein_visualizer.services.candidate_fusion import build_joint_candidate_table, build_pocket_consensus_coverage
@@ -849,12 +851,18 @@ with st.sidebar:
             type=["csv", "tsv", "txt"],
             accept_multiple_files=False,
         )
+        uploaded_benchmark_reference_source_audit_case_decisions = st.file_uploader(
+            "Upload benchmark source audit case decisions CSV/TSV",
+            type=["csv", "tsv", "txt"],
+            accept_multiple_files=False,
+        )
         st.caption(
             "Columns can include chain,resid,resname,reference_type,reference_source,reference_note,expected_pocket_id. "
             "Blank chain is treated as wildcard. Provisional external-evidence references are useful for triage, "
             "but should not be treated as independent accuracy proof until curated separately."
         )
         st.caption("Candidate review decisions need action_id,review_decision,reviewer,verified_source,verified_mapping,review_note.")
+        st.caption("Source audit case decisions need benchmark_id,source_decision,reviewer,verified_independence,decision_note.")
         st.download_button(
             "Download benchmark reference template CSV",
             data=_to_csv_bytes(benchmark_reference_template_df),
@@ -945,6 +953,9 @@ benchmark_reference_source_audit_case_summary_blocked_cases = 0
 benchmark_reference_source_audit_case_summary_review_cases = 0
 benchmark_reference_source_audit_case_checklist_markdown = ""
 benchmark_reference_source_audit_case_decision_template_df = pd.DataFrame()
+benchmark_reference_source_audit_case_decision_df = pd.DataFrame()
+benchmark_reference_source_audit_case_decision_meta: dict = {}
+benchmark_reference_source_audit_case_decision_validation_df = pd.DataFrame()
 benchmark_reference_source_audit_checklist_markdown = ""
 pocket_benchmark_reference_quality_issue_df = pd.DataFrame()
 pocket_benchmark_reference_quality_summary_df = pd.DataFrame()
@@ -1437,6 +1448,24 @@ if benchmark_reference_loaded:
                 benchmark_reference_source_audit_case_summary_df
             )
         )
+        source_audit_case_decision_text = (
+            _read_uploaded_text(uploaded_benchmark_reference_source_audit_case_decisions)
+            if uploaded_benchmark_reference_source_audit_case_decisions is not None
+            else ""
+        )
+        if source_audit_case_decision_text.strip():
+            (
+                benchmark_reference_source_audit_case_decision_df,
+                benchmark_reference_source_audit_case_decision_meta,
+            ) = parse_pocket_benchmark_reference_source_audit_case_decision_table(
+                source_audit_case_decision_text
+            )
+            benchmark_reference_source_audit_case_decision_validation_df = (
+                build_pocket_benchmark_reference_source_audit_case_decision_validation(
+                    benchmark_reference_source_audit_case_decision_df,
+                    benchmark_reference_source_audit_case_summary_df,
+                )
+            )
         benchmark_reference_source_audit_checklist_markdown = build_pocket_benchmark_reference_source_audit_checklist_markdown(
             benchmark_reference_source_audit_summary_df,
             benchmark_reference_source_audit_df,
@@ -2361,6 +2390,10 @@ try:
             "pocket_benchmark_reference_source_audit_case_summary_review_cases": int(benchmark_reference_source_audit_case_summary_review_cases),
             "pocket_benchmark_reference_source_audit_case_checklist_available": bool(benchmark_reference_source_audit_case_checklist_markdown),
             "pocket_benchmark_reference_source_audit_case_decision_template_rows": int(len(benchmark_reference_source_audit_case_decision_template_df)),
+            "pocket_benchmark_reference_source_audit_case_decision_rows": int(len(benchmark_reference_source_audit_case_decision_df)),
+            "pocket_benchmark_reference_source_audit_case_decision_status": str(benchmark_reference_source_audit_case_decision_meta.get("status") or ""),
+            "pocket_benchmark_reference_source_audit_case_decision_validation_rows": int(len(benchmark_reference_source_audit_case_decision_validation_df)),
+            "pocket_benchmark_reference_source_audit_case_decision_validation_blocked_rows": int(benchmark_reference_source_audit_case_decision_validation_df["validation_status"].astype(str).eq("blocked").sum()) if not benchmark_reference_source_audit_case_decision_validation_df.empty and "validation_status" in benchmark_reference_source_audit_case_decision_validation_df.columns else 0,
             "pocket_benchmark_reference_source_audit_checklist_available": bool(benchmark_reference_source_audit_checklist_markdown),
             "pocket_benchmark_reference_source_claim_status": str(benchmark_reference_source_audit_df.iloc[0].get("source_claim_status") or "") if not benchmark_reference_source_audit_df.empty else "",
             "pocket_benchmark_reference_source_independent_claim_status": str(benchmark_reference_source_audit_df.iloc[0].get("can_support_independent_claim") or "") if not benchmark_reference_source_audit_df.empty else "",
@@ -2663,6 +2696,12 @@ snapshot = build_analysis_snapshot(
         "pocket_benchmark_reference_source_audit_case_checklist": benchmark_reference_source_audit_case_checklist_markdown,
         "pocket_benchmark_reference_source_audit_case_decision_template_rows": int(len(benchmark_reference_source_audit_case_decision_template_df)),
         "pocket_benchmark_reference_source_audit_case_decision_template": benchmark_reference_source_audit_case_decision_template_df.to_dict(orient="records"),
+        "pocket_benchmark_reference_source_audit_case_decision_rows": int(len(benchmark_reference_source_audit_case_decision_df)),
+        "pocket_benchmark_reference_source_audit_case_decision_status": str(benchmark_reference_source_audit_case_decision_meta.get("status") or ""),
+        "pocket_benchmark_reference_source_audit_case_decisions": benchmark_reference_source_audit_case_decision_df.to_dict(orient="records"),
+        "pocket_benchmark_reference_source_audit_case_decision_validation_rows": int(len(benchmark_reference_source_audit_case_decision_validation_df)),
+        "pocket_benchmark_reference_source_audit_case_decision_validation_blocked_rows": int(benchmark_reference_source_audit_case_decision_validation_df["validation_status"].astype(str).eq("blocked").sum()) if not benchmark_reference_source_audit_case_decision_validation_df.empty and "validation_status" in benchmark_reference_source_audit_case_decision_validation_df.columns else 0,
+        "pocket_benchmark_reference_source_audit_case_decision_validation": benchmark_reference_source_audit_case_decision_validation_df.to_dict(orient="records"),
         "pocket_benchmark_reference_source_audit_checklist_available": bool(benchmark_reference_source_audit_checklist_markdown),
         "pocket_benchmark_reference_source_audit_checklist": benchmark_reference_source_audit_checklist_markdown,
         "pocket_benchmark_reference_source_claim_status": str(benchmark_reference_source_audit_df.iloc[0].get("source_claim_status") or "") if not benchmark_reference_source_audit_df.empty else "",
@@ -3033,6 +3072,12 @@ if not benchmark_reference_source_audit_df.empty:
         if not benchmark_reference_source_audit_case_decision_template_df.empty:
             st.caption("Source audit case decision template: fill one decision per affected benchmark_id before treating coverage as precision.")
             st.dataframe(benchmark_reference_source_audit_case_decision_template_df, use_container_width=True, hide_index=True)
+        if not benchmark_reference_source_audit_case_decision_df.empty:
+            st.caption("Source audit case decisions: normalized reviewer decisions uploaded for source-risk closure.")
+            st.dataframe(benchmark_reference_source_audit_case_decision_df, use_container_width=True, hide_index=True)
+        if not benchmark_reference_source_audit_case_decision_validation_df.empty:
+            st.caption("Source audit case decision validation: blocked rows must be fixed before clearing source-risk cases.")
+            st.dataframe(benchmark_reference_source_audit_case_decision_validation_df, use_container_width=True, hide_index=True)
         if benchmark_reference_source_audit_case_checklist_markdown:
             with st.expander("Benchmark reference source audit case checklist", expanded=False):
                 st.markdown(benchmark_reference_source_audit_case_checklist_markdown)
@@ -4040,6 +4085,20 @@ with tab_export:
                     file_name="pocket_benchmark_reference_source_audit_case_decision_template.csv",
                     mime="text/csv",
                 )
+            if not benchmark_reference_source_audit_case_decision_df.empty:
+                st.download_button(
+                    "Export benchmark reference source audit case decisions normalized CSV",
+                    data=_to_csv_bytes(benchmark_reference_source_audit_case_decision_df),
+                    file_name="pocket_benchmark_reference_source_audit_case_decisions_normalized.csv",
+                    mime="text/csv",
+                )
+            if not benchmark_reference_source_audit_case_decision_validation_df.empty:
+                st.download_button(
+                    "Export benchmark reference source audit case decision validation CSV",
+                    data=_to_csv_bytes(benchmark_reference_source_audit_case_decision_validation_df),
+                    file_name="pocket_benchmark_reference_source_audit_case_decision_validation.csv",
+                    mime="text/csv",
+                )
             if benchmark_reference_source_audit_case_checklist_markdown:
                 st.download_button(
                     "Export benchmark reference source audit case checklist MD",
@@ -4703,6 +4762,7 @@ with tab_export:
         f"Benchmark reference source audit action queue: {len(benchmark_reference_source_audit_action_queue_df)} rows / blockers {int(benchmark_reference_source_audit_action_queue_df['action_status'].astype(str).eq('blocker').sum()) if not benchmark_reference_source_audit_action_queue_df.empty and 'action_status' in benchmark_reference_source_audit_action_queue_df.columns else 0} / review {int(benchmark_reference_source_audit_action_queue_df['action_status'].astype(str).eq('review').sum()) if not benchmark_reference_source_audit_action_queue_df.empty and 'action_status' in benchmark_reference_source_audit_action_queue_df.columns else 0}",
         f"Benchmark reference source audit cases: {len(benchmark_reference_source_audit_case_summary_df)} rows / blocked {benchmark_reference_source_audit_case_summary_blocked_cases} / review {benchmark_reference_source_audit_case_summary_review_cases}",
         f"Benchmark reference source audit case decision template: {len(benchmark_reference_source_audit_case_decision_template_df)} rows",
+        f"Benchmark reference source audit case decisions: {len(benchmark_reference_source_audit_case_decision_df)} rows / validation blocked {int(benchmark_reference_source_audit_case_decision_validation_df['validation_status'].astype(str).eq('blocked').sum()) if not benchmark_reference_source_audit_case_decision_validation_df.empty and 'validation_status' in benchmark_reference_source_audit_case_decision_validation_df.columns else 0}",
         f"Benchmark reference source audit case checklist: {'available' if benchmark_reference_source_audit_case_checklist_markdown else 'not available'}",
         f"Benchmark reference source audit checklist: {'available' if benchmark_reference_source_audit_checklist_markdown else 'not available'}",
         f"Benchmark reference candidate review: {len(benchmark_reference_candidate_review_queue_df)} rows / P1 {int(benchmark_reference_candidate_review_queue_df['priority'].astype(str).eq('P1').sum()) if not benchmark_reference_candidate_review_queue_df.empty and 'priority' in benchmark_reference_candidate_review_queue_df.columns else 0} / P2 {int(benchmark_reference_candidate_review_queue_df['priority'].astype(str).eq('P2').sum()) if not benchmark_reference_candidate_review_queue_df.empty and 'priority' in benchmark_reference_candidate_review_queue_df.columns else 0} / checklist {'available' if benchmark_reference_candidate_review_checklist_markdown else 'not available'}",
