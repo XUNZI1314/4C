@@ -51,6 +51,8 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
             "auto_detection_p2rank_status": "ok",
             "auto_detection_p2rank_prediction_rows": 2,
             "auto_detection_p2rank_residue_rows": 7,
+            "p2rank_ab_enabled": True,
+            "p2rank_ab_comparison": [{"pocket_id": "Pocket-1", "rank_delta": 1}],
             "auto_detection_external_rows": 2,
             "auto_detection_external_sources": "M-CSA,UniProt",
             "auto_detection_metadata": {
@@ -66,6 +68,7 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
     assert snapshot["extra"]["auto_detection_metadata"]["diagnostics"][0]["method"] == "geometry-cluster"
     assert any("geometry-cluster" in line for line in summary_lines)
     assert any("P2Rank: ok" in line for line in summary_lines)
+    assert any("P2Rank A/B: enabled / rows 1" in line for line in summary_lines)
     assert b'"auto_detection_metadata": {' in json_bytes
     assert b'"diagnostics": [' in json_bytes
 

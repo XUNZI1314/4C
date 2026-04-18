@@ -200,6 +200,9 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
             f"P2Rank: {p2rank_status} / pred {int(extra.get('auto_detection_p2rank_prediction_rows') or 0)} / "
             f"res {int(extra.get('auto_detection_p2rank_residue_rows') or 0)}"
         )
+    if bool(extra.get("p2rank_ab_enabled")):
+        comparison_rows = len(extra.get("p2rank_ab_comparison") or [])
+        lines.append(f"P2Rank A/B: enabled / rows {comparison_rows}")
     try:
         external_rows = int(extra.get("auto_detection_external_rows") or 0)
     except (TypeError, ValueError):

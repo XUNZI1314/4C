@@ -561,6 +561,11 @@ with st.sidebar:
             value="",
             placeholder="e.g. C:\\tools\\p2rank\\prank.bat",
         )
+        enable_p2rank_ab = st.checkbox(
+            "Show P2Rank A/B pocket comparison",
+            value=False,
+            disabled=not auto_use_p2rank,
+        )
         if PYKVFINDER_AVAILABLE:
             st.caption("当前环境已检测到 pyKVFinder，将优先使用库算法进行口袋识别。")
         else:
@@ -1215,6 +1220,42 @@ uploaded_pocket_df = _normalize_pocket_table(uploaded_pocket_df, "uploaded")
 auto_pocket_df = _normalize_pocket_table(auto_pocket_df, "auto")
 auto_pocket_summary = build_pocket_summary(auto_pocket_df, hotspot_df) if not auto_pocket_df.empty else pd.DataFrame()
 uploaded_pocket_summary = build_pocket_summary(uploaded_pocket_df, hotspot_df) if not uploaded_pocket_df.empty else pd.DataFrame()
+p2rank_ab_enabled = bool(enable_p2rank_ab and auto_use_p2rank and not auto_pocket_summary.empty)
+auto_pocket_df_without_p2rank = pd.DataFrame()
+auto_pocket_summary_without_p2rank = pd.DataFrame()
+p2rank_ab_df = pd.DataFrame()
+if p2rank_ab_enabled:
+    auto_pocket_df_without_p2rank = detect_auto_pocket_table(
+        pdb_text,
+        hotspot_residues=hotspot_residues,
+        external_site_df=external_site_df,
+        conservation_site_df=conservation_site_df,
+        adaptive_profile=auto_adaptive_profile,
+        prefer_kvfinder=auto_use_kvfinder,
+        prefer_p2rank=False,
+        prefer_ligand=auto_detection_mode == "auto",
+        enable_external_evidence_route=auto_external_evidence_route,
+        external_evidence_min_support=external_route_min_support,
+        external_evidence_min_confidence=external_route_min_confidence,
+        external_evidence_min_mapping_quality=external_route_min_quality,
+        external_evidence_radius=external_route_radius,
+        contact_cutoff=auto_contact_cutoff,
+        cluster_cutoff=auto_cluster_cutoff,
+        ligand_radius=auto_ligand_radius,
+        top_fraction=auto_candidate_fraction,
+        min_candidates=3,
+        max_candidates=auto_max_candidates,
+        max_pockets=auto_max_pockets,
+        p2rank_profile=p2rank_profile,
+        p2rank_executable=str(p2rank_executable or "").strip() or None,
+    )
+    auto_pocket_df_without_p2rank = _normalize_pocket_table(auto_pocket_df_without_p2rank, "auto-no-p2rank")
+    auto_pocket_summary_without_p2rank = (
+        build_pocket_summary(auto_pocket_df_without_p2rank, hotspot_df)
+        if not auto_pocket_df_without_p2rank.empty
+        else pd.DataFrame()
+    )
+    p2rank_ab_df = compare_pocket_ranking_summaries(auto_pocket_summary_without_p2rank, auto_pocket_summary)
 literature_ab_enabled = bool(enable_literature_ab and not literature_site_df.empty and not auto_pocket_summary.empty)
 auto_pocket_df_without_literature = pd.DataFrame()
 auto_pocket_summary_without_literature = pd.DataFrame()
@@ -1451,6 +1492,8 @@ top3_benchmark = (
 benchmark_variants: list[tuple[str, pd.DataFrame, pd.DataFrame]] = []
 if not benchmark_reference_df.empty:
     benchmark_variants.append(("current", effective_pocket_df, effective_pocket_summary))
+    if p2rank_ab_enabled and not auto_pocket_df_without_p2rank.empty:
+        benchmark_variants.append(("no-p2rank", auto_pocket_df_without_p2rank, auto_pocket_summary_without_p2rank))
     if literature_ab_enabled and not auto_pocket_df_without_literature.empty:
         benchmark_variants.append(("no-literature", auto_pocket_df_without_literature, auto_pocket_summary_without_literature))
     if evidence_route_ab_enabled and not auto_pocket_df_without_evidence_route.empty:
@@ -1876,6 +1919,10 @@ try:
             "pocket_benchmark_best_rank": int(top3_benchmark.get("best_rank") or 0) if top3_benchmark is not None else 0,
             "pocket_benchmark_best_pocket_id": str(top3_benchmark.get("best_pocket_id") or "") if top3_benchmark is not None else None,
             "pocket_benchmark_variant_comparison_rows": int(len(pocket_benchmark_variant_comparison_df)),
+            "p2rank_ab_enabled": bool(p2rank_ab_enabled),
+            "p2rank_ab_changed_count": int((p2rank_ab_df["status"].astype(str) != "unchanged").sum())
+            if not p2rank_ab_df.empty and "status" in p2rank_ab_df.columns
+            else 0,
             "consensus_rerank_suggestion_rows": int(len(consensus_rerank_suggestion_df)),
             "top_consensus_rerank_pocket_id": str(top_consensus_rerank_suggestion.get("pocket_id")) if top_consensus_rerank_suggestion is not None and pd.notna(top_consensus_rerank_suggestion.get("pocket_id")) else None,
             "top_consensus_rerank_status": str(top_consensus_rerank_suggestion.get("suggestion_status")) if top_consensus_rerank_suggestion is not None and pd.notna(top_consensus_rerank_suggestion.get("suggestion_status")) else None,
@@ -2183,6 +2230,8 @@ snapshot = build_analysis_snapshot(
         "consensus_rerank_release_closure_remediation_checklist_available": bool(consensus_rerank_release_closure_remediation_checklist_markdown),
         "consensus_rerank_release_closure_detached_manifest_rows": int(len(consensus_rerank_release_closure_detached_manifest_df)),
         "consensus_rerank_release_closure_detached_manifest": consensus_rerank_release_closure_detached_manifest_df.to_dict(orient="records"),
+        "p2rank_ab_enabled": bool(p2rank_ab_enabled),
+        "p2rank_ab_comparison": p2rank_ab_df.to_dict(orient="records"),
         "literature_ab_enabled": bool(literature_ab_enabled),
         "literature_ab_comparison": literature_ab_df.to_dict(orient="records"),
         "evidence_route_enabled": bool(auto_external_evidence_route),
@@ -2826,6 +2875,12 @@ with tab_auto:
                     file_name="external_residue_evidence_details.csv",
                     mime="text/csv",
                 )
+            if p2rank_ab_enabled:
+                st.caption("P2Rank A/B: base = P2Rank disabled and auto detection rerun; positive rank_delta means P2Rank moved the pocket up.")
+                if p2rank_ab_df.empty:
+                    st.caption("P2Rank A/B: no comparable pocket ranking rows.")
+                else:
+                    st.dataframe(p2rank_ab_df, use_container_width=True, hide_index=True)
             route_status_text = str(auto_detection_summary.get("auto_detection_external_route_status") or "").strip()
             if route_status_text:
                 st.caption(
@@ -3153,6 +3208,13 @@ with tab_export:
                 "Export pocket benchmark variant comparison CSV",
                 data=_to_csv_bytes(pocket_benchmark_variant_comparison_df),
                 file_name="pocket_benchmark_variant_comparison.csv",
+                mime="text/csv",
+            )
+        if not p2rank_ab_df.empty:
+            st.download_button(
+                "Export P2Rank A/B comparison CSV",
+                data=_to_csv_bytes(p2rank_ab_df),
+                file_name="p2rank_ab_comparison.csv",
                 mime="text/csv",
             )
         if not pocket_benchmark_details_df.empty:
@@ -3564,6 +3626,7 @@ with tab_export:
         f"Pocket consensus coverage: {len(pocket_consensus_coverage_df)} rows / top {top_pocket_consensus_coverage.get('pocket_id') if top_pocket_consensus_coverage is not None else '-'} / label {top_pocket_consensus_coverage.get('pocket_consensus_label') if top_pocket_consensus_coverage is not None else '-'}",
         f"Catalytic pocket benchmark: references {len(benchmark_reference_df)} / Top-1 {top1_benchmark.get('coverage_ratio') if top1_benchmark is not None else '-'} / Top-3 {top3_benchmark.get('coverage_ratio') if top3_benchmark is not None else '-'} / best rank {top3_benchmark.get('best_rank') if top3_benchmark is not None else '-'}",
         f"Catalytic benchmark variants: {len(pocket_benchmark_variant_comparison_df)} rows / current vs ablations {'available' if not pocket_benchmark_variant_comparison_df.empty else 'not available'}",
+        f"P2Rank A/B: {len(p2rank_ab_df)} rows / {'enabled' if p2rank_ab_enabled else 'not enabled'}",
         f"Consensus rerank suggestions: {len(consensus_rerank_suggestion_df)} rows / top {top_consensus_rerank_suggestion.get('pocket_id') if top_consensus_rerank_suggestion is not None else '-'} / status {top_consensus_rerank_suggestion.get('suggestion_status') if top_consensus_rerank_suggestion is not None else '-'}",
         f"Consensus rerank preview: {len(consensus_rerank_preview_df)} rows / top {top_consensus_rerank_preview.get('pocket_id') if top_consensus_rerank_preview is not None else '-'} / decision {top_consensus_rerank_preview.get('preview_decision') if top_consensus_rerank_preview is not None else '-'}",
         f"Consensus rerank policy gate: {top_consensus_rerank_policy_gate.get('policy_status') if top_consensus_rerank_policy_gate is not None else '-'} / changed {top_consensus_rerank_policy_gate.get('changed_rows') if top_consensus_rerank_policy_gate is not None else 0} / blocked {top_consensus_rerank_policy_gate.get('blocked_rows') if top_consensus_rerank_policy_gate is not None else 0}",

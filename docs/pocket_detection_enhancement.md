@@ -245,6 +245,7 @@ The benchmark exports:
 - `pocket_benchmark_summary.csv`
 - `pocket_benchmark_variant_comparison.csv`
 - `pocket_benchmark_details.csv`
+- `p2rank_ab_comparison.csv`
 
 Current summary metrics:
 
@@ -264,6 +265,7 @@ When the relevant A/B toggles are enabled, the benchmark also compares current r
 - `no-literature`
 - `no-evidence-route`
 - `no-conservation-rerank`
+- `no-p2rank`
 
 Positive `coverage_loss_vs_reference` means removing that evidence path reduced catalytic residue coverage compared with the current run. This converts A/B ranking changes into an active-site accuracy metric.
 
@@ -288,6 +290,8 @@ P2Rank output enters consensus as:
 
 - `detection_method = "p2rank"`
 - `detection_route = "precision-p2rank"` or profile-specific route.
+
+When P2Rank is enabled, the page can also run a `no-p2rank` A/B pass. This reruns auto-pocket detection with the same geometry, ligand, external evidence and conservation settings but disables P2Rank, then reports rank deltas and benchmark coverage loss. The check is intentionally optional because local P2Rank execution can be slow.
 
 ## A/B Checks
 
@@ -436,7 +440,7 @@ Coverage includes:
 Latest full run:
 
 ```text
-195 passed
+200 passed
 ```
 
 ## Known Limits

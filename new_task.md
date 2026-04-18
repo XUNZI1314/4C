@@ -15,6 +15,7 @@
 - [x] 文献证据片段级字段：`article_title`、`pmid`、`pmcid`、`doi`、`evidence_snippet`、`sentence_index`、`extraction_pattern`、`requires_manual_review`。
 - [x] 结构辅助 UniProt/PDB 映射质量校验。
 - [x] P2Rank 本地可选接入。
+- [x] P2Rank on/off A/B 和 no-p2rank benchmark variant。
 - [x] Conservation rerank-only 信号和 A/B 对比。
 - [x] External-evidence route 候选口袋生成。
 - [x] Literature A/B 和 evidence-route A/B。
@@ -54,9 +55,9 @@
 ### P0：扩展真实 benchmark 数据集
 
 - 已落地单结构 benchmark 评估框架：上传 curated catalytic residues 后可输出 Top-1 / Top-3 / Top-5 catalytic coverage。
-- 已落地 current vs no-literature / no-evidence-route / no-conservation-rerank 的 benchmark variant comparison，用 coverage loss 量化证据路径贡献。
+- 已落地 current vs no-p2rank / no-literature / no-evidence-route / no-conservation-rerank 的 benchmark variant comparison，用 coverage loss 量化证据路径贡献。
 - 下一步收集 M-CSA + PDB + catalytic residue 数据集，形成批量 benchmark。
-- 下一步扩展 P2Rank on/off 和批量数据集层面的独立贡献评估。
+- 下一步扩展批量数据集层面的独立贡献评估。
 
 ### P1：继续增强文献证据片段
 
