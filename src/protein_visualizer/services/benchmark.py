@@ -2180,6 +2180,72 @@ def build_pocket_benchmark_reference_source_audit_case_summary(
     return frame[BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_SUMMARY_COLUMNS]
 
 
+def build_pocket_benchmark_reference_source_audit_case_checklist_markdown(
+    case_summary_df: Optional[pd.DataFrame],
+    action_queue_df: Optional[pd.DataFrame] = None,
+) -> str:
+    """Render source-audit case risks as a case-first manual checklist."""
+
+    case_summary = (
+        case_summary_df.copy()
+        if case_summary_df is not None and not getattr(case_summary_df, "empty", True)
+        else _empty_reference_source_audit_case_summary_df()
+    )
+    action_queue = (
+        action_queue_df.copy()
+        if action_queue_df is not None and not getattr(action_queue_df, "empty", True)
+        else _empty_reference_source_audit_action_queue_df()
+    )
+    if case_summary.empty and action_queue.empty:
+        return ""
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_SUMMARY_COLUMNS:
+        if column not in case_summary.columns:
+            case_summary[column] = ""
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_ACTION_QUEUE_COLUMNS:
+        if column not in action_queue.columns:
+            action_queue[column] = ""
+
+    lines = [
+        "# Benchmark reference source audit case checklist",
+        "",
+        "Use this case-first checklist to resolve source provenance before interpreting catalytic pocket benchmark coverage as precision.",
+        "",
+    ]
+    if not case_summary.empty:
+        lines.extend(["## Case Actions", ""])
+        for row in case_summary.itertuples(index=False):
+            priority = _safe_text(row.top_priority) or "ready"
+            issue_type = _safe_text(row.top_issue_type) or "source-ready"
+            lines.append(
+                f"- [ ] case `{row.benchmark_id}` `{priority}` `{issue_type}`: "
+                f"{int(row.reference_rows)} references, {int(row.action_rows)} source actions "
+                f"(blockers {int(row.blocker_rows)}, review {int(row.review_rows)}). {row.recommended_action}"
+            )
+        lines.append("")
+
+    if not action_queue.empty:
+        lines.extend(["## Source Row Evidence", ""])
+        for row in action_queue.itertuples(index=False):
+            case_text = f"case `{row.benchmark_id}`" if _safe_text(row.benchmark_id) else "unnamed case"
+            residue_text = _safe_text(row.residue_label) or "-"
+            lines.append(
+                f"- [ ] {row.action_id} `{row.priority}` `{row.issue_type}` for {case_text}, "
+                f"residue `{residue_text}`: {row.suggested_action}"
+            )
+        lines.append("")
+    elif not case_summary.empty:
+        lines.extend(
+            [
+                "## Source Row Evidence",
+                "",
+                "- [ ] No source-only blockers or review rows remain; keep the case summary with the benchmark export.",
+                "",
+            ]
+        )
+
+    return "\n".join(lines).strip() + "\n"
+
+
 def _normalize_pocket_rows(pocket_df: Optional[pd.DataFrame]) -> pd.DataFrame:
     if pocket_df is None or getattr(pocket_df, "empty", True) or "pocket_id" not in pocket_df.columns or "resid" not in pocket_df.columns:
         return pd.DataFrame(columns=["benchmark_id", "pocket_id", "chain", "resid", "resname"])

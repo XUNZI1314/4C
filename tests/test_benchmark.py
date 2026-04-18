@@ -26,6 +26,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_import_summary,
     build_pocket_benchmark_reference_source_audit,
     build_pocket_benchmark_reference_source_audit_action_queue,
+    build_pocket_benchmark_reference_source_audit_case_checklist_markdown,
     build_pocket_benchmark_reference_source_audit_case_summary,
     build_pocket_benchmark_reference_source_audit_checklist_markdown,
     build_pocket_benchmark_reference_source_audit_summary,
@@ -1205,6 +1206,39 @@ def test_benchmark_reference_source_audit_case_summary_groups_blocked_and_review
     assert case_summary["blocker_rows"].tolist() == [1, 0]
     assert case_summary["review_rows"].tolist() == [0, 1]
     assert case_summary["source_claim_statuses"].tolist() == ["blocked-provisional", "review-qualified"]
+
+
+def test_benchmark_reference_source_audit_case_checklist_groups_actions_by_case():
+    reference_df = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "enzyme-a",
+                "chain": "A",
+                "resid": 195,
+                "resname": "SER",
+                "reference_type": "Catalytic residue",
+                "reference_source": "M-CSA",
+                "reference_note": "",
+                "expected_pocket_id": "",
+            }
+        ]
+    )
+    source_audit = build_pocket_benchmark_reference_source_audit(
+        reference_df,
+        source_mode="provisional-external-evidence",
+        is_provisional=True,
+    )
+    queue = build_pocket_benchmark_reference_source_audit_action_queue(source_audit)
+    case_summary = build_pocket_benchmark_reference_source_audit_case_summary(source_audit, queue)
+
+    checklist = build_pocket_benchmark_reference_source_audit_case_checklist_markdown(case_summary, queue)
+
+    assert "Benchmark reference source audit case checklist" in checklist
+    assert "Case Actions" in checklist
+    assert "case `enzyme-a` `P0` `provisional_reference_source`" in checklist
+    assert "Source Row Evidence" in checklist
+    assert "BRSA-001" in checklist
+    assert "SER A195" in checklist
 
 
 def test_benchmark_reference_readiness_uses_source_audit_as_gate():
