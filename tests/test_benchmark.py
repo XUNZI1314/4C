@@ -27,6 +27,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_source_audit,
     build_pocket_benchmark_reference_source_audit_action_queue,
     build_pocket_benchmark_reference_source_audit_case_checklist_markdown,
+    build_pocket_benchmark_reference_source_audit_case_decision_template,
     build_pocket_benchmark_reference_source_audit_case_summary,
     build_pocket_benchmark_reference_source_audit_checklist_markdown,
     build_pocket_benchmark_reference_source_audit_summary,
@@ -1239,6 +1240,46 @@ def test_benchmark_reference_source_audit_case_checklist_groups_actions_by_case(
     assert "Source Row Evidence" in checklist
     assert "BRSA-001" in checklist
     assert "SER A195" in checklist
+
+
+def test_benchmark_reference_source_audit_case_decision_template_keeps_actionable_cases():
+    case_summary = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "enzyme-a",
+                "reference_rows": 2,
+                "action_rows": 2,
+                "blocker_rows": 2,
+                "review_rows": 0,
+                "top_priority": "P0",
+                "top_issue_type": "provisional_reference_source",
+                "source_claim_statuses": "blocked-provisional",
+                "source_modes": "provisional-external-evidence",
+                "recommended_action": "Resolve blockers.",
+                "case_warning": "Blocked.",
+            },
+            {
+                "benchmark_id": "enzyme-ready",
+                "reference_rows": 1,
+                "action_rows": 0,
+                "blocker_rows": 0,
+                "review_rows": 0,
+                "top_priority": "",
+                "top_issue_type": "",
+                "source_claim_statuses": "source-ready",
+                "source_modes": "uploaded-curated",
+                "recommended_action": "Keep audit.",
+                "case_warning": "",
+            },
+        ]
+    )
+
+    template = build_pocket_benchmark_reference_source_audit_case_decision_template(case_summary)
+
+    assert template["benchmark_id"].tolist() == ["enzyme-a"]
+    assert template["source_decision"].tolist() == ["review"]
+    assert "verified_independence" in template.columns
+    assert "replacement_reference_source" in template.columns
 
 
 def test_benchmark_reference_readiness_uses_source_audit_as_gate():

@@ -337,6 +337,13 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         lines.append(
             f"Benchmark reference source audit cases: {source_audit_case_rows} rows / blocked {source_audit_blocked_cases} / review {source_audit_review_cases}"
         )
+    source_audit_case_decision_template_rows = int(
+        extra.get("pocket_benchmark_reference_source_audit_case_decision_template_rows") or 0
+    )
+    if source_audit_case_decision_template_rows > 0:
+        lines.append(
+            f"Benchmark reference source audit case decision template: {source_audit_case_decision_template_rows} rows"
+        )
     if bool(extra.get("pocket_benchmark_reference_source_audit_case_checklist_available")):
         lines.append("Benchmark reference source audit case checklist: available")
     if bool(extra.get("pocket_benchmark_reference_source_audit_checklist_available")):

@@ -147,6 +147,17 @@ BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_SUMMARY_COLUMNS = [
     "case_warning",
 ]
 
+BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_TEMPLATE_COLUMNS = [
+    *BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_SUMMARY_COLUMNS,
+    "source_decision",
+    "reviewer",
+    "decision_date",
+    "verified_source_mode",
+    "verified_independence",
+    "replacement_reference_source",
+    "decision_note",
+]
+
 BENCHMARK_DETAIL_COLUMNS = [
     *BENCHMARK_REFERENCE_COLUMNS,
     "residue_label",
@@ -616,6 +627,10 @@ def _empty_reference_source_audit_action_queue_df() -> pd.DataFrame:
 
 def _empty_reference_source_audit_case_summary_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_SUMMARY_COLUMNS)
+
+
+def _empty_reference_source_audit_case_decision_template_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_TEMPLATE_COLUMNS)
 
 
 def _empty_detail_df() -> pd.DataFrame:
@@ -2244,6 +2259,40 @@ def build_pocket_benchmark_reference_source_audit_case_checklist_markdown(
         )
 
     return "\n".join(lines).strip() + "\n"
+
+
+def build_pocket_benchmark_reference_source_audit_case_decision_template(
+    case_summary_df: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    """Build an editable case-level decision template for source-audit remediation."""
+
+    if case_summary_df is None or getattr(case_summary_df, "empty", True):
+        return _empty_reference_source_audit_case_decision_template_df()
+    summary = case_summary_df.copy()
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_SUMMARY_COLUMNS:
+        if column not in summary.columns:
+            summary[column] = ""
+    for column in ("reference_rows", "action_rows", "blocker_rows", "review_rows"):
+        summary[column] = pd.to_numeric(summary[column], errors="coerce").fillna(0).astype(int)
+
+    actionable = summary[
+        summary["action_rows"].gt(0)
+        | summary["blocker_rows"].gt(0)
+        | summary["review_rows"].gt(0)
+        | summary["top_priority"].map(_safe_text).ne("")
+    ].copy()
+    if actionable.empty:
+        return _empty_reference_source_audit_case_decision_template_df()
+
+    template = actionable[BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_SUMMARY_COLUMNS].copy()
+    template["source_decision"] = "review"
+    template["reviewer"] = ""
+    template["decision_date"] = ""
+    template["verified_source_mode"] = ""
+    template["verified_independence"] = ""
+    template["replacement_reference_source"] = ""
+    template["decision_note"] = ""
+    return template[BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_TEMPLATE_COLUMNS].reset_index(drop=True)
 
 
 def _normalize_pocket_rows(pocket_df: Optional[pd.DataFrame]) -> pd.DataFrame:
