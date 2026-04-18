@@ -546,8 +546,6 @@ elif use_examples:
 else:
     annotation_text = ""
 
-benchmark_reference_text = _read_uploaded_text(uploaded_benchmark_reference) if uploaded_benchmark_reference is not None else ""
-
 if not use_examples:
     new_pdb_entry = _uploaded_file_entry(uploaded_pdb)
     new_mmpbsa_entry = _uploaded_file_entry(uploaded_mmpbsa)
@@ -888,6 +886,8 @@ with st.sidebar:
             file_name="pocket_benchmark_reference_template.md",
             mime="text/markdown",
         )
+
+benchmark_reference_text = _read_uploaded_text(uploaded_benchmark_reference) if uploaded_benchmark_reference is not None else ""
 
 hotspot_df = (
     identify_hotspots(
