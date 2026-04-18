@@ -305,6 +305,15 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         lines.append(
             f"Benchmark reference source: {benchmark_reference_source_mode or '-'} / provisional {provisional_status} / reviewed candidate {reviewed_candidate_status}"
         )
+    benchmark_reference_source_audit_rows = int(extra.get("pocket_benchmark_reference_source_audit_rows") or 0)
+    if benchmark_reference_source_audit_rows > 0:
+        source_claim_status = str(extra.get("pocket_benchmark_reference_source_claim_status") or "-").strip()
+        independent_claim_status = str(extra.get("pocket_benchmark_reference_source_independent_claim_status") or "-").strip()
+        provisional_rows = int(extra.get("pocket_benchmark_reference_source_provisional_rows") or 0)
+        reviewed_candidate_rows = int(extra.get("pocket_benchmark_reference_source_reviewed_candidate_rows") or 0)
+        lines.append(
+            f"Benchmark reference source audit: {benchmark_reference_source_audit_rows} rows / claim status {source_claim_status or '-'} / independent claim {independent_claim_status or '-'} / provisional rows {provisional_rows} / reviewed rows {reviewed_candidate_rows}"
+        )
     benchmark_reference_candidate_review_rows = int(extra.get("pocket_benchmark_reference_candidate_review_rows") or 0)
     if benchmark_reference_candidate_review_rows > 0:
         p1_rows = int(extra.get("pocket_benchmark_reference_candidate_review_p1_rows") or 0)

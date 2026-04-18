@@ -93,6 +93,19 @@ BENCHMARK_REFERENCE_CANDIDATE_REVIEW_OUTCOME_COLUMNS = [
     "next_action",
 ]
 
+BENCHMARK_REFERENCE_SOURCE_AUDIT_COLUMNS = [
+    "audit_id",
+    "source_mode",
+    "source_claim_status",
+    "can_support_independent_claim",
+    "is_provisional",
+    "is_reviewed_candidate",
+    *BENCHMARK_REFERENCE_COLUMNS,
+    "review_status",
+    "provenance_warning",
+    "recommended_action",
+]
+
 BENCHMARK_DETAIL_COLUMNS = [
     *BENCHMARK_REFERENCE_COLUMNS,
     "residue_label",
@@ -545,6 +558,10 @@ def _empty_reference_candidate_review_decision_validation_df() -> pd.DataFrame:
 
 def _empty_reference_candidate_review_outcome_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_REFERENCE_CANDIDATE_REVIEW_OUTCOME_COLUMNS)
+
+
+def _empty_reference_source_audit_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_COLUMNS)
 
 
 def _empty_detail_df() -> pd.DataFrame:
@@ -1750,6 +1767,71 @@ def select_pocket_benchmark_reference_source(
             "message": message,
         },
     )
+
+
+def build_pocket_benchmark_reference_source_audit(
+    reference_df: Optional[pd.DataFrame],
+    *,
+    source_mode: str = "",
+    is_provisional: bool = False,
+    is_reviewed_candidate: bool = False,
+) -> pd.DataFrame:
+    """Build a row-level provenance audit for the benchmark references actually used."""
+
+    references = _reference_rows(reference_df)
+    if references.empty:
+        return _empty_reference_source_audit_df()
+
+    normalized_source_mode = _safe_text(source_mode) or "unknown"
+    if normalized_source_mode == "uploaded-curated":
+        source_claim_status = "source-ready"
+        can_support_independent_claim = "yes"
+        review_status = "curated-upload"
+        provenance_warning = ""
+        recommended_action = "Use readiness and structure-validation gates before reporting benchmark coverage."
+    elif normalized_source_mode == "accepted-reviewed-candidate":
+        source_claim_status = "review-qualified"
+        can_support_independent_claim = "review-required"
+        review_status = "reviewer-accepted"
+        provenance_warning = (
+            "Reference was promoted from evidence that may also have influenced candidate detection or reranking."
+        )
+        recommended_action = (
+            "Keep the source audit with benchmark exports and verify independence before making accuracy claims."
+        )
+    elif bool(is_provisional) or normalized_source_mode == "provisional-external-evidence":
+        source_claim_status = "blocked-provisional"
+        can_support_independent_claim = "no"
+        review_status = "unreviewed-provisional"
+        provenance_warning = (
+            "Provisional external evidence can overlap with detection inputs and is not an independent benchmark."
+        )
+        recommended_action = "Curate or accept review decisions before using this reference for precision claims."
+    else:
+        source_claim_status = "source-unknown"
+        can_support_independent_claim = "review-required"
+        review_status = "unknown"
+        provenance_warning = "Benchmark reference source mode is not recorded."
+        recommended_action = "Record whether this reference came from curated upload, reviewed candidate, or provisional evidence."
+
+    rows: list[dict[str, object]] = []
+    for index, reference in references.reset_index(drop=True).iterrows():
+        rows.append(
+            {
+                "audit_id": f"BRS-{index + 1:03d}",
+                "source_mode": normalized_source_mode,
+                "source_claim_status": source_claim_status,
+                "can_support_independent_claim": can_support_independent_claim,
+                "is_provisional": bool(is_provisional),
+                "is_reviewed_candidate": bool(is_reviewed_candidate),
+                **{column: reference.get(column, "") for column in BENCHMARK_REFERENCE_COLUMNS},
+                "review_status": review_status,
+                "provenance_warning": provenance_warning,
+                "recommended_action": recommended_action,
+            }
+        )
+
+    return pd.DataFrame(rows, columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_COLUMNS)
 
 
 def _normalize_pocket_rows(pocket_df: Optional[pd.DataFrame]) -> pd.DataFrame:

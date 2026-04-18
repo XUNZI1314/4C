@@ -24,6 +24,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_candidate_review_queue,
     build_pocket_benchmark_reference_from_external_evidence,
     build_pocket_benchmark_reference_import_summary,
+    build_pocket_benchmark_reference_source_audit,
     build_pocket_benchmark_reference_readiness_case_summary,
     build_pocket_benchmark_reference_readiness_checklist_markdown,
     build_pocket_benchmark_reference_readiness_queue,
@@ -979,6 +980,47 @@ def test_select_pocket_benchmark_reference_source_marks_provisional_fallback():
     assert selection["source_mode"] == "provisional-external-evidence"
     assert selection["is_reviewed_candidate"] is False
     assert selection["is_provisional"] is True
+
+
+def test_benchmark_reference_source_audit_marks_claim_safety_by_source():
+    reference_df = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "1ABC",
+                "chain": "A",
+                "resid": 195,
+                "resname": "SER",
+                "reference_type": "Catalytic residue",
+                "reference_source": "M-CSA",
+                "reference_note": "",
+                "expected_pocket_id": "",
+            }
+        ]
+    )
+
+    curated_audit = build_pocket_benchmark_reference_source_audit(
+        reference_df,
+        source_mode="uploaded-curated",
+    )
+    reviewed_audit = build_pocket_benchmark_reference_source_audit(
+        reference_df,
+        source_mode="accepted-reviewed-candidate",
+        is_reviewed_candidate=True,
+    )
+    provisional_audit = build_pocket_benchmark_reference_source_audit(
+        reference_df,
+        source_mode="provisional-external-evidence",
+        is_provisional=True,
+    )
+
+    assert curated_audit.iloc[0]["source_claim_status"] == "source-ready"
+    assert curated_audit.iloc[0]["can_support_independent_claim"] == "yes"
+    assert reviewed_audit.iloc[0]["source_claim_status"] == "review-qualified"
+    assert reviewed_audit.iloc[0]["can_support_independent_claim"] == "review-required"
+    assert bool(reviewed_audit.iloc[0]["is_reviewed_candidate"]) is True
+    assert provisional_audit.iloc[0]["source_claim_status"] == "blocked-provisional"
+    assert provisional_audit.iloc[0]["can_support_independent_claim"] == "no"
+    assert bool(provisional_audit.iloc[0]["is_provisional"]) is True
 
 
 def test_build_pocket_benchmark_summary_reports_top1_and_top3_coverage():
