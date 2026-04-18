@@ -69,6 +69,7 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
             "pocket_benchmark_variant_comparison_rows": 4,
             "pocket_benchmark_variant_case_comparison_rows": 4,
             "pocket_benchmark_variant_dataset_comparison_rows": 2,
+            "pocket_benchmark_variant_detail_comparison_rows": 6,
             "auto_detection_metadata": {
                 "methods_used": "geometry-cluster",
                 "diagnostics": [{"method": "geometry-cluster", "status": "used"}],
@@ -87,6 +88,7 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
     assert any("Catalytic benchmark dataset: cases 2 / summary rows 2" in line for line in summary_lines)
     assert any("Catalytic benchmark variants: 4 rows" in line for line in summary_lines)
     assert any("Catalytic benchmark variant cases: 4 rows / dataset rows 2" in line for line in summary_lines)
+    assert any("Catalytic benchmark variant residues: 6 rows" in line for line in summary_lines)
     assert b'"auto_detection_metadata": {' in json_bytes
     assert b'"diagnostics": [' in json_bytes
 

@@ -8,6 +8,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_variant_comparison,
     build_pocket_benchmark_variant_case_comparison,
     build_pocket_benchmark_variant_dataset_comparison,
+    build_pocket_benchmark_variant_detail_comparison,
     parse_benchmark_reference_table,
 )
 
@@ -278,3 +279,52 @@ enzyme-b,B,5,ASP
     assert float(no_lit_dataset["mean_coverage_ratio"]) == 0.5
     assert float(no_lit_dataset["mean_coverage_loss_vs_reference"]) == 0.5
     assert int(no_lit_dataset["case_loss_count"]) == 1
+
+
+def test_variant_detail_comparison_reports_lost_residue():
+    reference_df, _ = parse_benchmark_reference_table(
+        """case_id,chain,resid,resname
+enzyme-a,A,10,SER
+enzyme-a,A,20,HIS
+"""
+    )
+    current_pocket_df = pd.DataFrame(
+        [
+            {"benchmark_id": "enzyme-a", "pocket_id": "Pocket-1", "chain": "A", "resid": 10, "resname": "SER"},
+            {"benchmark_id": "enzyme-a", "pocket_id": "Pocket-1", "chain": "A", "resid": 20, "resname": "HIS"},
+        ]
+    )
+    current_summary_df = pd.DataFrame(
+        [{"benchmark_id": "enzyme-a", "pocket_id": "Pocket-1", "smart_rank_order": 1, "smart_rank_score": 0.90}]
+    )
+    ablated_pocket_df = pd.DataFrame(
+        [
+            {"benchmark_id": "enzyme-a", "pocket_id": "Pocket-1", "chain": "A", "resid": 10, "resname": "SER"},
+        ]
+    )
+    ablated_summary_df = pd.DataFrame(
+        [{"benchmark_id": "enzyme-a", "pocket_id": "Pocket-1", "smart_rank_order": 1, "smart_rank_score": 0.80}]
+    )
+
+    detail_comparison = build_pocket_benchmark_variant_detail_comparison(
+        reference_df,
+        [
+            ("current", current_pocket_df, current_summary_df),
+            ("no-literature", ablated_pocket_df, ablated_summary_df),
+        ],
+        reference_variant_label="current",
+    )
+
+    lost_his = detail_comparison[
+        (detail_comparison["variant_label"] == "no-literature")
+        & (detail_comparison["resid"] == 20)
+    ].iloc[0]
+    kept_ser = detail_comparison[
+        (detail_comparison["variant_label"] == "no-literature")
+        & (detail_comparison["resid"] == 10)
+    ].iloc[0]
+    assert str(lost_his["match_delta"]) == "lost"
+    assert bool(lost_his["reference_matched"])
+    assert not bool(lost_his["variant_matched"])
+    assert str(lost_his["benchmark_warning"]) == "reference-residue-lost-vs-current"
+    assert str(kept_ser["match_delta"]) == "unchanged-hit"

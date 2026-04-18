@@ -143,6 +143,32 @@ BENCHMARK_VARIANT_DATASET_COMPARISON_COLUMNS = [
     "benchmark_warning",
 ]
 
+BENCHMARK_VARIANT_DETAIL_COMPARISON_COLUMNS = [
+    "variant_label",
+    "reference_variant_label",
+    "benchmark_id",
+    "chain",
+    "resid",
+    "resname",
+    "residue_label",
+    "reference_type",
+    "reference_source",
+    "expected_pocket_id",
+    "variant_matched",
+    "reference_matched",
+    "match_delta",
+    "variant_matched_rank",
+    "reference_matched_rank",
+    "rank_delta_vs_reference",
+    "variant_matched_pocket_id",
+    "reference_matched_pocket_id",
+    "variant_matched_pocket_ids",
+    "reference_matched_pocket_ids",
+    "variant_expected_pocket_matched",
+    "reference_expected_pocket_matched",
+    "benchmark_warning",
+]
+
 CHAIN_ALIASES = {"chain", "chainid", "chain_id", "authasymid", "auth_asym_id", "asymid", "asym_id"}
 RESID_ALIASES = {
     "resid",
@@ -199,6 +225,10 @@ def _empty_variant_case_comparison_df() -> pd.DataFrame:
 
 def _empty_variant_dataset_comparison_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_VARIANT_DATASET_COMPARISON_COLUMNS)
+
+
+def _empty_variant_detail_comparison_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_VARIANT_DETAIL_COMPARISON_COLUMNS)
 
 
 def _simplify_column_name(value: object) -> str:
@@ -961,3 +991,114 @@ def build_pocket_benchmark_variant_dataset_comparison(variant_case_comparison_df
     if not rows:
         return _empty_variant_dataset_comparison_df()
     return pd.DataFrame(rows, columns=BENCHMARK_VARIANT_DATASET_COMPARISON_COLUMNS)
+
+
+def _detail_key(row: pd.Series) -> tuple[str, str, int, str]:
+    return (
+        str(row.get("benchmark_id") or "").strip(),
+        str(row.get("chain") or "").strip(),
+        int(row.get("resid") or 0),
+        str(row.get("reference_type") or "").strip(),
+    )
+
+
+def _match_delta(variant_matched: bool, reference_matched: bool) -> str:
+    if variant_matched and reference_matched:
+        return "unchanged-hit"
+    if not variant_matched and not reference_matched:
+        return "unchanged-miss"
+    if reference_matched and not variant_matched:
+        return "lost"
+    return "gained"
+
+
+def build_pocket_benchmark_variant_detail_comparison(
+    reference_df: Optional[pd.DataFrame],
+    variants: Sequence[tuple[str, Optional[pd.DataFrame], Optional[pd.DataFrame]]],
+    *,
+    reference_variant_label: str = "current",
+    top_thresholds: Sequence[int] = (1, 3, 5),
+) -> pd.DataFrame:
+    """Compare exact catalytic residue matches across ranking variants."""
+
+    references = _reference_rows(reference_df)
+    if references.empty or not variants:
+        return _empty_variant_detail_comparison_df()
+
+    details_by_label: dict[str, pd.DataFrame] = {}
+    labels: list[str] = []
+    for label, pocket_df, pocket_summary_df in variants:
+        cleaned_label = str(label or "").strip()
+        if not cleaned_label or cleaned_label in details_by_label:
+            continue
+        details = build_pocket_benchmark_details(
+            references,
+            pocket_df,
+            pocket_summary_df,
+            top_thresholds=top_thresholds,
+        )
+        if details.empty:
+            continue
+        details_by_label[cleaned_label] = details
+        labels.append(cleaned_label)
+
+    if not details_by_label:
+        return _empty_variant_detail_comparison_df()
+
+    reference_label = str(reference_variant_label or "").strip()
+    if reference_label not in details_by_label:
+        reference_label = labels[0]
+    reference_details = details_by_label[reference_label]
+    reference_by_key = {
+        _detail_key(row): row
+        for _, row in reference_details.iterrows()
+    }
+
+    rows: list[dict[str, object]] = []
+    for label in labels:
+        details = details_by_label[label]
+        for _, row in details.iterrows():
+            key = _detail_key(row)
+            reference_row = reference_by_key.get(key)
+            variant_matched = bool(row.get("matched"))
+            reference_matched = bool(reference_row.get("matched")) if reference_row is not None else False
+            variant_rank = int(row.get("matched_rank") or 0)
+            reference_rank = int(reference_row.get("matched_rank") or 0) if reference_row is not None else 0
+            rank_delta = int(variant_rank - reference_rank) if variant_rank > 0 and reference_rank > 0 else 0
+            delta = _match_delta(variant_matched, reference_matched)
+            warning = str(row.get("benchmark_warning") or "")
+            if delta == "lost":
+                warning = "reference-residue-lost-vs-current"
+            elif delta == "gained":
+                warning = "reference-residue-gained-vs-current"
+            rows.append(
+                {
+                    "variant_label": label,
+                    "reference_variant_label": reference_label,
+                    "benchmark_id": str(row.get("benchmark_id") or ""),
+                    "chain": str(row.get("chain") or ""),
+                    "resid": int(row.get("resid") or 0),
+                    "resname": str(row.get("resname") or ""),
+                    "residue_label": str(row.get("residue_label") or ""),
+                    "reference_type": str(row.get("reference_type") or ""),
+                    "reference_source": str(row.get("reference_source") or ""),
+                    "expected_pocket_id": str(row.get("expected_pocket_id") or ""),
+                    "variant_matched": variant_matched,
+                    "reference_matched": reference_matched,
+                    "match_delta": delta,
+                    "variant_matched_rank": variant_rank,
+                    "reference_matched_rank": reference_rank,
+                    "rank_delta_vs_reference": rank_delta,
+                    "variant_matched_pocket_id": str(row.get("matched_pocket_id") or ""),
+                    "reference_matched_pocket_id": str(reference_row.get("matched_pocket_id") or "") if reference_row is not None else "",
+                    "variant_matched_pocket_ids": str(row.get("matched_pocket_ids") or ""),
+                    "reference_matched_pocket_ids": str(reference_row.get("matched_pocket_ids") or "") if reference_row is not None else "",
+                    "variant_expected_pocket_matched": bool(row.get("expected_pocket_matched")),
+                    "reference_expected_pocket_matched": bool(reference_row.get("expected_pocket_matched")) if reference_row is not None else False,
+                    "benchmark_warning": warning,
+                }
+            )
+
+    if not rows:
+        return _empty_variant_detail_comparison_df()
+    return pd.DataFrame(rows, columns=BENCHMARK_VARIANT_DETAIL_COMPARISON_COLUMNS)

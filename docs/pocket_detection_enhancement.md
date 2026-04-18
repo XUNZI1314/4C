@@ -248,6 +248,7 @@ The benchmark exports:
 - `pocket_benchmark_variant_comparison.csv`
 - `pocket_benchmark_variant_case_comparison.csv`
 - `pocket_benchmark_variant_dataset_comparison.csv`
+- `pocket_benchmark_variant_residue_comparison.csv`
 - `pocket_benchmark_details.csv`
 - `p2rank_ab_comparison.csv`
 
@@ -262,6 +263,7 @@ Current summary metrics:
 - Dataset-level mean/median/min/max coverage, any-hit rate and all-hit rate.
 - Coverage delta / loss for current vs ablated variants.
 - Case-level and dataset-level variant coverage loss.
+- Residue-level variant match deltas: `lost`, `gained`, `unchanged-hit` or `unchanged-miss`.
 
 This gives a concrete accuracy check before claiming that the top-ranked pocket is the active-site pocket.
 
@@ -282,7 +284,7 @@ When the relevant A/B toggles are enabled, the benchmark also compares current r
 
 Positive `coverage_loss_vs_reference` means removing that evidence path reduced catalytic residue coverage compared with the current run. This converts A/B ranking changes into an active-site accuracy metric.
 
-For batch-like reference tables, `pocket_benchmark_variant_case_comparison.csv` pinpoints which cases lose coverage, while `pocket_benchmark_variant_dataset_comparison.csv` reports mean coverage loss, any-hit/all-hit rate deltas and loss/gain case counts per variant.
+For batch-like reference tables, `pocket_benchmark_variant_case_comparison.csv` pinpoints which cases lose coverage, while `pocket_benchmark_variant_dataset_comparison.csv` reports mean coverage loss, any-hit/all-hit rate deltas and loss/gain case counts per variant. `pocket_benchmark_variant_residue_comparison.csv` then shows the exact catalytic residues that were lost or gained by each ablation.
 
 ## P2Rank Integration
 
@@ -455,7 +457,7 @@ Coverage includes:
 Latest full run:
 
 ```text
-203 passed
+204 passed
 ```
 
 ## Known Limits
