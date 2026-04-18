@@ -292,6 +292,22 @@ BENCHMARK_REFERENCE_READINESS_SUMMARY_COLUMNS = [
     "readiness_warning",
 ]
 
+BENCHMARK_INTERPRETATION_COLUMNS = [
+    "top_n",
+    "reference_residue_count",
+    "matched_reference_count",
+    "coverage_ratio",
+    "benchmark_status",
+    "readiness_status",
+    "claim_status",
+    "claim_ready",
+    "best_rank",
+    "best_pocket_id",
+    "interpretation_label",
+    "recommended_action",
+    "interpretation_warning",
+]
+
 CHAIN_ALIASES = {"chain", "chainid", "chain_id", "authasymid", "auth_asym_id", "asymid", "asym_id"}
 RESID_ALIASES = {
     "resid",
@@ -409,6 +425,10 @@ def _empty_reference_readiness_queue_df() -> pd.DataFrame:
 
 def _empty_reference_readiness_summary_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_REFERENCE_READINESS_SUMMARY_COLUMNS)
+
+
+def _empty_interpretation_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_INTERPRETATION_COLUMNS)
 
 
 def _simplify_column_name(value: object) -> str:
@@ -1502,6 +1522,97 @@ def build_pocket_benchmark_summary(
         )
 
     return pd.DataFrame(rows, columns=BENCHMARK_SUMMARY_COLUMNS)
+
+
+def build_pocket_benchmark_interpretation_summary(
+    benchmark_summary_df: Optional[pd.DataFrame],
+    readiness_summary_df: Optional[pd.DataFrame] = None,
+) -> pd.DataFrame:
+    """Attach reference readiness to each Top-N benchmark coverage row."""
+
+    if benchmark_summary_df is None or getattr(benchmark_summary_df, "empty", True):
+        return _empty_interpretation_df()
+
+    benchmark = benchmark_summary_df.copy()
+    for column in BENCHMARK_SUMMARY_COLUMNS:
+        if column not in benchmark.columns:
+            benchmark[column] = 0 if column in {"top_n", "reference_residue_count", "matched_reference_count", "best_rank"} else ""
+
+    readiness_status = "unknown"
+    readiness_action = "Run benchmark reference readiness checks before using coverage as a precision claim."
+    readiness_warning = "Benchmark reference readiness was not available."
+    blocker_count = 0
+    review_count = 0
+    if readiness_summary_df is not None and not getattr(readiness_summary_df, "empty", True):
+        row = readiness_summary_df.iloc[0]
+        readiness_status = _safe_text(row.get("readiness_status")) or "unknown"
+        readiness_action = _safe_text(row.get("recommended_action")) or readiness_action
+        readiness_warning = _safe_text(row.get("readiness_warning")) or readiness_warning
+        blocker_count = int(row.get("p0_p1_issue_count") or 0)
+        review_count = int(row.get("p2_issue_count") or 0)
+
+    rows: list[dict[str, object]] = []
+    for _, benchmark_row in benchmark.iterrows():
+        top_n = int(pd.to_numeric(pd.Series([benchmark_row.get("top_n")]), errors="coerce").fillna(0).iloc[0] or 0)
+        coverage_ratio = round(float(pd.to_numeric(pd.Series([benchmark_row.get("coverage_ratio")]), errors="coerce").fillna(0.0).iloc[0]), 3)
+        matched_count = int(pd.to_numeric(pd.Series([benchmark_row.get("matched_reference_count")]), errors="coerce").fillna(0).iloc[0])
+        reference_count = int(pd.to_numeric(pd.Series([benchmark_row.get("reference_residue_count")]), errors="coerce").fillna(0).iloc[0])
+        best_rank = int(pd.to_numeric(pd.Series([benchmark_row.get("best_rank")]), errors="coerce").fillna(0).iloc[0])
+        benchmark_status = _safe_text(benchmark_row.get("benchmark_status"))
+
+        if readiness_status in {"blocked", "no-reference"} or blocker_count > 0:
+            claim_status = "blocked"
+            claim_ready = False
+            interpretation_label = f"Top-{top_n} coverage is not claimable until benchmark reference blockers are fixed."
+            recommended_action = readiness_action
+            warning = readiness_warning
+        elif readiness_status == "review-needed" or review_count > 0:
+            claim_status = "review-needed"
+            claim_ready = False
+            interpretation_label = f"Top-{top_n} coverage is reviewer-pending because benchmark reference assumptions need sign-off."
+            recommended_action = readiness_action
+            warning = readiness_warning
+        elif readiness_status == "ready":
+            claim_status = "claim-ready"
+            claim_ready = True
+            if reference_count > 0 and matched_count == reference_count:
+                interpretation_label = f"Top-{top_n} has complete curated residue coverage."
+                recommended_action = "Use this coverage row as supported active-site pocket evidence, while still reporting the benchmark dataset size."
+                warning = "Reference readiness passed; coverage can be interpreted directly."
+            elif matched_count > 0:
+                interpretation_label = f"Top-{top_n} has partial curated residue coverage."
+                recommended_action = "Report partial coverage and inspect missed residues before claiming complete active-site localization."
+                warning = "Reference readiness passed; incomplete coverage likely reflects detection/ranking limits or pocket boundary choices."
+            else:
+                interpretation_label = f"Top-{top_n} misses the curated residues."
+                recommended_action = "Treat this as a pocket detection or ranking miss and inspect candidate generation, evidence routes, and thresholds."
+                warning = "Reference readiness passed; this miss is more likely to reflect model behavior than reference curation."
+        else:
+            claim_status = "readiness-unknown"
+            claim_ready = False
+            interpretation_label = f"Top-{top_n} coverage cannot be interpreted as a precision claim until readiness is available."
+            recommended_action = readiness_action
+            warning = readiness_warning
+
+        rows.append(
+            {
+                "top_n": top_n,
+                "reference_residue_count": reference_count,
+                "matched_reference_count": matched_count,
+                "coverage_ratio": coverage_ratio,
+                "benchmark_status": benchmark_status,
+                "readiness_status": readiness_status,
+                "claim_status": claim_status,
+                "claim_ready": bool(claim_ready),
+                "best_rank": best_rank,
+                "best_pocket_id": _safe_text(benchmark_row.get("best_pocket_id")),
+                "interpretation_label": interpretation_label,
+                "recommended_action": recommended_action,
+                "interpretation_warning": warning,
+            }
+        )
+
+    return pd.DataFrame(rows, columns=BENCHMARK_INTERPRETATION_COLUMNS)
 
 
 def build_pocket_benchmark_case_summary(

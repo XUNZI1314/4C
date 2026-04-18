@@ -1,6 +1,7 @@
 import pandas as pd
 
 from protein_visualizer.services.benchmark import (
+    build_pocket_benchmark_interpretation_summary,
     build_pocket_benchmark_case_summary,
     build_pocket_benchmark_dataset_summary,
     build_pocket_benchmark_details,
@@ -133,6 +134,54 @@ enzyme-a,A,102,ASP,Catalytic residue,M-CSA,
     assert int(gate["p0_p1_issue_count"]) >= 1
     assert set(queue["action_status"].astype(str)).issuperset({"blocker", "review"})
     assert "Benchmark reference readiness checklist" in checklist
+
+
+def test_build_pocket_benchmark_interpretation_respects_readiness_gate():
+    benchmark_summary = pd.DataFrame(
+        [
+            {
+                "top_n": 1,
+                "reference_residue_count": 2,
+                "matched_reference_count": 1,
+                "coverage_ratio": 0.5,
+                "benchmark_status": "top1-partial-hit",
+                "best_rank": 1,
+                "best_pocket_id": "Pocket-1",
+            }
+        ]
+    )
+    blocked_readiness = pd.DataFrame(
+        [
+            {
+                "readiness_status": "blocked",
+                "p0_p1_issue_count": 2,
+                "p2_issue_count": 1,
+                "recommended_action": "Fix mapping blockers.",
+                "readiness_warning": "Reference numbering is not trustworthy.",
+            }
+        ]
+    )
+    ready_readiness = pd.DataFrame(
+        [
+            {
+                "readiness_status": "ready",
+                "p0_p1_issue_count": 0,
+                "p2_issue_count": 0,
+                "recommended_action": "Ready.",
+                "readiness_warning": "No blockers.",
+            }
+        ]
+    )
+
+    blocked = build_pocket_benchmark_interpretation_summary(benchmark_summary, blocked_readiness)
+    ready = build_pocket_benchmark_interpretation_summary(benchmark_summary, ready_readiness)
+
+    assert str(blocked.iloc[0]["claim_status"]) == "blocked"
+    assert not bool(blocked.iloc[0]["claim_ready"])
+    assert "not claimable" in str(blocked.iloc[0]["interpretation_label"])
+    assert str(ready.iloc[0]["claim_status"]) == "claim-ready"
+    assert bool(ready.iloc[0]["claim_ready"])
+    assert "partial curated residue coverage" in str(ready.iloc[0]["interpretation_label"])
 
 
 def test_parse_benchmark_reference_table_accepts_catalytic_residue_aliases():

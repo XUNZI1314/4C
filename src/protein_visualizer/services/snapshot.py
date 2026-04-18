@@ -327,6 +327,13 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         lines.append(
             f"Benchmark reference readiness: {readiness_status or '-'} / blockers {blocker_rows} / review {review_rows} / queue {queue_rows} / checklist {checklist_status}"
         )
+    benchmark_interpretation_rows = int(extra.get("pocket_benchmark_interpretation_rows") or 0)
+    if benchmark_interpretation_rows > 0:
+        top1_claim = str(extra.get("pocket_benchmark_top1_claim_status") or "-").strip()
+        top3_claim = str(extra.get("pocket_benchmark_top3_claim_status") or "-").strip()
+        lines.append(
+            f"Benchmark interpretation: {benchmark_interpretation_rows} rows / Top-1 claim {top1_claim or '-'} / Top-3 claim {top3_claim or '-'}"
+        )
     benchmark_case_summary = extra.get("pocket_benchmark_case_summary") or []
     benchmark_dataset_rows = int(extra.get("pocket_benchmark_dataset_summary_rows") or 0)
     if benchmark_dataset_rows > 0 or benchmark_case_summary:
