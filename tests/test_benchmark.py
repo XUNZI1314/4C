@@ -31,6 +31,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_source_audit_case_decision_closure_queue,
     build_pocket_benchmark_reference_source_audit_case_decision_outcomes,
     build_pocket_benchmark_reference_source_audit_case_decision_outcome_summary,
+    build_pocket_benchmark_reference_source_audit_case_decision_readiness_impact,
     build_pocket_benchmark_reference_source_audit_case_decision_template,
     build_pocket_benchmark_reference_source_audit_case_decision_validation,
     build_pocket_benchmark_reference_source_audit_case_summary,
@@ -1602,6 +1603,70 @@ def test_benchmark_reference_readiness_uses_source_audit_decisions_to_clear_clos
     assert cleared_case_summary.iloc[0]["readiness_status"] == "ready"
     assert pending_queue.iloc[0]["issue_type"] == "source_audit_case_decision_pending"
     assert pending_queue.iloc[0]["priority"] == "P1"
+
+
+def test_benchmark_reference_source_audit_case_decision_readiness_impact_explains_adjustment():
+    reference_df = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "enzyme-a",
+                "chain": "A",
+                "resid": 195,
+                "resname": "SER",
+                "reference_type": "Catalytic residue",
+                "reference_source": "M-CSA",
+                "reference_note": "",
+                "expected_pocket_id": "",
+            },
+            {
+                "benchmark_id": "enzyme-b",
+                "chain": "A",
+                "resid": 57,
+                "resname": "HIS",
+                "reference_type": "Catalytic residue",
+                "reference_source": "M-CSA",
+                "reference_note": "",
+                "expected_pocket_id": "",
+            },
+            {
+                "benchmark_id": "enzyme-c",
+                "chain": "A",
+                "resid": 102,
+                "resname": "ASP",
+                "reference_type": "Catalytic residue",
+                "reference_source": "M-CSA",
+                "reference_note": "",
+                "expected_pocket_id": "",
+            },
+        ]
+    )
+    source_audit = build_pocket_benchmark_reference_source_audit(
+        reference_df,
+        source_mode="provisional-external-evidence",
+        is_provisional=True,
+    )
+    outcomes = pd.DataFrame(
+        [
+            {"benchmark_id": "enzyme-a", "applied_status": "cleared", "source_decision": "accept"},
+            {
+                "benchmark_id": "enzyme-b",
+                "applied_status": "pending",
+                "source_decision": "review",
+                "outcome_reason": "No source-audit case decision has been uploaded.",
+            },
+        ]
+    )
+
+    impact = build_pocket_benchmark_reference_source_audit_case_decision_readiness_impact(source_audit, outcomes)
+
+    impact_by_case = dict(zip(impact["benchmark_id"], impact["readiness_impact"]))
+    assert impact_by_case["enzyme-a"] == "cleared-by-decision"
+    assert impact_by_case["enzyme-b"] == "decision-adjusted-open"
+    assert impact_by_case["enzyme-c"] == "unchanged-open"
+    enzyme_b = impact[impact["benchmark_id"].eq("enzyme-b")].iloc[0]
+    assert enzyme_b["original_source_issue_type"] == "provisional_reference_source"
+    assert enzyme_b["adjusted_source_issue_type"] == "source_audit_case_decision_pending"
+    assert enzyme_b["adjusted_source_priority"] == "P1"
 
 
 def test_build_pocket_benchmark_summary_reports_top1_and_top3_coverage():

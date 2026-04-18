@@ -231,6 +231,23 @@ BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_CLOSURE_QUEUE_COLUMNS = [
     "closure_warning",
 ]
 
+BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_READINESS_IMPACT_COLUMNS = [
+    "benchmark_id",
+    "applied_status",
+    "source_decision",
+    "validation_status",
+    "original_source_priority",
+    "original_source_issue_type",
+    "adjusted_source_priority",
+    "adjusted_source_issue_type",
+    "readiness_impact",
+    "reference_rows",
+    "source_claim_statuses",
+    "source_modes",
+    "outcome_reason",
+    "readiness_note",
+]
+
 BENCHMARK_DETAIL_COLUMNS = [
     *BENCHMARK_REFERENCE_COLUMNS,
     "residue_label",
@@ -720,6 +737,10 @@ def _empty_reference_source_audit_case_decision_outcome_summary_df() -> pd.DataF
 
 def _empty_reference_source_audit_case_decision_closure_queue_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_CLOSURE_QUEUE_COLUMNS)
+
+
+def _empty_reference_source_audit_case_decision_readiness_impact_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_READINESS_IMPACT_COLUMNS)
 
 
 def _empty_detail_df() -> pd.DataFrame:
@@ -2852,6 +2873,137 @@ def build_pocket_benchmark_reference_source_audit_case_decision_closure_queue(
     ).reset_index(drop=True)
     frame["closure_action_id"] = [f"BRSDQ-{index + 1:03d}" for index in range(len(frame))]
     return frame[BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_CLOSURE_QUEUE_COLUMNS]
+
+
+def build_pocket_benchmark_reference_source_audit_case_decision_readiness_impact(
+    source_audit_df: Optional[pd.DataFrame],
+    decision_outcome_df: Optional[pd.DataFrame] = None,
+    *,
+    default_benchmark_id: str = "current",
+) -> pd.DataFrame:
+    """Explain how source-audit case decisions adjust readiness source issues."""
+
+    if (
+        (source_audit_df is None or getattr(source_audit_df, "empty", True))
+        and (decision_outcome_df is None or getattr(decision_outcome_df, "empty", True))
+    ):
+        return _empty_reference_source_audit_case_decision_readiness_impact_df()
+
+    fallback_id = _safe_text(default_benchmark_id) or "current"
+    audit = (
+        source_audit_df.copy()
+        if source_audit_df is not None and not getattr(source_audit_df, "empty", True)
+        else _empty_reference_source_audit_df()
+    )
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_COLUMNS:
+        if column not in audit.columns:
+            audit[column] = ""
+    if "benchmark_id" not in audit.columns:
+        audit["benchmark_id"] = ""
+    audit["benchmark_id"] = audit["benchmark_id"].map(lambda value: _safe_text(value) or fallback_id)
+
+    outcomes = (
+        decision_outcome_df.copy()
+        if decision_outcome_df is not None and not getattr(decision_outcome_df, "empty", True)
+        else _empty_reference_source_audit_case_decision_outcome_df()
+    )
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_OUTCOME_COLUMNS:
+        if column not in outcomes.columns:
+            outcomes[column] = ""
+    outcomes["benchmark_id"] = outcomes["benchmark_id"].map(lambda value: _safe_text(value) or fallback_id)
+    decision_by_case = {
+        _safe_text(row.get("benchmark_id")): row
+        for _, row in outcomes.iterrows()
+        if _safe_text(row.get("benchmark_id"))
+    }
+
+    case_ids = sorted(
+        set(audit["benchmark_id"].map(_safe_text).replace("", pd.NA).dropna().tolist())
+        | set(outcomes["benchmark_id"].map(_safe_text).replace("", pd.NA).dropna().tolist())
+    )
+    if not case_ids:
+        return _empty_reference_source_audit_case_decision_readiness_impact_df()
+
+    priority_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    claim_rank = {
+        "blocked-provisional": 0,
+        "source-unknown": 1,
+        "review-qualified": 2,
+        "source-ready": 3,
+    }
+    rows: list[dict[str, object]] = []
+    for benchmark_id in case_ids:
+        case_audit = audit[audit["benchmark_id"].astype(str).eq(benchmark_id)]
+        original_issues = [
+            issue
+            for _, audit_row in case_audit.iterrows()
+            if (issue := _source_audit_readiness_issue(audit_row)) is not None
+        ]
+        original_issue = (
+            sorted(original_issues, key=lambda item: (priority_rank.get(item[0], 99), item[1]))[0]
+            if original_issues
+            else None
+        )
+        outcome = decision_by_case.get(benchmark_id)
+        adjusted_issue = _source_audit_decision_readiness_issue(outcome) if outcome is not None else original_issue
+
+        original_priority = original_issue[0] if original_issue else ""
+        original_issue_type = original_issue[1] if original_issue else ""
+        adjusted_priority = adjusted_issue[0] if adjusted_issue else ""
+        adjusted_issue_type = adjusted_issue[1] if adjusted_issue else ""
+        applied_status = _safe_text(outcome.get("applied_status")).lower() if outcome is not None else ""
+
+        if original_issue is None and adjusted_issue is None:
+            readiness_impact = "source-ready"
+            readiness_note = "No source-audit readiness issue for this case."
+        elif outcome is not None and original_issue is not None and adjusted_issue is None:
+            readiness_impact = "cleared-by-decision"
+            readiness_note = "Source-audit case decision closed this case for readiness; keep decision exports with the benchmark report."
+        elif outcome is not None and adjusted_issue is not None and (
+            adjusted_priority != original_priority or adjusted_issue_type != original_issue_type
+        ):
+            readiness_impact = "decision-adjusted-open"
+            readiness_note = "Source-audit case decision changed the readiness issue; resolve the adjusted issue before claims."
+        elif outcome is not None and adjusted_issue is not None:
+            readiness_impact = "decision-open"
+            readiness_note = "Source-audit case decision outcome remains open for readiness."
+        else:
+            readiness_impact = "unchanged-open"
+            readiness_note = "No source-audit case decision has closed this original readiness issue."
+
+        rows.append(
+            {
+                "benchmark_id": benchmark_id,
+                "applied_status": applied_status,
+                "source_decision": _safe_text(outcome.get("source_decision")) if outcome is not None else "",
+                "validation_status": _safe_text(outcome.get("validation_status")) if outcome is not None else "",
+                "original_source_priority": original_priority,
+                "original_source_issue_type": original_issue_type,
+                "adjusted_source_priority": adjusted_priority,
+                "adjusted_source_issue_type": adjusted_issue_type,
+                "readiness_impact": readiness_impact,
+                "reference_rows": int(len(case_audit)) if not case_audit.empty else (_safe_int(outcome.get("reference_rows")) if outcome is not None else 0) or 0,
+                "source_claim_statuses": _ordered_source_values(case_audit["source_claim_status"].tolist(), claim_rank) if "source_claim_status" in case_audit.columns else "",
+                "source_modes": _ordered_source_values(case_audit["source_mode"].tolist()) if "source_mode" in case_audit.columns else "",
+                "outcome_reason": _safe_text(outcome.get("outcome_reason")) if outcome is not None else "",
+                "readiness_note": readiness_note,
+            }
+        )
+
+    impact_rank = {
+        "decision-adjusted-open": 0,
+        "decision-open": 1,
+        "unchanged-open": 2,
+        "cleared-by-decision": 3,
+        "source-ready": 4,
+    }
+    frame = pd.DataFrame(rows, columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_READINESS_IMPACT_COLUMNS)
+    frame["_impact_rank"] = frame["readiness_impact"].map(impact_rank).fillna(9)
+    frame["_priority_rank"] = frame["adjusted_source_priority"].map(priority_rank).fillna(9)
+    frame = frame.sort_values(["_impact_rank", "_priority_rank", "benchmark_id"]).drop(
+        columns=["_impact_rank", "_priority_rank"]
+    ).reset_index(drop=True)
+    return frame[BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_READINESS_IMPACT_COLUMNS]
 
 
 def build_pocket_benchmark_reference_source_audit_case_decision_closure_checklist_markdown(

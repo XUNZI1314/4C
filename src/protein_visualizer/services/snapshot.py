@@ -381,6 +381,19 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         lines.append(
             f"Benchmark reference source audit case decision closure queue: {source_audit_case_decision_closure_queue_rows} rows / blockers {closure_queue_blockers} / review {closure_queue_review} / top {closure_queue_top_status}"
         )
+    source_audit_case_decision_readiness_impact_rows = int(
+        extra.get("pocket_benchmark_reference_source_audit_case_decision_readiness_impact_rows") or 0
+    )
+    if source_audit_case_decision_readiness_impact_rows > 0:
+        impact_cleared = int(
+            extra.get("pocket_benchmark_reference_source_audit_case_decision_readiness_impact_cleared_rows") or 0
+        )
+        impact_open = int(
+            extra.get("pocket_benchmark_reference_source_audit_case_decision_readiness_impact_open_rows") or 0
+        )
+        lines.append(
+            f"Benchmark reference source audit case decision readiness impact: {source_audit_case_decision_readiness_impact_rows} rows / cleared {impact_cleared} / open {impact_open}"
+        )
     if bool(extra.get("pocket_benchmark_reference_source_audit_case_decision_closure_checklist_available")):
         lines.append("Benchmark reference source audit case decision closure checklist: available")
     source_audit_case_decision_outcome_rows = int(
