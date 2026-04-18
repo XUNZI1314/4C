@@ -73,6 +73,9 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
             "pocket_benchmark_reference_source_audit_summary_rows": 1,
             "pocket_benchmark_reference_source_audit_summary_status": "blocked-provisional",
             "pocket_benchmark_reference_source_audit_summary_independent_claim_status": "no",
+            "pocket_benchmark_reference_source_audit_action_queue_rows": 3,
+            "pocket_benchmark_reference_source_audit_action_queue_blocker_rows": 3,
+            "pocket_benchmark_reference_source_audit_action_queue_review_rows": 0,
             "pocket_benchmark_reference_source_audit_checklist_available": True,
             "pocket_benchmark_reference_source_claim_status": "blocked-provisional",
             "pocket_benchmark_reference_source_independent_claim_status": "no",
@@ -155,6 +158,7 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
     assert any("Benchmark reference source: provisional-external-evidence / provisional yes / reviewed candidate no" in line for line in summary_lines)
     assert any("Benchmark reference source audit: 3 rows / claim status blocked-provisional / independent claim no" in line for line in summary_lines)
     assert any("Benchmark reference source audit summary: 1 rows / top status blocked-provisional / independent claim no" in line for line in summary_lines)
+    assert any("Benchmark reference source audit action queue: 3 rows / blockers 3 / review 0" in line for line in summary_lines)
     assert any("Benchmark reference source audit checklist: available" in line for line in summary_lines)
     assert any("Benchmark reference candidate review: 4 rows / P1 2 / P2 2 / checklist available" in line for line in summary_lines)
     assert any("Benchmark reference candidate review decisions: 4 rows / validation blocked 1 / accepted actions 3 / accepted references 1" in line for line in summary_lines)

@@ -25,6 +25,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_from_external_evidence,
     build_pocket_benchmark_reference_import_summary,
     build_pocket_benchmark_reference_source_audit,
+    build_pocket_benchmark_reference_source_audit_action_queue,
     build_pocket_benchmark_reference_source_audit_checklist_markdown,
     build_pocket_benchmark_reference_source_audit_summary,
     build_pocket_benchmark_reference_readiness_case_summary,
@@ -1100,6 +1101,50 @@ def test_benchmark_reference_source_audit_checklist_marks_risky_rows():
     assert "Reference Row Actions" in checklist
     assert "BRS-001" in checklist
     assert "Curate or accept review decisions" in checklist
+
+
+def test_benchmark_reference_source_audit_action_queue_prioritizes_source_risks():
+    reference_df = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "enzyme-a",
+                "chain": "A",
+                "resid": 195,
+                "resname": "SER",
+                "reference_type": "Catalytic residue",
+                "reference_source": "M-CSA",
+                "reference_note": "",
+                "expected_pocket_id": "",
+            }
+        ]
+    )
+    source_audit = pd.concat(
+        [
+            build_pocket_benchmark_reference_source_audit(reference_df, source_mode="uploaded-curated"),
+            build_pocket_benchmark_reference_source_audit(
+                reference_df,
+                source_mode="accepted-reviewed-candidate",
+                is_reviewed_candidate=True,
+            ),
+            build_pocket_benchmark_reference_source_audit(
+                reference_df,
+                source_mode="provisional-external-evidence",
+                is_provisional=True,
+            ),
+        ],
+        ignore_index=True,
+    )
+
+    queue = build_pocket_benchmark_reference_source_audit_action_queue(source_audit)
+
+    assert queue["action_id"].tolist() == ["BRSA-001", "BRSA-002"]
+    assert queue["issue_type"].tolist() == [
+        "provisional_reference_source",
+        "review_qualified_reference_source",
+    ]
+    assert queue["priority"].tolist() == ["P0", "P2"]
+    assert queue["action_status"].tolist() == ["blocker", "review"]
+    assert queue["residue_label"].tolist() == ["SER A195", "SER A195"]
 
 
 def test_benchmark_reference_readiness_uses_source_audit_as_gate():

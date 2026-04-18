@@ -119,6 +119,20 @@ BENCHMARK_REFERENCE_SOURCE_AUDIT_SUMMARY_COLUMNS = [
     "summary_warning",
 ]
 
+BENCHMARK_REFERENCE_SOURCE_AUDIT_ACTION_QUEUE_COLUMNS = [
+    "action_id",
+    "priority",
+    "action_status",
+    "issue_type",
+    "source_mode",
+    "source_claim_status",
+    "can_support_independent_claim",
+    *BENCHMARK_REFERENCE_COLUMNS,
+    "residue_label",
+    "suggested_action",
+    "action_warning",
+]
+
 BENCHMARK_DETAIL_COLUMNS = [
     *BENCHMARK_REFERENCE_COLUMNS,
     "residue_label",
@@ -580,6 +594,10 @@ def _empty_reference_source_audit_df() -> pd.DataFrame:
 
 def _empty_reference_source_audit_summary_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_SUMMARY_COLUMNS)
+
+
+def _empty_reference_source_audit_action_queue_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_ACTION_QUEUE_COLUMNS)
 
 
 def _empty_detail_df() -> pd.DataFrame:
@@ -1989,6 +2007,56 @@ def build_pocket_benchmark_reference_source_audit_checklist_markdown(
         )
 
     return "\n".join(lines).strip() + "\n"
+
+
+def build_pocket_benchmark_reference_source_audit_action_queue(
+    source_audit_df: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    """Build a source-only remediation queue from benchmark reference source audit rows."""
+
+    if source_audit_df is None or getattr(source_audit_df, "empty", True):
+        return _empty_reference_source_audit_action_queue_df()
+    audit = source_audit_df.copy()
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_COLUMNS:
+        if column not in audit.columns:
+            audit[column] = ""
+
+    rows: list[dict[str, object]] = []
+    for _, audit_row in audit.iterrows():
+        issue = _source_audit_readiness_issue(audit_row)
+        if issue is None:
+            continue
+        priority, issue_type, fallback_action, fallback_warning = issue
+        chain = _safe_text(audit_row.get("chain"))
+        resid = _safe_int(audit_row.get("resid")) or 0
+        resname = _safe_text(audit_row.get("resname")).upper()
+        rows.append(
+            {
+                "action_id": "",
+                "priority": priority,
+                "action_status": "blocker" if priority in {"P0", "P1"} else "review",
+                "issue_type": issue_type,
+                "source_mode": _safe_text(audit_row.get("source_mode")),
+                "source_claim_status": _safe_text(audit_row.get("source_claim_status")),
+                "can_support_independent_claim": _safe_text(audit_row.get("can_support_independent_claim")),
+                **{column: audit_row.get(column, "") for column in BENCHMARK_REFERENCE_COLUMNS},
+                "residue_label": _residue_label(chain, resid, resname) if resid else "",
+                "suggested_action": _safe_text(audit_row.get("recommended_action")) or fallback_action,
+                "action_warning": _safe_text(audit_row.get("provenance_warning")) or fallback_warning,
+            }
+        )
+
+    if not rows:
+        return _empty_reference_source_audit_action_queue_df()
+    priority_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    frame = pd.DataFrame(rows, columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_ACTION_QUEUE_COLUMNS)
+    frame["_priority_rank"] = frame["priority"].map(priority_rank).fillna(9)
+    frame = frame.sort_values(
+        ["_priority_rank", "source_claim_status", "benchmark_id", "chain", "resid"],
+        ascending=[True, True, True, True, True],
+    ).drop(columns=["_priority_rank"]).reset_index(drop=True)
+    frame["action_id"] = [f"BRSA-{index + 1:03d}" for index in range(len(frame))]
+    return frame[BENCHMARK_REFERENCE_SOURCE_AUDIT_ACTION_QUEUE_COLUMNS]
 
 
 def _normalize_pocket_rows(pocket_df: Optional[pd.DataFrame]) -> pd.DataFrame:

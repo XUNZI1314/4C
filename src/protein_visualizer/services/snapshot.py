@@ -323,6 +323,13 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         lines.append(
             f"Benchmark reference source audit summary: {benchmark_reference_source_audit_summary_rows} rows / top status {source_summary_status or '-'} / independent claim {source_summary_independent_status or '-'}"
         )
+    source_audit_action_rows = int(extra.get("pocket_benchmark_reference_source_audit_action_queue_rows") or 0)
+    if source_audit_action_rows > 0:
+        source_audit_blockers = int(extra.get("pocket_benchmark_reference_source_audit_action_queue_blocker_rows") or 0)
+        source_audit_review = int(extra.get("pocket_benchmark_reference_source_audit_action_queue_review_rows") or 0)
+        lines.append(
+            f"Benchmark reference source audit action queue: {source_audit_action_rows} rows / blockers {source_audit_blockers} / review {source_audit_review}"
+        )
     if bool(extra.get("pocket_benchmark_reference_source_audit_checklist_available")):
         lines.append("Benchmark reference source audit checklist: available")
     benchmark_reference_candidate_review_rows = int(extra.get("pocket_benchmark_reference_candidate_review_rows") or 0)
