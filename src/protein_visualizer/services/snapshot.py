@@ -563,8 +563,13 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
             if bool(extra.get("pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_checklist_available"))
             else "not available"
         )
+        report_status = (
+            "available"
+            if bool(extra.get("pocket_benchmark_reference_source_audit_case_decision_dataset_impact_report_available"))
+            else "not available"
+        )
         lines.append(
-            f"Benchmark source-audit decision dataset impact cases: {source_dataset_impact_case_rows} rows / blockers {blocker_rows} / review {review_rows} / mismatch {mismatch_rows} / checklist {checklist_status}"
+            f"Benchmark source-audit decision dataset impact cases: {source_dataset_impact_case_rows} rows / blockers {blocker_rows} / review {review_rows} / mismatch {mismatch_rows} / checklist {checklist_status} / report {report_status}"
         )
     benchmark_dataset_interpretation_queue_rows = int(extra.get("pocket_benchmark_dataset_interpretation_queue_rows") or 0)
     if benchmark_dataset_interpretation_queue_rows > 0:

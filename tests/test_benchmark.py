@@ -34,6 +34,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact,
     build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_checklist_markdown,
     build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_cases,
+    build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_report_markdown,
     build_pocket_benchmark_reference_source_audit_case_decision_readiness_impact,
     build_pocket_benchmark_reference_source_audit_case_decision_readiness_impact_summary,
     build_pocket_benchmark_reference_source_audit_case_decision_template,
@@ -1948,6 +1949,76 @@ def test_benchmark_reference_source_audit_case_decision_dataset_impact_case_chec
     assert "Top-1 case `enzyme-a` `source-blocked` coverage `0.400` claim `blocked` adjusted `P0` `blocked-source-decision`: Resolve source blocker." in checklist
     assert "Top-1 case `enzyme-b` `source-gate-mismatch` mismatch coverage `0.600` claim `claim-ready` adjusted `P2` `pending-source-decision`: Regenerate readiness interpretation." in checklist
     assert "enzyme-c" not in checklist
+
+
+def test_benchmark_reference_source_audit_case_decision_dataset_impact_report_summarizes_gate():
+    dataset_impact = pd.DataFrame(
+        [
+            {
+                "top_n": 1,
+                "case_count": 3,
+                "source_open_case_count": 2,
+                "source_blocker_case_count": 1,
+                "source_review_case_count": 1,
+                "source_gate_mismatch_case_count": 1,
+                "mean_source_open_coverage": 0.5,
+                "mean_source_cleared_coverage": 1.0,
+                "dataset_source_impact_status": "source-gate-mismatch",
+            },
+            {
+                "top_n": 3,
+                "case_count": 3,
+                "source_open_case_count": 1,
+                "source_blocker_case_count": 0,
+                "source_review_case_count": 1,
+                "source_gate_mismatch_case_count": 0,
+                "mean_source_open_coverage": 0.8,
+                "mean_source_cleared_coverage": 1.0,
+                "dataset_source_impact_status": "source-review-needed",
+            },
+        ]
+    )
+    detail = pd.DataFrame(
+        [
+            {
+                "impact_case_id": "BRSDIC-001",
+                "top_n": 1,
+                "benchmark_id": "enzyme-b",
+                "claim_status": "claim-ready",
+                "coverage_ratio": 0.6,
+                "adjusted_source_priority": "P2",
+                "source_impact_status": "source-gate-mismatch",
+                "source_action_status": "blocker",
+                "source_gate_mismatch": True,
+                "recommended_action": "Regenerate readiness interpretation.",
+            },
+            {
+                "impact_case_id": "BRSDIC-002",
+                "top_n": 3,
+                "benchmark_id": "enzyme-c",
+                "claim_status": "review-needed",
+                "coverage_ratio": 0.8,
+                "adjusted_source_priority": "P2",
+                "source_impact_status": "source-review-needed",
+                "source_action_status": "review",
+                "source_gate_mismatch": False,
+                "recommended_action": "Complete source review.",
+            },
+        ]
+    )
+
+    report = build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_report_markdown(
+        dataset_impact,
+        detail,
+        checklist_available=True,
+    )
+
+    assert report.startswith("# Benchmark source-audit decision dataset impact report")
+    assert "Dataset source-impact status: `source-gate-mismatch`." in report
+    assert "Checklist: available." in report
+    assert "| 1 | source-gate-mismatch | 3 | 2 | 1 | 1 | 1 | 0.500 | 1.000 |" in report
+    assert "| blocker | 1 | enzyme-b | source-gate-mismatch mismatch | claim-ready | 0.600 | P2 | Regenerate readiness interpretation. |" in report
+    assert "| review | 3 | enzyme-c | source-review-needed | review-needed | 0.800 | P2 | Complete source review. |" in report
 
 
 def test_build_pocket_benchmark_summary_reports_top1_and_top3_coverage():
