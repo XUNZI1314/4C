@@ -459,8 +459,8 @@ def test_snapshot_summary_lines_include_pocket_reliability_audit():
 
     summary_lines = snapshot_to_summary_lines(snapshot)
 
-    assert any("Top active-site decision: Review mapping before validation" in line for line in summary_lines)
-    assert any("Top pocket precision tier: mapping-review" in line for line in summary_lines)
+    assert any("Top 活性位点决策: 验证前复核映射 / 评分 0.512 / 审计 映射需复核" in line for line in summary_lines)
+    assert any("Top 口袋精度分层: 映射需复核 / 动作 验证前复核链、编号和映射。" in line for line in summary_lines)
     assert any("AI 证据: 2 行 / 状态 正常" in line for line in summary_lines)
     assert any("AI 排名可用证据: 1 行" in line for line in summary_lines)
     assert any("AI 复核决策: 1 行 / 已应用 1 / 状态 正常" in line for line in summary_lines)
@@ -509,5 +509,13 @@ def test_snapshot_summary_lines_include_pocket_reliability_audit():
     assert any("Consensus rerank release closure certificate: available" in line for line in summary_lines)
     assert any("Consensus rerank release closure ledger: 7 rows / blocked 0" in line for line in summary_lines)
     assert any("Consensus rerank release closure readiness: closed-and-verified / closed yes" in line for line in summary_lines)
-    assert any("Pocket reliability checks: pass 2, review 1, missing 1" in line for line in summary_lines)
-    assert any("Evidence mapping risk: review" in line for line in summary_lines)
+    assert any("口袋可靠性检查: 通过 2, 复核 1, 缺失 1" in line for line in summary_lines)
+    assert any("证据映射风险: 复核" in line for line in summary_lines)
+    joined_summary = "\n".join(summary_lines)
+    for forbidden_label in [
+        "Top active-site decision:",
+        "Top pocket precision tier:",
+        "Pocket reliability checks:",
+        "Top pocket reliability gaps:",
+    ]:
+        assert forbidden_label not in joined_summary

@@ -612,6 +612,14 @@ REPORT_VALUE_REPLACEMENTS = [
     ("empty-input", "输入为空"),
     ("not-uploaded", "未上传"),
     ("source-ready", "来源就绪"),
+    ("top-pocket-supported", "Top 口袋受支持"),
+    ("missing-citation-or-snippet", "缺少引用或证据片段"),
+    ("Review mapping before validation", "验证前需要复核映射"),
+    ("Review chain/numbering/mapping before validation.", "验证前检查链、编号和映射。"),
+    ("mapping-review-needed", "映射需要复核"),
+    ("mapping-review", "映射复核"),
+    ("Evidence mapping risk", "证据映射风险"),
+    ("Actionability", "可行动性"),
     ("needs-review", "需复核"),
     ("unsupported", "无支持"),
     ("conflicting", "冲突"),
@@ -6205,7 +6213,7 @@ with tab_export:
         f"AI review bundle certificate: {'available' if ai_review_bundle_certificate_markdown else 'not available'}",
         f"AI review decision outcomes: {len(ai_review_decision_outcome_df)} rows",
         f"AI review decision template: {len(ai_review_decision_template_df)} rows",
-        f"AI influence: {ai_ranking_impact_df.iloc[0].get('ai_influence_level') if not ai_ranking_impact_df.empty else '-'} / Top pocket AI residues {ai_ranking_impact_df.iloc[0].get('top_pocket_ai_residues') if not ai_ranking_impact_df.empty else '-'}",
+        f"AI 影响: {_localize_status_text(ai_ranking_impact_df.iloc[0].get('ai_influence_level') if not ai_ranking_impact_df.empty else '-')} / Top 口袋 AI 残基 {ai_ranking_impact_df.iloc[0].get('top_pocket_ai_residues') if not ai_ranking_impact_df.empty else '-'}",
         f"AI review queue: {len(ai_evidence_review_queue_df)} rows / top fix {ai_evidence_review_queue_df.iloc[0].get('fix_type') if not ai_evidence_review_queue_df.empty else '-'}",
         f"AI follow-up plan: {len(ai_followup_plan_df)} rows",
         "AI evidence audit: "
@@ -6229,13 +6237,13 @@ with tab_export:
         reliability_missing_count = int((pocket_reliability_df["status"].astype(str) == "missing").sum()) if not pocket_reliability_df.empty and "status" in pocket_reliability_df.columns else 0
         report_lines.extend(
             [
-                f"Top active-site decision: {top_pocket_decision.get('pocket_id')} / {top_pocket_decision.get('decision_label')}",
-                f"Top decision score: {top_pocket_decision.get('decision_score')} / audit {top_pocket_decision.get('audit_status')}",
-                f"Precision tier: {top_pocket_triage.get('precision_tier') if top_pocket_triage is not None else '-'}",
-                f"Triage action: {top_pocket_triage.get('triage_action') if top_pocket_triage is not None else '-'}",
-                f"Reliability checks: pass {reliability_pass_count}, review {reliability_review_count}, missing {reliability_missing_count}",
-                f"Reliability gaps: {top_reliability_gaps or 'none'}",
-                f"Next step: {top_pocket_decision.get('next_step')}",
+                f"Top 活性位点决策: {top_pocket_decision.get('pocket_id')} / {_localize_pocket_decision_text(top_pocket_decision.get('decision_label'))}",
+                f"Top 决策评分: {top_pocket_decision.get('decision_score')} / 审计 {_localize_pocket_decision_text(top_pocket_decision.get('audit_status'))}",
+                f"精度分层: {_localize_pocket_decision_text(top_pocket_triage.get('precision_tier') if top_pocket_triage is not None else '-')}",
+                f"分诊动作: {_localize_pocket_decision_text(top_pocket_triage.get('triage_action') if top_pocket_triage is not None else '-')}",
+                f"可靠性检查: 通过 {reliability_pass_count}, 复核 {reliability_review_count}, 缺失 {reliability_missing_count}",
+                f"可靠性缺口: {_localize_pocket_decision_text(top_reliability_gaps or 'none')}",
+                f"下一步: {_localize_pocket_decision_text(top_pocket_decision.get('next_step'))}",
             ]
         )
     report_lines = [_localize_report_line(line) for line in report_lines]

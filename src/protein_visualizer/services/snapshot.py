@@ -167,13 +167,31 @@ SNAPSHOT_VALUE_LABELS = {
     "promoted": "提升",
     "removed": "移除",
     "review": "复核",
+    "pass": "通过",
+    "missing": "缺失",
     "supported": "已支持",
     "verified": "已校验",
     "available": "可用",
     "none": "无",
     "top-pocket-supported": "Top 口袋受支持",
     "missing-citation-or-snippet": "缺少引用或证据片段",
+    "Review mapping before validation": "验证前复核映射",
+    "mapping-review-needed": "映射需复核",
+    "mapping-review": "映射需复核",
+    "Review chain/numbering/mapping before validation.": "验证前复核链、编号和映射。",
 }
+
+
+SNAPSHOT_TEXT_REPLACEMENTS = [
+    ("Functional anchors", "功能锚点"),
+    ("Evidence mapping risk", "证据映射风险"),
+    ("Geometry consensus", "几何共识"),
+    ("Evidence A/B movement", "证据 A/B 变化"),
+    ("Actionability", "可操作性"),
+    (": pass", ": 通过"),
+    (": review", ": 复核"),
+    (": missing", ": 缺失"),
+]
 
 
 def _snapshot_value_label(value: Any, *, default: str = "-") -> str:
@@ -181,6 +199,13 @@ def _snapshot_value_label(value: Any, *, default: str = "-") -> str:
     if not text:
         return default
     return SNAPSHOT_VALUE_LABELS.get(text, text)
+
+
+def _snapshot_text_label(value: Any, *, default: str = "-") -> str:
+    text = _snapshot_value_label(value, default=default)
+    for source, target in SNAPSHOT_TEXT_REPLACEMENTS:
+        text = text.replace(source, target)
+    return text
 
 
 def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
@@ -850,21 +875,21 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
     audit_status = str(extra.get("top_pocket_audit_status") or "").strip()
     if decision_label or audit_status:
         lines.append(
-            f"Top active-site decision: {decision_label or '-'} / score {format_energy_value(decision_score)} / audit {audit_status or '-'}"
+            f"Top 活性位点决策: {_snapshot_text_label(decision_label)} / 评分 {format_energy_value(decision_score)} / 审计 {_snapshot_text_label(audit_status)}"
         )
     precision_tier = str(extra.get("top_pocket_precision_tier") or "").strip()
     triage_action = str(extra.get("top_pocket_triage_action") or "").strip()
     if precision_tier or triage_action:
-        lines.append(f"Top pocket precision tier: {precision_tier or '-'} / action {triage_action or '-'}")
+        lines.append(f"Top 口袋精度分层: {_snapshot_text_label(precision_tier)} / 动作 {_snapshot_text_label(triage_action)}")
     reliability_counts = _reliability_status_counts(extra)
     if any(reliability_counts.values()):
         lines.append(
-            "Pocket reliability checks: "
-            f"pass {reliability_counts['pass']}, review {reliability_counts['review']}, missing {reliability_counts['missing']}"
+            "口袋可靠性检查: "
+            f"通过 {reliability_counts['pass']}, 复核 {reliability_counts['review']}, 缺失 {reliability_counts['missing']}"
         )
     reliability_gaps = str(extra.get("top_pocket_reliability_gaps") or "").strip()
     if reliability_gaps:
-        lines.append(f"Top pocket reliability gaps: {reliability_gaps}")
+        lines.append(f"Top 口袋可靠性缺口: {_snapshot_text_label(reliability_gaps)}")
     return lines
 
 

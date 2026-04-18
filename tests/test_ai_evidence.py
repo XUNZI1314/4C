@@ -1267,15 +1267,28 @@ def test_build_ai_followup_prompt_bundle_exports_copyable_markdown():
 
     markdown = build_ai_followup_prompt_bundle(plan)
 
-    assert markdown.startswith("# AI follow-up evidence plan")
-    assert "## 1. Pocket-1 - Functional anchors" in markdown
+    assert markdown.startswith("# AI 后续取证计划")
+    assert "## 1. Pocket-1 - 功能锚点" in markdown
+    assert "- 精度分层: 证据缺口" in markdown
+    assert "- 检索式: `Example enzyme active site catalytic residue`" in markdown
+    assert "- 重要性: 缺少功能锚点。" in markdown
+    assert "- 接受标准: 需要 PMID/DOI/标题，并且 AI 审计状态为已支持或结构已验证。" in markdown
     assert "`Example enzyme active site catalytic residue`" in markdown
-    assert "### Source links" in markdown
+    assert "### 来源链接" in markdown
     assert "PubMed: https://pubmed.ncbi.nlm.nih.gov/" in markdown
     assert "UniProt: https://www.uniprot.org/uniprotkb/P00001/entry" in markdown
     assert "```text" in markdown
     assert "Do not infer residues" in markdown
-    assert "supported or structure-verified" in markdown
+    for forbidden_label in [
+        "AI follow-up evidence plan",
+        "Functional anchors are missing.",
+        "Precision tier",
+        "Search query",
+        "Why this matters",
+        "Acceptance criteria",
+        "Source links",
+    ]:
+        assert forbidden_label not in markdown
 
 
 def test_build_ai_ranking_impact_summary_detects_top_pocket_ai_support():

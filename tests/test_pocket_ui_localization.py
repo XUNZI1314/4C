@@ -99,8 +99,41 @@ def test_pocket_page_keeps_display_localization_hooks_enabled():
         'st.subheader("区域类型计数对比")',
         "排名变化值为正",
         "基准案例",
+        'f"AI 影响:',
+        'f"Top 活性位点决策:',
+        'f"可靠性检查: 通过',
     ]
 
+    for snippet in required_snippets:
+        assert snippet in source
+
+
+def test_pocket_page_report_text_is_built_with_localized_precision_labels():
+    source = _page_source()
+
+    forbidden_snippets = [
+        'f"AI influence:',
+        'f"Top active-site decision:',
+        'f"Top decision score:',
+        'f"Precision tier:',
+        'f"Triage action:',
+        'f"Reliability checks:',
+        'f"Reliability gaps:',
+        'f"Next step:',
+    ]
+    required_snippets = [
+        'f"AI 影响:',
+        'f"Top 活性位点决策:',
+        'f"Top 决策评分:',
+        'f"精度分层:',
+        'f"分诊动作:',
+        'f"可靠性检查: 通过',
+        'f"可靠性缺口:',
+        'f"下一步:',
+    ]
+
+    for snippet in forbidden_snippets:
+        assert snippet not in source
     for snippet in required_snippets:
         assert snippet in source
 

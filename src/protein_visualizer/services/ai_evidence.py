@@ -746,6 +746,54 @@ def _acceptance_for_gap(gap: str) -> str:
     return base
 
 
+AI_FOLLOWUP_TEXT_REPLACEMENTS = [
+    ("Functional anchors are missing.", "缺少功能锚点。"),
+    ("Functional anchors", "功能锚点"),
+    ("Evidence mapping risk", "证据映射风险"),
+    ("Geometry consensus", "几何共识"),
+    ("Evidence A/B movement", "证据 A/B 变化"),
+    ("Actionability", "可操作性"),
+    ("Cross-source validation", "跨来源验证"),
+    ("validation-ready", "可验证"),
+    ("evidence-gap", "证据缺口"),
+    ("mapping-review", "映射复核"),
+    ("geometry-review", "几何复核"),
+    ("evidence-review", "证据复核"),
+    ("exploratory", "探索性"),
+    (
+        "Require PMID/DOI/title, evidence_snippet, residue identity, confidence >= 0.65, and AI audit status supported or structure-verified.",
+        "需要 PMID/DOI/标题、证据片段、残基身份、confidence >= 0.65，且 AI 审计状态为已支持或结构已验证。",
+    ),
+    (
+        "Require PMID/DOI/title and AI audit status supported or structure-verified.",
+        "需要 PMID/DOI/标题，并且 AI 审计状态为已支持或结构已验证。",
+    ),
+    (
+        "Also require chain/residue-numbering notes and PDB residue identity verification before ranking.",
+        "排名前还需要链/残基编号说明和 PDB 残基身份核验。",
+    ),
+    (
+        "Prefer catalytic, binding, metal/cofactor, or activity-loss mutagenesis evidence over generic sequence mentions.",
+        "优先采用催化、结合、金属/辅因子或活性损失突变证据，而不是泛泛的序列提及。",
+    ),
+    (
+        "Use geometry evidence only as supporting context; do not promote without residue-level functional evidence.",
+        "几何证据只能作为支持上下文；没有残基层功能证据时不要提升排名。",
+    ),
+    (
+        "Resolve this evidence gap before treating the pocket as a high-confidence enzyme active site.",
+        "先补齐该证据缺口，再把口袋视为高置信度酶活性位点。",
+    ),
+]
+
+
+def _localize_ai_followup_text(value: Any, default: str = "-") -> str:
+    text = _safe_text(value, default)
+    for source, target in AI_FOLLOWUP_TEXT_REPLACEMENTS:
+        text = text.replace(source, target)
+    return text
+
+
 def build_ai_followup_evidence_plan(
     decision_df: Optional[pd.DataFrame],
     reliability_df: Optional[pd.DataFrame],
@@ -828,17 +876,17 @@ def build_ai_followup_evidence_plan(
 def build_ai_followup_prompt_bundle(
     followup_plan_df: Optional[pd.DataFrame],
     *,
-    title: str = "AI follow-up evidence plan",
+    title: str = "AI 后续取证计划",
 ) -> str:
     header = [
         f"# {title}",
         "",
-        "Use retrieved source text only. Do not let the model fill missing residues from memory.",
-        "Accept AI residue evidence only after source citation, snippet, structure mapping, AI audit, and ranking gate checks pass.",
+        "只使用检索到的来源文本，不允许模型凭记忆补全缺失残基。",
+        "只有来源引用、证据片段、结构映射、AI 审计和排名门控全部通过后，才接受 AI 残基证据。",
         "",
     ]
     if followup_plan_df is None or getattr(followup_plan_df, "empty", True):
-        return "\n".join(header + ["No follow-up evidence gaps are available."])
+        return "\n".join(header + ["暂无需要后续取证的证据缺口。"])
 
     lines = list(header)
     table = followup_plan_df.copy()
@@ -846,15 +894,15 @@ def build_ai_followup_prompt_bundle(
         table = table.sort_values(["followup_priority", "pocket_id"], ascending=[True, True])
     for index, row in enumerate(table.itertuples(index=False), start=1):
         pocket_id = _safe_text(getattr(row, "pocket_id", ""), "-")
-        evidence_gap = _safe_text(getattr(row, "evidence_gap", ""), "-")
-        precision_tier = _safe_text(getattr(row, "precision_tier", ""), "-")
+        evidence_gap = _localize_ai_followup_text(getattr(row, "evidence_gap", ""), "-")
+        precision_tier = _localize_ai_followup_text(getattr(row, "precision_tier", ""), "-")
         search_query = _safe_text(getattr(row, "search_query", ""), "-")
         pubmed_url = _safe_text(getattr(row, "pubmed_url", ""))
         europepmc_url = _safe_text(getattr(row, "europepmc_url", ""))
         uniprot_url = _safe_text(getattr(row, "uniprot_url", ""))
         rcsb_url = _safe_text(getattr(row, "rcsb_url", ""))
-        acceptance = _safe_text(getattr(row, "acceptance_criteria", ""), "-")
-        why = _safe_text(getattr(row, "why_this_matters", ""), "-")
+        acceptance = _localize_ai_followup_text(getattr(row, "acceptance_criteria", ""), "-")
+        why = _localize_ai_followup_text(getattr(row, "why_this_matters", ""), "-")
         prompt = _safe_text(getattr(row, "ai_task_prompt", ""), "-")
         link_lines = []
         if pubmed_url:
@@ -869,16 +917,16 @@ def build_ai_followup_prompt_bundle(
             [
                 f"## {index}. {pocket_id} - {evidence_gap}",
                 "",
-                f"- Precision tier: {precision_tier}",
-                f"- Search query: `{search_query}`",
-                f"- Why this matters: {why}",
-                f"- Acceptance criteria: {acceptance}",
+                f"- 精度分层: {precision_tier}",
+                f"- 检索式: `{search_query}`",
+                f"- 重要性: {why}",
+                f"- 接受标准: {acceptance}",
                 "",
-                "### Source links",
+                "### 来源链接",
                 "",
-                *(link_lines or ["- No source links generated."]),
+                *(link_lines or ["- 未生成来源链接。"]),
                 "",
-                "### AI extraction prompt",
+                "### AI 抽取提示词",
                 "",
                 "```text",
                 prompt,
