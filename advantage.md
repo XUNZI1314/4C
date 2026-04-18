@@ -198,7 +198,7 @@ ProteinInsight 不追求找出所有可能 druggable pocket，而是优先定位
 
 ### 1. 缺真实 benchmark
 
-目前已经有 catalytic pocket benchmark 框架，可以上传 curated catalytic residues 并输出 Top-1 / Top-3 / Top-5 coverage、case/dataset summary、best hit rank、missed residues、P2Rank on/off 对照和 current vs ablation variant comparison。但还缺少批量真实数据集，尚未证明不同算法组合在大样本上的命中率提升。
+目前已经有 catalytic pocket benchmark 框架，可以上传 curated catalytic residues 并输出 Top-1 / Top-3 / Top-5 coverage、case/dataset summary、best hit rank、missed residues、P2Rank on/off 对照和 current vs ablation variant comparison。variant comparison 已支持整体、case 和 dataset 三层视图。但还缺少批量真实数据集，尚未证明不同算法组合在大样本上的命中率提升。
 
 建议指标：
 
@@ -216,9 +216,11 @@ ProteinInsight 不追求找出所有可能 druggable pocket，而是优先定位
 - `pocket_benchmark_case_summary.csv`
 - `pocket_benchmark_dataset_summary.csv`
 - `pocket_benchmark_variant_comparison.csv`
+- `pocket_benchmark_variant_case_comparison.csv`
+- `pocket_benchmark_variant_dataset_comparison.csv`
 - `pocket_benchmark_details.csv`
 - `p2rank_ab_comparison.csv`
-- 页面中展示 Top-1 / Top-3 coverage、case-level hit rate、dataset mean coverage、best hit rank，以及 no-p2rank / no-literature / no-evidence-route / no-conservation-rerank 的 coverage loss。
+- 页面中展示 Top-1 / Top-3 coverage、case-level hit rate、dataset mean coverage、best hit rank，以及 no-p2rank / no-literature / no-evidence-route / no-conservation-rerank 在整体、case 和 dataset 层面的 coverage loss。
 
 ### 2. 文献抽取仍偏规则驱动
 

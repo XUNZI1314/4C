@@ -312,6 +312,12 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
     benchmark_variant_rows = int(extra.get("pocket_benchmark_variant_comparison_rows") or 0)
     if benchmark_variant_rows > 0:
         lines.append(f"Catalytic benchmark variants: {benchmark_variant_rows} rows")
+    benchmark_variant_case_rows = int(extra.get("pocket_benchmark_variant_case_comparison_rows") or 0)
+    benchmark_variant_dataset_rows = int(extra.get("pocket_benchmark_variant_dataset_comparison_rows") or 0)
+    if benchmark_variant_case_rows > 0 or benchmark_variant_dataset_rows > 0:
+        lines.append(
+            f"Catalytic benchmark variant cases: {benchmark_variant_case_rows} rows / dataset rows {benchmark_variant_dataset_rows}"
+        )
     consensus_rerank_rows = int(extra.get("consensus_rerank_suggestion_rows") or 0)
     if consensus_rerank_rows > 0:
         rerank_pocket = str(extra.get("top_consensus_rerank_pocket_id") or "-").strip()

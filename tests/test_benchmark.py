@@ -6,6 +6,8 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_details,
     build_pocket_benchmark_summary,
     build_pocket_benchmark_variant_comparison,
+    build_pocket_benchmark_variant_case_comparison,
+    build_pocket_benchmark_variant_dataset_comparison,
     parse_benchmark_reference_table,
 )
 
@@ -138,6 +140,39 @@ enzyme-b,B,5,ASP
     assert str(top1_dataset["benchmark_status"]) == "mixed-hit"
 
 
+def test_benchmark_case_summary_filters_batch_pockets_by_benchmark_id():
+    reference_df, _ = parse_benchmark_reference_table(
+        """case_id,chain,resid,resname
+enzyme-a,A,10,SER
+enzyme-b,A,10,SER
+"""
+    )
+    pocket_df = pd.DataFrame(
+        [
+            {"benchmark_id": "enzyme-a", "pocket_id": "Pocket-1", "chain": "A", "resid": 10, "resname": "SER"},
+            {"benchmark_id": "enzyme-b", "pocket_id": "Pocket-1", "chain": "A", "resid": 99, "resname": "GLY"},
+        ]
+    )
+    pocket_summary = pd.DataFrame(
+        [
+            {"benchmark_id": "enzyme-a", "pocket_id": "Pocket-1", "smart_rank_order": 1, "smart_rank_score": 0.90},
+            {"benchmark_id": "enzyme-b", "pocket_id": "Pocket-1", "smart_rank_order": 1, "smart_rank_score": 0.90},
+        ]
+    )
+
+    case_summary = build_pocket_benchmark_case_summary(
+        reference_df,
+        pocket_df,
+        pocket_summary,
+        top_ns=(1,),
+    )
+
+    enzyme_a = case_summary[case_summary["benchmark_id"] == "enzyme-a"].iloc[0]
+    enzyme_b = case_summary[case_summary["benchmark_id"] == "enzyme-b"].iloc[0]
+    assert float(enzyme_a["coverage_ratio"]) == 1.0
+    assert float(enzyme_b["coverage_ratio"]) == 0.0
+
+
 def test_build_pocket_benchmark_variant_comparison_reports_ablation_loss():
     reference_df, _ = parse_benchmark_reference_table(
         """chain,resid,resname
@@ -184,3 +219,62 @@ A,57,HIS
     assert float(ablated_top1["coverage_ratio"]) == 0.0
     assert float(ablated_top1["coverage_loss_vs_reference"]) == 1.0
     assert float(ablated_top3["coverage_ratio"]) == 1.0
+
+
+def test_variant_case_and_dataset_comparison_report_case_level_loss():
+    reference_df, _ = parse_benchmark_reference_table(
+        """case_id,chain,resid,resname
+enzyme-a,A,10,SER
+enzyme-b,B,5,ASP
+"""
+    )
+    current_pocket_df = pd.DataFrame(
+        [
+            {"benchmark_id": "enzyme-a", "pocket_id": "Pocket-1", "chain": "A", "resid": 10, "resname": "SER"},
+            {"benchmark_id": "enzyme-b", "pocket_id": "Pocket-1", "chain": "B", "resid": 5, "resname": "ASP"},
+        ]
+    )
+    current_summary_df = pd.DataFrame(
+        [
+            {"benchmark_id": "enzyme-a", "pocket_id": "Pocket-1", "smart_rank_order": 1, "smart_rank_score": 0.90},
+            {"benchmark_id": "enzyme-b", "pocket_id": "Pocket-1", "smart_rank_order": 1, "smart_rank_score": 0.90},
+        ]
+    )
+    ablated_pocket_df = pd.DataFrame(
+        [
+            {"benchmark_id": "enzyme-a", "pocket_id": "Pocket-X", "chain": "A", "resid": 99, "resname": "GLY"},
+            {"benchmark_id": "enzyme-b", "pocket_id": "Pocket-1", "chain": "B", "resid": 5, "resname": "ASP"},
+        ]
+    )
+    ablated_summary_df = pd.DataFrame(
+        [
+            {"benchmark_id": "enzyme-a", "pocket_id": "Pocket-X", "smart_rank_order": 1, "smart_rank_score": 0.70},
+            {"benchmark_id": "enzyme-b", "pocket_id": "Pocket-1", "smart_rank_order": 1, "smart_rank_score": 0.90},
+        ]
+    )
+
+    case_comparison = build_pocket_benchmark_variant_case_comparison(
+        reference_df,
+        [
+            ("current", current_pocket_df, current_summary_df),
+            ("no-literature", ablated_pocket_df, ablated_summary_df),
+        ],
+        reference_variant_label="current",
+        top_ns=(1,),
+    )
+    dataset_comparison = build_pocket_benchmark_variant_dataset_comparison(case_comparison)
+
+    enzyme_a_loss = case_comparison[
+        (case_comparison["variant_label"] == "no-literature")
+        & (case_comparison["benchmark_id"] == "enzyme-a")
+        & (case_comparison["top_n"] == 1)
+    ].iloc[0]
+    no_lit_dataset = dataset_comparison[
+        (dataset_comparison["variant_label"] == "no-literature")
+        & (dataset_comparison["top_n"] == 1)
+    ].iloc[0]
+    assert float(enzyme_a_loss["coverage_loss_vs_reference"]) == 1.0
+    assert int(no_lit_dataset["case_count"]) == 2
+    assert float(no_lit_dataset["mean_coverage_ratio"]) == 0.5
+    assert float(no_lit_dataset["mean_coverage_loss_vs_reference"]) == 0.5
+    assert int(no_lit_dataset["case_loss_count"]) == 1

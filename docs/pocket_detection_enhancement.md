@@ -246,6 +246,8 @@ The benchmark exports:
 - `pocket_benchmark_case_summary.csv`
 - `pocket_benchmark_dataset_summary.csv`
 - `pocket_benchmark_variant_comparison.csv`
+- `pocket_benchmark_variant_case_comparison.csv`
+- `pocket_benchmark_variant_dataset_comparison.csv`
 - `pocket_benchmark_details.csv`
 - `p2rank_ab_comparison.csv`
 
@@ -259,12 +261,15 @@ Current summary metrics:
 - Case-level Top-N coverage split by `benchmark_id` / `case_id`.
 - Dataset-level mean/median/min/max coverage, any-hit rate and all-hit rate.
 - Coverage delta / loss for current vs ablated variants.
+- Case-level and dataset-level variant coverage loss.
 
 This gives a concrete accuracy check before claiming that the top-ranked pocket is the active-site pocket.
 
 ### Case and Dataset Summary
 
 If the uploaded reference table includes `benchmark_id`, `case_id`, `enzyme_id`, `pdb_id` or similar columns, benchmark summaries are split by case before aggregation. This avoids over-weighting enzymes with many curated catalytic residues and makes the page closer to a real benchmark dataset workflow.
+
+If pocket residue tables or pocket summary tables also include `benchmark_id` / `case_id`, case summaries filter pocket rows and ranks to the matching case before computing coverage. This prevents different structures with the same residue number from matching each other accidentally.
 
 ### Variant Comparison
 
@@ -276,6 +281,8 @@ When the relevant A/B toggles are enabled, the benchmark also compares current r
 - `no-p2rank`
 
 Positive `coverage_loss_vs_reference` means removing that evidence path reduced catalytic residue coverage compared with the current run. This converts A/B ranking changes into an active-site accuracy metric.
+
+For batch-like reference tables, `pocket_benchmark_variant_case_comparison.csv` pinpoints which cases lose coverage, while `pocket_benchmark_variant_dataset_comparison.csv` reports mean coverage loss, any-hit/all-hit rate deltas and loss/gain case counts per variant.
 
 ## P2Rank Integration
 
@@ -448,7 +455,7 @@ Coverage includes:
 Latest full run:
 
 ```text
-201 passed
+203 passed
 ```
 
 ## Known Limits

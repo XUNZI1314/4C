@@ -95,6 +95,54 @@ BENCHMARK_VARIANT_COMPARISON_COLUMNS = [
     "benchmark_warning",
 ]
 
+BENCHMARK_VARIANT_CASE_COMPARISON_COLUMNS = [
+    "variant_label",
+    "reference_variant_label",
+    "benchmark_id",
+    "top_n",
+    "reference_residue_count",
+    "matched_reference_count",
+    "coverage_ratio",
+    "reference_coverage_ratio",
+    "coverage_delta_vs_reference",
+    "coverage_loss_vs_reference",
+    "best_rank",
+    "reference_best_rank",
+    "best_rank_delta_vs_reference",
+    "best_pocket_id",
+    "top_pocket_id",
+    "top_pocket_hit",
+    "matched_residues",
+    "missed_residues",
+    "benchmark_status",
+    "benchmark_warning",
+]
+
+BENCHMARK_VARIANT_DATASET_COMPARISON_COLUMNS = [
+    "variant_label",
+    "reference_variant_label",
+    "top_n",
+    "case_count",
+    "mean_coverage_ratio",
+    "reference_mean_coverage_ratio",
+    "mean_coverage_delta_vs_reference",
+    "mean_coverage_loss_vs_reference",
+    "any_hit_rate",
+    "reference_any_hit_rate",
+    "any_hit_rate_delta_vs_reference",
+    "all_hit_rate",
+    "reference_all_hit_rate",
+    "all_hit_rate_delta_vs_reference",
+    "mean_best_rank",
+    "reference_mean_best_rank",
+    "mean_best_rank_delta_vs_reference",
+    "case_loss_count",
+    "case_gain_count",
+    "case_unchanged_count",
+    "benchmark_status",
+    "benchmark_warning",
+]
+
 CHAIN_ALIASES = {"chain", "chainid", "chain_id", "authasymid", "auth_asym_id", "asymid", "asym_id"}
 RESID_ALIASES = {
     "resid",
@@ -143,6 +191,14 @@ def _empty_dataset_summary_df() -> pd.DataFrame:
 
 def _empty_variant_comparison_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_VARIANT_COMPARISON_COLUMNS)
+
+
+def _empty_variant_case_comparison_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_VARIANT_CASE_COMPARISON_COLUMNS)
+
+
+def _empty_variant_dataset_comparison_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_VARIANT_DATASET_COMPARISON_COLUMNS)
 
 
 def _simplify_column_name(value: object) -> str:
@@ -304,17 +360,31 @@ def parse_benchmark_reference_table(text: str, *, source_hint: str = "Curated be
 
 def _normalize_pocket_rows(pocket_df: Optional[pd.DataFrame]) -> pd.DataFrame:
     if pocket_df is None or getattr(pocket_df, "empty", True) or "pocket_id" not in pocket_df.columns or "resid" not in pocket_df.columns:
-        return pd.DataFrame(columns=["pocket_id", "chain", "resid", "resname"])
+        return pd.DataFrame(columns=["benchmark_id", "pocket_id", "chain", "resid", "resname"])
     working = pocket_df.copy()
+    benchmark_id_column = _find_column(working, BENCHMARK_ID_ALIASES)
     working["resid"] = pd.to_numeric(working["resid"], errors="coerce")
     working = working[working["resid"].notna()].copy()
     if working.empty:
-        return pd.DataFrame(columns=["pocket_id", "chain", "resid", "resname"])
+        return pd.DataFrame(columns=["benchmark_id", "pocket_id", "chain", "resid", "resname"])
+    working["benchmark_id"] = working[benchmark_id_column].astype(str).str.strip() if benchmark_id_column else ""
     working["pocket_id"] = working["pocket_id"].astype(str).str.strip()
     working["chain"] = working["chain"].astype(str).str.strip() if "chain" in working.columns else ""
     working["resname"] = working["resname"].astype(str).str.strip().str.upper() if "resname" in working.columns else ""
     working["resid"] = working["resid"].astype(int)
-    return working[["pocket_id", "chain", "resid", "resname"]].drop_duplicates().reset_index(drop=True)
+    return working[["benchmark_id", "pocket_id", "chain", "resid", "resname"]].drop_duplicates().reset_index(drop=True)
+
+
+def _filter_rows_for_benchmark_id(frame: Optional[pd.DataFrame], benchmark_id: str) -> Optional[pd.DataFrame]:
+    if frame is None or getattr(frame, "empty", True):
+        return frame
+    benchmark_id_column = _find_column(frame, BENCHMARK_ID_ALIASES)
+    if not benchmark_id_column:
+        return frame
+    working = frame.copy()
+    expected = str(benchmark_id or "").strip()
+    values = working[benchmark_id_column].astype(str).str.strip()
+    return working[values.eq(expected) | values.eq("")].reset_index(drop=True)
 
 
 def _ranked_pocket_ids(pocket_df: pd.DataFrame, pocket_summary_df: Optional[pd.DataFrame]) -> list[str]:
@@ -370,6 +440,10 @@ def _reference_rows(reference_df: Optional[pd.DataFrame]) -> pd.DataFrame:
 
 
 def _matches_reference(pocket_row: pd.Series, reference_row: pd.Series) -> bool:
+    ref_benchmark_id = str(reference_row.get("benchmark_id") or "").strip()
+    pocket_benchmark_id = str(pocket_row.get("benchmark_id") or "").strip()
+    if ref_benchmark_id and pocket_benchmark_id and ref_benchmark_id != pocket_benchmark_id:
+        return False
     if int(pocket_row.get("resid")) != int(reference_row.get("resid")):
         return False
     ref_chain = str(reference_row.get("chain") or "").strip()
@@ -536,10 +610,12 @@ def build_pocket_benchmark_case_summary(
 
     rows: list[dict[str, object]] = []
     for benchmark_id, case_reference_df in working.groupby("benchmark_id", sort=True, dropna=False):
+        case_pocket_df = _filter_rows_for_benchmark_id(pocket_df, str(benchmark_id or fallback_id))
+        case_pocket_summary_df = _filter_rows_for_benchmark_id(pocket_summary_df, str(benchmark_id or fallback_id))
         summary = build_pocket_benchmark_summary(
             case_reference_df,
-            pocket_df,
-            pocket_summary_df,
+            case_pocket_df,
+            case_pocket_summary_df,
             top_ns=top_ns,
         )
         for row in summary.to_dict(orient="records"):
@@ -711,3 +787,177 @@ def build_pocket_benchmark_variant_comparison(
     if not rows:
         return _empty_variant_comparison_df()
     return pd.DataFrame(rows, columns=BENCHMARK_VARIANT_COMPARISON_COLUMNS)
+
+
+def build_pocket_benchmark_variant_case_comparison(
+    reference_df: Optional[pd.DataFrame],
+    variants: Sequence[tuple[str, Optional[pd.DataFrame], Optional[pd.DataFrame]]],
+    *,
+    reference_variant_label: str = "current",
+    top_ns: Sequence[int] = (1, 3),
+    default_benchmark_id: str = "current",
+) -> pd.DataFrame:
+    """Compare variant coverage per benchmark case."""
+
+    references = _reference_rows(reference_df)
+    if references.empty or not variants:
+        return _empty_variant_case_comparison_df()
+
+    case_summaries: dict[str, pd.DataFrame] = {}
+    labels: list[str] = []
+    for label, pocket_df, pocket_summary_df in variants:
+        cleaned_label = str(label or "").strip()
+        if not cleaned_label or cleaned_label in case_summaries:
+            continue
+        summary = build_pocket_benchmark_case_summary(
+            references,
+            pocket_df,
+            pocket_summary_df,
+            top_ns=top_ns,
+            default_benchmark_id=default_benchmark_id,
+        )
+        if summary.empty:
+            continue
+        case_summaries[cleaned_label] = summary
+        labels.append(cleaned_label)
+
+    if not case_summaries:
+        return _empty_variant_case_comparison_df()
+
+    reference_label = str(reference_variant_label or "").strip()
+    if reference_label not in case_summaries:
+        reference_label = labels[0]
+    reference_summary = case_summaries[reference_label].copy()
+    reference_by_case_top_n = {
+        (str(row.benchmark_id), int(row.top_n)): row
+        for row in reference_summary.itertuples(index=False)
+        if pd.notna(getattr(row, "top_n", None))
+    }
+
+    rows: list[dict[str, object]] = []
+    for label in labels:
+        summary = case_summaries[label]
+        for row in summary.itertuples(index=False):
+            benchmark_id = str(getattr(row, "benchmark_id", "") or "")
+            top_n = int(getattr(row, "top_n"))
+            reference_row = reference_by_case_top_n.get((benchmark_id, top_n))
+            reference_coverage = float(getattr(reference_row, "coverage_ratio", 0.0)) if reference_row is not None else 0.0
+            coverage = float(getattr(row, "coverage_ratio", 0.0))
+            reference_best_rank = int(getattr(reference_row, "best_rank", 0) or 0) if reference_row is not None else 0
+            best_rank = int(getattr(row, "best_rank", 0) or 0)
+            rank_delta = int(best_rank - reference_best_rank) if best_rank > 0 and reference_best_rank > 0 else 0
+            rows.append(
+                {
+                    "variant_label": label,
+                    "reference_variant_label": reference_label,
+                    "benchmark_id": benchmark_id,
+                    "top_n": top_n,
+                    "reference_residue_count": int(getattr(row, "reference_residue_count", 0) or 0),
+                    "matched_reference_count": int(getattr(row, "matched_reference_count", 0) or 0),
+                    "coverage_ratio": coverage,
+                    "reference_coverage_ratio": reference_coverage,
+                    "coverage_delta_vs_reference": round(float(coverage - reference_coverage), 3),
+                    "coverage_loss_vs_reference": round(float(reference_coverage - coverage), 3),
+                    "best_rank": best_rank,
+                    "reference_best_rank": reference_best_rank,
+                    "best_rank_delta_vs_reference": rank_delta,
+                    "best_pocket_id": str(getattr(row, "best_pocket_id", "") or ""),
+                    "top_pocket_id": str(getattr(row, "top_pocket_id", "") or ""),
+                    "top_pocket_hit": bool(getattr(row, "top_pocket_hit", False)),
+                    "matched_residues": str(getattr(row, "matched_residues", "") or ""),
+                    "missed_residues": str(getattr(row, "missed_residues", "") or ""),
+                    "benchmark_status": str(getattr(row, "benchmark_status", "") or ""),
+                    "benchmark_warning": str(getattr(row, "benchmark_warning", "") or ""),
+                }
+            )
+
+    if not rows:
+        return _empty_variant_case_comparison_df()
+    return pd.DataFrame(rows, columns=BENCHMARK_VARIANT_CASE_COMPARISON_COLUMNS)
+
+
+def build_pocket_benchmark_variant_dataset_comparison(variant_case_comparison_df: Optional[pd.DataFrame]) -> pd.DataFrame:
+    """Aggregate case-level variant comparison into dataset-level deltas."""
+
+    if (
+        variant_case_comparison_df is None
+        or getattr(variant_case_comparison_df, "empty", True)
+        or "variant_label" not in variant_case_comparison_df.columns
+        or "top_n" not in variant_case_comparison_df.columns
+    ):
+        return _empty_variant_dataset_comparison_df()
+
+    working = variant_case_comparison_df.copy()
+    working["top_n"] = pd.to_numeric(working["top_n"], errors="coerce")
+    working = working[working["top_n"].notna()].copy()
+    if working.empty:
+        return _empty_variant_dataset_comparison_df()
+
+    for column in [
+        "coverage_ratio",
+        "reference_coverage_ratio",
+        "coverage_delta_vs_reference",
+        "coverage_loss_vs_reference",
+        "best_rank",
+        "reference_best_rank",
+    ]:
+        if column not in working.columns:
+            working[column] = 0.0
+        working[column] = pd.to_numeric(working[column], errors="coerce").fillna(0.0)
+
+    rows: list[dict[str, object]] = []
+    group_columns = ["variant_label", "reference_variant_label", "top_n"]
+    for (variant_label, reference_label, top_n), group in working.groupby(group_columns, sort=True, dropna=False):
+        case_count = int(len(group))
+        any_hit_rate = round(float((group["coverage_ratio"] > 0.0).sum()) / float(case_count), 3) if case_count else 0.0
+        reference_any_hit_rate = round(float((group["reference_coverage_ratio"] > 0.0).sum()) / float(case_count), 3) if case_count else 0.0
+        all_hit_rate = round(float((group["coverage_ratio"] >= 1.0).sum()) / float(case_count), 3) if case_count else 0.0
+        reference_all_hit_rate = round(float((group["reference_coverage_ratio"] >= 1.0).sum()) / float(case_count), 3) if case_count else 0.0
+        best_ranks = group.loc[group["best_rank"] > 0, "best_rank"]
+        reference_best_ranks = group.loc[group["reference_best_rank"] > 0, "reference_best_rank"]
+        case_loss_count = int((group["coverage_loss_vs_reference"] > 0.0).sum())
+        case_gain_count = int((group["coverage_delta_vs_reference"] > 0.0).sum())
+        case_unchanged_count = int((group["coverage_delta_vs_reference"].abs() <= 0.0005).sum())
+        mean_coverage = round(float(group["coverage_ratio"].mean()), 3) if case_count else 0.0
+        reference_mean_coverage = round(float(group["reference_coverage_ratio"].mean()), 3) if case_count else 0.0
+        mean_best_rank = round(float(best_ranks.mean()), 3) if not best_ranks.empty else 0.0
+        reference_mean_best_rank = round(float(reference_best_ranks.mean()), 3) if not reference_best_ranks.empty else 0.0
+        status, warning = _dataset_summary_status(
+            case_count,
+            int((group["coverage_ratio"] > 0.0).sum()),
+            int((group["coverage_ratio"] >= 1.0).sum()),
+        )
+        if case_loss_count > 0:
+            warning = f"{case_loss_count} benchmark cases lost catalytic coverage versus {reference_label}."
+        rows.append(
+            {
+                "variant_label": str(variant_label or ""),
+                "reference_variant_label": str(reference_label or ""),
+                "top_n": int(top_n),
+                "case_count": case_count,
+                "mean_coverage_ratio": mean_coverage,
+                "reference_mean_coverage_ratio": reference_mean_coverage,
+                "mean_coverage_delta_vs_reference": round(float(mean_coverage - reference_mean_coverage), 3),
+                "mean_coverage_loss_vs_reference": round(float(reference_mean_coverage - mean_coverage), 3),
+                "any_hit_rate": any_hit_rate,
+                "reference_any_hit_rate": reference_any_hit_rate,
+                "any_hit_rate_delta_vs_reference": round(float(any_hit_rate - reference_any_hit_rate), 3),
+                "all_hit_rate": all_hit_rate,
+                "reference_all_hit_rate": reference_all_hit_rate,
+                "all_hit_rate_delta_vs_reference": round(float(all_hit_rate - reference_all_hit_rate), 3),
+                "mean_best_rank": mean_best_rank,
+                "reference_mean_best_rank": reference_mean_best_rank,
+                "mean_best_rank_delta_vs_reference": round(float(mean_best_rank - reference_mean_best_rank), 3)
+                if mean_best_rank > 0 and reference_mean_best_rank > 0
+                else 0.0,
+                "case_loss_count": case_loss_count,
+                "case_gain_count": case_gain_count,
+                "case_unchanged_count": case_unchanged_count,
+                "benchmark_status": status,
+                "benchmark_warning": warning,
+            }
+        )
+
+    if not rows:
+        return _empty_variant_dataset_comparison_df()
+    return pd.DataFrame(rows, columns=BENCHMARK_VARIANT_DATASET_COMPARISON_COLUMNS)
