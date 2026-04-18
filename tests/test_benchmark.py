@@ -43,6 +43,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_variant_remediation_summary,
     parse_benchmark_reference_table,
     parse_pocket_benchmark_reference_candidate_review_decision_table,
+    select_pocket_benchmark_reference_source,
 )
 
 
@@ -856,6 +857,128 @@ REFC-001,accept,Alice,,,
     assert "missing-acceptance-evidence" in str(validation.iloc[0]["issue_flags"])
     assert str(outcomes.iloc[0]["applied_status"]) == "blocked"
     assert accepted_reference.empty
+
+
+def test_select_pocket_benchmark_reference_source_prefers_reviewed_candidates_over_provisional():
+    candidate_df = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "1ABC",
+                "chain": "A",
+                "resid": 195,
+                "resname": "SER",
+                "reference_type": "Catalytic residue",
+                "reference_source": "M-CSA",
+                "reference_note": "mapping_level=exact",
+                "expected_pocket_id": "",
+            },
+            {
+                "benchmark_id": "1ABC",
+                "chain": "A",
+                "resid": 57,
+                "resname": "HIS",
+                "reference_type": "Catalytic residue",
+                "reference_source": "Literature",
+                "reference_note": "requires_manual_review=true",
+                "expected_pocket_id": "",
+            },
+        ]
+    )
+    accepted_df = candidate_df.iloc[[0]].copy()
+
+    reference_df, metadata, selection = select_pocket_benchmark_reference_source(
+        pd.DataFrame(),
+        {},
+        external_candidate_df=candidate_df,
+        external_candidate_meta={"source": "external"},
+        accepted_candidate_df=accepted_df,
+        prefer_reviewed_candidate=True,
+        allow_provisional_candidate=True,
+    )
+
+    assert reference_df["resid"].astype(int).tolist() == [195]
+    assert metadata["source"] == "Accepted reviewed external-evidence benchmark reference"
+    assert selection["source_mode"] == "accepted-reviewed-candidate"
+    assert selection["is_reviewed_candidate"] is True
+    assert selection["is_provisional"] is False
+
+
+def test_select_pocket_benchmark_reference_source_keeps_curated_upload_authoritative():
+    curated_df = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "curated",
+                "chain": "B",
+                "resid": 9,
+                "resname": "ASP",
+                "reference_type": "Curated",
+                "reference_source": "manual",
+                "reference_note": "",
+                "expected_pocket_id": "",
+            }
+        ]
+    )
+    candidate_df = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "candidate",
+                "chain": "A",
+                "resid": 195,
+                "resname": "SER",
+                "reference_type": "Catalytic residue",
+                "reference_source": "M-CSA",
+                "reference_note": "",
+                "expected_pocket_id": "",
+            }
+        ]
+    )
+
+    reference_df, _metadata, selection = select_pocket_benchmark_reference_source(
+        curated_df,
+        {"source": "manual benchmark"},
+        curated_reference_uploaded=True,
+        external_candidate_df=candidate_df,
+        accepted_candidate_df=candidate_df,
+        prefer_reviewed_candidate=True,
+        allow_provisional_candidate=True,
+    )
+
+    assert reference_df["benchmark_id"].tolist() == ["curated"]
+    assert reference_df["resid"].astype(int).tolist() == [9]
+    assert selection["source_mode"] == "uploaded-curated"
+    assert selection["is_reviewed_candidate"] is False
+    assert selection["is_provisional"] is False
+
+
+def test_select_pocket_benchmark_reference_source_marks_provisional_fallback():
+    candidate_df = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "candidate",
+                "chain": "A",
+                "resid": 195,
+                "resname": "SER",
+                "reference_type": "Catalytic residue",
+                "reference_source": "M-CSA",
+                "reference_note": "",
+                "expected_pocket_id": "",
+            }
+        ]
+    )
+
+    reference_df, _metadata, selection = select_pocket_benchmark_reference_source(
+        pd.DataFrame(),
+        {},
+        external_candidate_df=candidate_df,
+        accepted_candidate_df=pd.DataFrame(),
+        prefer_reviewed_candidate=True,
+        allow_provisional_candidate=True,
+    )
+
+    assert reference_df["resid"].astype(int).tolist() == [195]
+    assert selection["source_mode"] == "provisional-external-evidence"
+    assert selection["is_reviewed_candidate"] is False
+    assert selection["is_provisional"] is True
 
 
 def test_build_pocket_benchmark_summary_reports_top1_and_top3_coverage():

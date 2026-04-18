@@ -85,6 +85,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_variant_remediation_summary,
     parse_benchmark_reference_table,
     parse_pocket_benchmark_reference_candidate_review_decision_table,
+    select_pocket_benchmark_reference_source,
 )
 from protein_visualizer.services.candidate_fusion import build_joint_candidate_table, build_pocket_consensus_coverage
 from protein_visualizer.services.comparison import compare_pocket_ranking_summaries
@@ -822,6 +823,10 @@ with st.sidebar:
             "Use loaded external evidence as provisional benchmark reference when no curated file is uploaded",
             value=False,
         )
+        use_reviewed_candidate_as_benchmark_reference = st.checkbox(
+            "Use accepted reviewed candidate references as benchmark reference when no curated file is uploaded",
+            value=True,
+        )
         uploaded_benchmark_reference_candidate_review_decisions = st.file_uploader(
             "Upload benchmark reference candidate review decisions CSV/TSV",
             type=["csv", "tsv", "txt"],
@@ -913,6 +918,8 @@ benchmark_reference_candidate_review_decision_validation_df = pd.DataFrame()
 benchmark_reference_candidate_review_outcome_df = pd.DataFrame()
 benchmark_reference_candidate_accepted_df = pd.DataFrame()
 benchmark_reference_is_provisional = False
+benchmark_reference_is_reviewed_candidate = False
+benchmark_reference_source_mode = ""
 pocket_benchmark_reference_quality_issue_df = pd.DataFrame()
 pocket_benchmark_reference_quality_summary_df = pd.DataFrame()
 pocket_benchmark_reference_quality_checklist_markdown = ""
@@ -1345,24 +1352,28 @@ if uploaded_conservation is not None:
                 source_hint=str(conservation_source_name or "").strip() or "ConSurf",
             )
 benchmark_reference_loaded = False
-if benchmark_reference_text.strip():
+benchmark_reference_uploaded = bool(benchmark_reference_text.strip())
+if benchmark_reference_uploaded:
     benchmark_reference_df, benchmark_reference_meta = parse_benchmark_reference_table(
         benchmark_reference_text,
         source_hint=str(benchmark_source_name or "").strip() or "Curated catalytic benchmark",
     )
-    benchmark_reference_loaded = True
-elif bool(use_external_evidence_as_benchmark_reference):
-    if benchmark_reference_candidate_df.empty:
-        st.sidebar.caption("Benchmark reference: external evidence candidate is empty; upload a curated reference file instead.")
-    else:
-        benchmark_reference_df = benchmark_reference_candidate_df.copy()
-        benchmark_reference_meta = {
-            **benchmark_reference_candidate_meta,
-            "source": "Provisional external evidence benchmark reference",
-        }
-        benchmark_reference_is_provisional = True
-        benchmark_reference_loaded = True
-        st.sidebar.caption("Benchmark reference: using provisional external-evidence candidate.")
+benchmark_reference_df, benchmark_reference_meta, benchmark_reference_selection = select_pocket_benchmark_reference_source(
+    benchmark_reference_df,
+    benchmark_reference_meta,
+    curated_reference_uploaded=benchmark_reference_uploaded,
+    external_candidate_df=benchmark_reference_candidate_df,
+    external_candidate_meta=benchmark_reference_candidate_meta,
+    accepted_candidate_df=benchmark_reference_candidate_accepted_df,
+    prefer_reviewed_candidate=bool(use_reviewed_candidate_as_benchmark_reference),
+    allow_provisional_candidate=bool(use_external_evidence_as_benchmark_reference),
+)
+benchmark_reference_loaded = bool(benchmark_reference_selection.get("loaded"))
+benchmark_reference_is_provisional = bool(benchmark_reference_selection.get("is_provisional"))
+benchmark_reference_is_reviewed_candidate = bool(benchmark_reference_selection.get("is_reviewed_candidate"))
+benchmark_reference_source_mode = str(benchmark_reference_selection.get("source_mode") or "")
+if benchmark_reference_selection.get("message"):
+    st.sidebar.caption(str(benchmark_reference_selection.get("message")))
 if benchmark_reference_loaded:
     if benchmark_reference_df.empty:
         st.sidebar.caption(
@@ -2272,6 +2283,8 @@ try:
             "pocket_benchmark_reference_candidate_review_outcome_accepted_rows": int(benchmark_reference_candidate_review_outcome_df["applied_status"].astype(str).eq("accepted").sum()) if not benchmark_reference_candidate_review_outcome_df.empty and "applied_status" in benchmark_reference_candidate_review_outcome_df.columns else 0,
             "pocket_benchmark_reference_candidate_accepted_rows": int(len(benchmark_reference_candidate_accepted_df)),
             "pocket_benchmark_reference_is_provisional": bool(benchmark_reference_is_provisional),
+            "pocket_benchmark_reference_is_reviewed_candidate": bool(benchmark_reference_is_reviewed_candidate),
+            "pocket_benchmark_reference_source_mode": str(benchmark_reference_source_mode or ""),
             "pocket_benchmark_reference_rows": int(len(benchmark_reference_df)),
             "pocket_benchmark_reference_template_rows": int(len(benchmark_reference_template_df)),
             "pocket_benchmark_reference_template_notes_available": bool(benchmark_reference_template_markdown),
@@ -2548,6 +2561,8 @@ snapshot = build_analysis_snapshot(
         "pocket_benchmark_reference_candidate_accepted_rows": int(len(benchmark_reference_candidate_accepted_df)),
         "pocket_benchmark_reference_candidate_accepted": benchmark_reference_candidate_accepted_df.to_dict(orient="records"),
         "pocket_benchmark_reference_is_provisional": bool(benchmark_reference_is_provisional),
+        "pocket_benchmark_reference_is_reviewed_candidate": bool(benchmark_reference_is_reviewed_candidate),
+        "pocket_benchmark_reference_source_mode": str(benchmark_reference_source_mode or ""),
         "pocket_benchmark_reference_rows": int(len(benchmark_reference_df)),
         "pocket_benchmark_reference": benchmark_reference_df.to_dict(orient="records"),
         "pocket_benchmark_reference_template_rows": int(len(benchmark_reference_template_df)),
@@ -4503,6 +4518,7 @@ with tab_export:
         f"Residue evidence consensus: {len(residue_evidence_consensus_df)} rows / top {top_residue_consensus.get('residue_anchor') if top_residue_consensus is not None else '-'} / tier {top_residue_consensus.get('consensus_tier') if top_residue_consensus is not None else '-'}",
         f"Pocket consensus coverage: {len(pocket_consensus_coverage_df)} rows / top {top_pocket_consensus_coverage.get('pocket_id') if top_pocket_consensus_coverage is not None else '-'} / label {top_pocket_consensus_coverage.get('pocket_consensus_label') if top_pocket_consensus_coverage is not None else '-'}",
         f"Benchmark reference candidate: {len(benchmark_reference_candidate_df)} rows / import {benchmark_reference_import_summary_df.iloc[0].get('import_status') if not benchmark_reference_import_summary_df.empty else '-'} / provisional used {'yes' if benchmark_reference_is_provisional else 'no'}",
+        f"Benchmark reference source: {benchmark_reference_source_mode or '-'} / provisional {'yes' if benchmark_reference_is_provisional else 'no'} / reviewed candidate {'yes' if benchmark_reference_is_reviewed_candidate else 'no'}",
         f"Benchmark reference candidate review: {len(benchmark_reference_candidate_review_queue_df)} rows / P1 {int(benchmark_reference_candidate_review_queue_df['priority'].astype(str).eq('P1').sum()) if not benchmark_reference_candidate_review_queue_df.empty and 'priority' in benchmark_reference_candidate_review_queue_df.columns else 0} / P2 {int(benchmark_reference_candidate_review_queue_df['priority'].astype(str).eq('P2').sum()) if not benchmark_reference_candidate_review_queue_df.empty and 'priority' in benchmark_reference_candidate_review_queue_df.columns else 0} / checklist {'available' if benchmark_reference_candidate_review_checklist_markdown else 'not available'}",
         f"Benchmark reference candidate review decisions: {len(benchmark_reference_candidate_review_decision_df)} rows / validation blocked {int(benchmark_reference_candidate_review_decision_validation_df['validation_status'].astype(str).eq('blocked').sum()) if not benchmark_reference_candidate_review_decision_validation_df.empty and 'validation_status' in benchmark_reference_candidate_review_decision_validation_df.columns else 0} / accepted actions {int(benchmark_reference_candidate_review_outcome_df['applied_status'].astype(str).eq('accepted').sum()) if not benchmark_reference_candidate_review_outcome_df.empty and 'applied_status' in benchmark_reference_candidate_review_outcome_df.columns else 0} / accepted references {len(benchmark_reference_candidate_accepted_df)}",
         f"Catalytic pocket benchmark: references {len(benchmark_reference_df)} / Top-1 {top1_benchmark.get('coverage_ratio') if top1_benchmark is not None else '-'} / Top-3 {top3_benchmark.get('coverage_ratio') if top3_benchmark is not None else '-'} / best rank {top3_benchmark.get('best_rank') if top3_benchmark is not None else '-'}",

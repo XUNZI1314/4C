@@ -67,6 +67,8 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
             "pocket_benchmark_reference_candidate_review_outcome_accepted_rows": 3,
             "pocket_benchmark_reference_candidate_accepted_rows": 1,
             "pocket_benchmark_reference_is_provisional": True,
+            "pocket_benchmark_reference_is_reviewed_candidate": False,
+            "pocket_benchmark_reference_source_mode": "provisional-external-evidence",
             "pocket_benchmark_reference_rows": 3,
             "pocket_benchmark_reference_template_rows": 3,
             "pocket_benchmark_reference_template_notes_available": True,
@@ -140,6 +142,7 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
     assert any("P2Rank: ok" in line for line in summary_lines)
     assert any("P2Rank A/B: enabled / rows 1" in line for line in summary_lines)
     assert any("Benchmark reference candidate: 2 rows / import review-needed / provisional used yes" in line for line in summary_lines)
+    assert any("Benchmark reference source: provisional-external-evidence / provisional yes / reviewed candidate no" in line for line in summary_lines)
     assert any("Benchmark reference candidate review: 4 rows / P1 2 / P2 2 / checklist available" in line for line in summary_lines)
     assert any("Benchmark reference candidate review decisions: 4 rows / validation blocked 1 / accepted actions 3 / accepted references 1" in line for line in summary_lines)
     assert any("Catalytic pocket benchmark: references 3 / Top-1 0.667" in line for line in summary_lines)

@@ -1660,6 +1660,98 @@ def build_pocket_benchmark_reference_candidate_accepted_reference(
     return pd.DataFrame(accepted_rows, columns=BENCHMARK_REFERENCE_COLUMNS).reset_index(drop=True)
 
 
+def select_pocket_benchmark_reference_source(
+    curated_reference_df: Optional[pd.DataFrame],
+    curated_reference_meta: Optional[dict[str, object]] = None,
+    *,
+    curated_reference_uploaded: bool = False,
+    external_candidate_df: Optional[pd.DataFrame] = None,
+    external_candidate_meta: Optional[dict[str, object]] = None,
+    accepted_candidate_df: Optional[pd.DataFrame] = None,
+    prefer_reviewed_candidate: bool = True,
+    allow_provisional_candidate: bool = False,
+) -> tuple[pd.DataFrame, dict[str, object], dict[str, object]]:
+    """Select the benchmark reference source with curated/reviewed/provisional priority."""
+
+    if curated_reference_uploaded:
+        return (
+            _reference_rows(curated_reference_df),
+            dict(curated_reference_meta or {}),
+            {
+                "loaded": True,
+                "source_mode": "uploaded-curated",
+                "is_provisional": False,
+                "is_reviewed_candidate": False,
+                "message": "",
+            },
+        )
+
+    candidate_meta = dict(external_candidate_meta or {})
+    accepted_references = _reference_rows(accepted_candidate_df)
+    if prefer_reviewed_candidate and not accepted_references.empty:
+        return (
+            accepted_references,
+            {
+                **candidate_meta,
+                "source": "Accepted reviewed external-evidence benchmark reference",
+            },
+            {
+                "loaded": True,
+                "source_mode": "accepted-reviewed-candidate",
+                "is_provisional": False,
+                "is_reviewed_candidate": True,
+                "message": "Benchmark reference: using accepted reviewed candidate references.",
+            },
+        )
+
+    candidate_references = _reference_rows(external_candidate_df)
+    if allow_provisional_candidate:
+        if candidate_references.empty:
+            return (
+                _empty_reference_df(),
+                {},
+                {
+                    "loaded": False,
+                    "source_mode": "",
+                    "is_provisional": False,
+                    "is_reviewed_candidate": False,
+                    "message": "Benchmark reference: external evidence candidate is empty; upload a curated reference file instead.",
+                },
+            )
+        return (
+            candidate_references,
+            {
+                **candidate_meta,
+                "source": "Provisional external evidence benchmark reference",
+            },
+            {
+                "loaded": True,
+                "source_mode": "provisional-external-evidence",
+                "is_provisional": True,
+                "is_reviewed_candidate": False,
+                "message": "Benchmark reference: using provisional external-evidence candidate.",
+            },
+        )
+
+    message = ""
+    if prefer_reviewed_candidate and not candidate_references.empty:
+        message = (
+            "Benchmark reference: no accepted reviewed candidate rows yet; "
+            "upload accepted review decisions or a curated reference file."
+        )
+    return (
+        _empty_reference_df(),
+        {},
+        {
+            "loaded": False,
+            "source_mode": "",
+            "is_provisional": False,
+            "is_reviewed_candidate": False,
+            "message": message,
+        },
+    )
+
+
 def _normalize_pocket_rows(pocket_df: Optional[pd.DataFrame]) -> pd.DataFrame:
     if pocket_df is None or getattr(pocket_df, "empty", True) or "pocket_id" not in pocket_df.columns or "resid" not in pocket_df.columns:
         return pd.DataFrame(columns=["benchmark_id", "pocket_id", "chain", "resid", "resname"])
