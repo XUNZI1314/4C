@@ -3468,6 +3468,99 @@ def build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact(
     )
 
 
+def build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_checklist_markdown(
+    impact_case_df: Optional[pd.DataFrame],
+    *,
+    title: str = "Benchmark source-audit decision dataset impact case checklist",
+    max_actions: int = 80,
+) -> str:
+    """Render source-audit dataset-impact case actions as a reviewer checklist."""
+
+    if impact_case_df is None or getattr(impact_case_df, "empty", True):
+        return ""
+
+    working = impact_case_df.copy()
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_CASE_COLUMNS:
+        if column not in working.columns:
+            working[column] = ""
+    working["top_n"] = pd.to_numeric(working["top_n"], errors="coerce").fillna(0).astype(int)
+    working["coverage_ratio"] = pd.to_numeric(working["coverage_ratio"], errors="coerce").fillna(0.0)
+    working["best_rank"] = pd.to_numeric(working["best_rank"], errors="coerce").fillna(0).astype(int)
+    working["source_gate_mismatch"] = working["source_gate_mismatch"].map(_claim_ready_bool)
+    actionable = working[working["source_action_status"].astype(str).isin(["blocker", "review"])].copy()
+    if actionable.empty:
+        return ""
+
+    action_rank = {"blocker": 0, "review": 1, "closed": 2, "ready": 3, "none": 4}
+    actionable["_action_rank"] = actionable["source_action_status"].map(action_rank).fillna(9)
+    actionable["_mismatch_rank"] = actionable["source_gate_mismatch"].map(lambda value: 0 if bool(value) else 1)
+    actionable = actionable.sort_values(
+        ["top_n", "_action_rank", "_mismatch_rank", "benchmark_id", "source_impact_status"]
+    ).drop(columns=["_action_rank", "_mismatch_rank"])
+
+    summary = (
+        actionable.groupby(["source_action_status", "source_impact_status"], sort=False, dropna=False)
+        .agg(
+            action_rows=("impact_case_id", "count"),
+            affected_cases=("benchmark_id", "nunique"),
+            mismatch_rows=("source_gate_mismatch", "sum"),
+        )
+        .reset_index()
+    )
+    summary["_action_rank"] = summary["source_action_status"].map(action_rank).fillna(9)
+    summary = summary.sort_values(["_action_rank", "source_impact_status"]).drop(columns=["_action_rank"])
+
+    lines = [
+        f"# {title}",
+        "",
+        "Generated from `pocket_benchmark_reference_source_audit_case_decision_dataset_impact_cases.csv`.",
+        "",
+        "Use this checklist to close source-decision blockers, reviewer items and gate mismatches before treating dataset-level coverage as a precision claim.",
+        "",
+        "## Summary",
+        "",
+        "| Action | Source impact | Rows | Cases | Mismatches |",
+        "| --- | --- | ---: | ---: | ---: |",
+    ]
+    for _, row in summary.iterrows():
+        lines.append(
+            "| {action} | {impact} | {rows} | {cases} | {mismatches} |".format(
+                action=_safe_text(row.get("source_action_status")) or "-",
+                impact=_safe_text(row.get("source_impact_status")) or "-",
+                rows=int(row.get("action_rows") or 0),
+                cases=int(row.get("affected_cases") or 0),
+                mismatches=int(row.get("mismatch_rows") or 0),
+            )
+        )
+
+    lines.extend(["", "## Actions", ""])
+    for _, row in actionable.head(max_actions).iterrows():
+        mismatch = " mismatch" if bool(row.get("source_gate_mismatch")) else ""
+        adjusted = _safe_text(row.get("adjusted_source_priority")) or "-"
+        issue = _safe_text(row.get("adjusted_source_issue_type")) or "-"
+        lines.append(
+            "- [ ] `{action}` Top-{top_n} case `{case}` `{impact}`{mismatch} coverage `{coverage:.3f}` "
+            "claim `{claim}` adjusted `{adjusted}` `{issue}`: {recommended}".format(
+                action=_safe_text(row.get("source_action_status")) or "-",
+                top_n=int(row.get("top_n") or 0),
+                case=_safe_text(row.get("benchmark_id")) or "current",
+                impact=_safe_text(row.get("source_impact_status")) or "-",
+                mismatch=mismatch,
+                coverage=float(row.get("coverage_ratio") or 0.0),
+                claim=_safe_text(row.get("claim_status")) or "-",
+                adjusted=adjusted,
+                issue=issue,
+                recommended=_safe_text(row.get("recommended_action"))
+                or "Review this source-audit dataset impact case before reporting benchmark claims.",
+            )
+        )
+
+    remaining = int(len(actionable) - max_actions)
+    if remaining > 0:
+        lines.append(f"- [ ] Review {remaining} additional source-impact case actions in the CSV export.")
+    return "\n".join(lines).strip() + "\n"
+
+
 def build_pocket_benchmark_reference_source_audit_case_decision_closure_checklist_markdown(
     outcome_summary_df: Optional[pd.DataFrame],
     outcome_df: Optional[pd.DataFrame],

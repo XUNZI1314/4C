@@ -32,6 +32,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_source_audit_case_decision_outcomes,
     build_pocket_benchmark_reference_source_audit_case_decision_outcome_summary,
     build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact,
+    build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_checklist_markdown,
     build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_cases,
     build_pocket_benchmark_reference_source_audit_case_decision_readiness_impact,
     build_pocket_benchmark_reference_source_audit_case_decision_readiness_impact_summary,
@@ -1887,6 +1888,66 @@ def test_benchmark_reference_source_audit_case_decision_dataset_impact_cases_exp
     assert by_case["enzyme-c"]["source_impact_status"] == "source-cleared"
     assert by_case["enzyme-c"]["source_action_status"] == "closed"
     assert bool(by_case["enzyme-c"]["source_gate_mismatch"]) is False
+
+
+def test_benchmark_reference_source_audit_case_decision_dataset_impact_case_checklist_lists_actions():
+    detail = pd.DataFrame(
+        [
+            {
+                "impact_case_id": "BRSDIC-001",
+                "top_n": 1,
+                "benchmark_id": "enzyme-a",
+                "claim_status": "blocked",
+                "coverage_ratio": 0.4,
+                "best_rank": 2,
+                "adjusted_source_priority": "P0",
+                "adjusted_source_issue_type": "blocked-source-decision",
+                "source_impact_status": "source-blocked",
+                "source_action_status": "blocker",
+                "source_gate_mismatch": False,
+                "recommended_action": "Resolve source blocker.",
+            },
+            {
+                "impact_case_id": "BRSDIC-002",
+                "top_n": 1,
+                "benchmark_id": "enzyme-b",
+                "claim_status": "claim-ready",
+                "coverage_ratio": 0.6,
+                "best_rank": 1,
+                "adjusted_source_priority": "P2",
+                "adjusted_source_issue_type": "pending-source-decision",
+                "source_impact_status": "source-gate-mismatch",
+                "source_action_status": "blocker",
+                "source_gate_mismatch": True,
+                "recommended_action": "Regenerate readiness interpretation.",
+            },
+            {
+                "impact_case_id": "BRSDIC-003",
+                "top_n": 1,
+                "benchmark_id": "enzyme-c",
+                "claim_status": "claim-ready",
+                "coverage_ratio": 1.0,
+                "best_rank": 1,
+                "adjusted_source_priority": "",
+                "adjusted_source_issue_type": "",
+                "source_impact_status": "source-cleared",
+                "source_action_status": "closed",
+                "source_gate_mismatch": False,
+                "recommended_action": "Keep decision exports.",
+            },
+        ]
+    )
+
+    checklist = build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_checklist_markdown(
+        detail
+    )
+
+    assert checklist.startswith("# Benchmark source-audit decision dataset impact case checklist")
+    assert "| blocker | source-blocked | 1 | 1 | 0 |" in checklist
+    assert "| blocker | source-gate-mismatch | 1 | 1 | 1 |" in checklist
+    assert "Top-1 case `enzyme-a` `source-blocked` coverage `0.400` claim `blocked` adjusted `P0` `blocked-source-decision`: Resolve source blocker." in checklist
+    assert "Top-1 case `enzyme-b` `source-gate-mismatch` mismatch coverage `0.600` claim `claim-ready` adjusted `P2` `pending-source-decision`: Regenerate readiness interpretation." in checklist
+    assert "enzyme-c" not in checklist
 
 
 def test_build_pocket_benchmark_summary_reports_top1_and_top3_coverage():
