@@ -12,7 +12,7 @@ ProteinInsight 是一个面向酶蛋白的结构可视化、口袋定位、关�
 - 强化 UniProt/PDB 残基对齐：优先结构中真实存在的链和残基，降低缺失、gap、弱映射和 residue identity mismatch 的置信度。
 - 文献残基抽取：支持 catalytic、active site、mutagenesis、activity-loss 等上下文过滤，保留 `PMID/PMCID/DOI`、标题、证据片段、抽取模式和人工复核标记，并做跨文章支持统计。
 - 证据驱动口袋排序：输出 evidence quality、direct anchor、route anchor、mapping risk、A/B rank delta 和 practical recommendation。
-- Catalytic pocket benchmark：提供 reference template、external-evidence reference candidate/import summary、reference curation quality check、PDB structure validation、case-level readiness gate 和 case/dataset-level readiness-aware interpretation，上传 curated catalytic residues 后输出 Top-1 / Top-3 / Top-5 coverage、case/dataset summary、case interpretation matrix/summary/queue、dataset claim readiness queue/checklist/report、best hit rank、missed residues，并可按整体、case、dataset 和 residue 层面对比 current 与 no-p2rank / no-literature / no-evidence-route / no-conservation-rerank 的 coverage loss，同时生成 remediation queue、summary 和 checklist。
+- Catalytic pocket benchmark：提供 reference template、external-evidence reference candidate/import summary/review queue/checklist、reference curation quality check、PDB structure validation、case-level readiness gate 和 case/dataset-level readiness-aware interpretation，上传 curated catalytic residues 后输出 Top-1 / Top-3 / Top-5 coverage、case/dataset summary、case interpretation matrix/summary/queue、dataset claim readiness queue/checklist/report、best hit rank、missed residues，并可按整体、case、dataset 和 residue 层面对比 current 与 no-p2rank / no-literature / no-evidence-route / no-conservation-rerank 的 coverage loss，同时生成 remediation queue、summary 和 checklist。
 - 口袋分层：将口袋残基标注为 `core`、`shell`、`rim`，便于区分关键位点和边界残基。
 - Consensus rerank 审计链：从建议、预览、policy gate、action queue、scorecard、guardrail 到 release approval、apply plan、execution receipt 和 closure。
 - 导出：CSV、JSON snapshot、SVG snapshot、TXT report、PDF report、Markdown report、handoff ZIP、manifest 和 closure detached manifest。
@@ -77,7 +77,7 @@ http://localhost:8501
 最近一次完整验证结果：
 
 ```text
-221 passed
+222 passed
 ```
 
 ## 输入文件

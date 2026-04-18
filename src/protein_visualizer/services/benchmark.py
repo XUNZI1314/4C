@@ -41,6 +41,25 @@ BENCHMARK_REFERENCE_IMPORT_SUMMARY_COLUMNS = [
     "import_warning",
 ]
 
+BENCHMARK_REFERENCE_CANDIDATE_REVIEW_QUEUE_COLUMNS = [
+    "action_id",
+    "priority",
+    "action_status",
+    "benchmark_id",
+    "chain",
+    "resid",
+    "resname",
+    "residue_label",
+    "issue_type",
+    "reference_type",
+    "reference_source",
+    "mapping_level",
+    "mapping_confidence",
+    "mapping_method",
+    "suggested_action",
+    "review_warning",
+]
+
 BENCHMARK_DETAIL_COLUMNS = [
     *BENCHMARK_REFERENCE_COLUMNS,
     "residue_label",
@@ -477,6 +496,10 @@ def _empty_reference_template_df() -> pd.DataFrame:
 
 def _empty_reference_import_summary_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_REFERENCE_IMPORT_SUMMARY_COLUMNS)
+
+
+def _empty_reference_candidate_review_queue_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_CANDIDATE_REVIEW_QUEUE_COLUMNS)
 
 
 def _empty_detail_df() -> pd.DataFrame:
@@ -1133,6 +1156,165 @@ def build_pocket_benchmark_reference_import_summary(
         ],
         columns=BENCHMARK_REFERENCE_IMPORT_SUMMARY_COLUMNS,
     )
+
+
+def _reference_note_key_value(note_text: object, key: str) -> str:
+    pattern = rf"(?:^|[;|]\s*){re.escape(key)}\s*=\s*([^;|]+)"
+    match = re.search(pattern, _safe_text(note_text), flags=re.IGNORECASE)
+    return _safe_text(match.group(1)) if match else ""
+
+
+def _candidate_review_issue(
+    issue_type: str,
+) -> tuple[str, str, str, str]:
+    if issue_type == "manual-review-required":
+        return (
+            "P1",
+            "review",
+            "Open the source article or AI evidence audit and accept/reject this residue before benchmark use.",
+            "Manual-review evidence is not safe as a benchmark reference until a reviewer confirms it.",
+        )
+    if issue_type == "weak-mapping":
+        return (
+            "P1",
+            "review",
+            "Resolve the residue through SIFTS/structure numbering or keep it out of accuracy claims.",
+            "Weak mapping can shift catalytic residues onto the wrong PDB position.",
+        )
+    if issue_type == "generic-source":
+        return (
+            "P1",
+            "review",
+            "Replace the source with M-CSA ID, UniProt accession, PMID, DOI, or a named curated dataset.",
+            "Generic sources make external-evidence candidate references hard to reproduce.",
+        )
+    if issue_type == "wildcard-chain":
+        return (
+            "P2",
+            "review",
+            "Assign the PDB chain or document why chain-agnostic matching is intended.",
+            "Wildcard chain rows can overestimate benchmark coverage in multi-chain structures.",
+        )
+    if issue_type == "missing-resname":
+        return (
+            "P2",
+            "review",
+            "Fill the expected three-letter residue name and verify it against the uploaded structure.",
+            "Missing residue identity weakens residue-number validation.",
+        )
+    if issue_type == "unknown-mapping":
+        return (
+            "P2",
+            "review",
+            "Record mapping_level, mapping_method and mapping_confidence before benchmark use.",
+            "Unknown mapping provenance makes it unclear whether the candidate is structure-verified.",
+        )
+    return "P3", "review", "Document the curation decision.", "Candidate reference row needs reviewer documentation."
+
+
+def build_pocket_benchmark_reference_candidate_review_queue(reference_df: Optional[pd.DataFrame]) -> pd.DataFrame:
+    """Build a row-level review queue for benchmark reference candidates."""
+
+    references = _reference_rows(reference_df)
+    if references.empty:
+        return _empty_reference_candidate_review_queue_df()
+
+    rows: list[dict[str, object]] = []
+    for _, reference in references.iterrows():
+        chain = _safe_text(reference.get("chain"))
+        resid = int(reference.get("resid"))
+        resname = _safe_text(reference.get("resname")).upper()
+        reference_source = _safe_text(reference.get("reference_source"))
+        reference_note = _safe_text(reference.get("reference_note"))
+        mapping_level = _reference_note_key_value(reference_note, "mapping_level").lower()
+        mapping_confidence = _reference_note_key_value(reference_note, "mapping_confidence")
+        mapping_method = _reference_note_key_value(reference_note, "mapping_method")
+        issue_types: list[str] = []
+
+        if "requires_manual_review=true" in reference_note.lower():
+            issue_types.append("manual-review-required")
+        if mapping_level == "weak":
+            issue_types.append("weak-mapping")
+        elif not mapping_level:
+            issue_types.append("unknown-mapping")
+        if not chain:
+            issue_types.append("wildcard-chain")
+        if not resname:
+            issue_types.append("missing-resname")
+        if _source_is_generic(reference_source):
+            issue_types.append("generic-source")
+
+        for issue_type in dict.fromkeys(issue_types):
+            priority, action_status, suggested_action, warning = _candidate_review_issue(issue_type)
+            rows.append(
+                {
+                    "priority": priority,
+                    "action_status": action_status,
+                    "benchmark_id": _safe_text(reference.get("benchmark_id")),
+                    "chain": chain,
+                    "resid": resid,
+                    "resname": resname,
+                    "residue_label": _residue_label(chain, resid, resname),
+                    "issue_type": issue_type,
+                    "reference_type": _safe_text(reference.get("reference_type")),
+                    "reference_source": reference_source,
+                    "mapping_level": mapping_level,
+                    "mapping_confidence": mapping_confidence,
+                    "mapping_method": mapping_method,
+                    "suggested_action": suggested_action,
+                    "review_warning": warning,
+                }
+            )
+
+    if not rows:
+        return _empty_reference_candidate_review_queue_df()
+
+    frame = pd.DataFrame(rows)
+    priority_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    frame["_priority_rank"] = frame["priority"].map(priority_rank).fillna(99)
+    frame = frame.sort_values(
+        ["_priority_rank", "benchmark_id", "resid", "issue_type"],
+        ascending=[True, True, True, True],
+    ).drop(columns=["_priority_rank"]).reset_index(drop=True)
+    frame["action_id"] = [f"REFC-{index + 1:03d}" for index in range(len(frame))]
+    return frame[BENCHMARK_REFERENCE_CANDIDATE_REVIEW_QUEUE_COLUMNS]
+
+
+def build_pocket_benchmark_reference_candidate_review_checklist_markdown(
+    review_queue_df: Optional[pd.DataFrame],
+) -> str:
+    """Render reference-candidate review actions as a Markdown checklist."""
+
+    if review_queue_df is None or getattr(review_queue_df, "empty", True):
+        return ""
+    queue = review_queue_df.copy()
+    for column in BENCHMARK_REFERENCE_CANDIDATE_REVIEW_QUEUE_COLUMNS:
+        if column not in queue.columns:
+            queue[column] = ""
+
+    lines = [
+        "# Benchmark reference candidate review checklist",
+        "",
+        "Resolve these items before promoting external-evidence candidates to an independent benchmark reference table.",
+        "",
+        "## Summary",
+        "",
+    ]
+    for (priority, issue_type), group in queue.groupby(["priority", "issue_type"], dropna=False):
+        affected_residues = int(group[["benchmark_id", "chain", "resid"]].astype(str).drop_duplicates().shape[0])
+        lines.append(
+            f"- {priority} `{issue_type}`: {len(group)} actions / {affected_residues} residues."
+        )
+    lines.extend(["", "## Actions", ""])
+    priority_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    queue["_priority_rank"] = queue["priority"].map(priority_rank).fillna(99)
+    queue = queue.sort_values(["_priority_rank", "benchmark_id", "resid", "issue_type"]).drop(columns=["_priority_rank"])
+    for row in queue.itertuples(index=False):
+        case_text = f"case `{row.benchmark_id}`" if _safe_text(row.benchmark_id) else "unnamed case"
+        lines.append(
+            f"- [ ] {row.priority} `{row.issue_type}` for {case_text}, residue `{row.residue_label}`: {row.suggested_action}"
+        )
+    return "\n".join(lines).strip() + "\n"
 
 
 def _normalize_pocket_rows(pocket_df: Optional[pd.DataFrame]) -> pd.DataFrame:

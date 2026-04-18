@@ -239,7 +239,7 @@ The parser also accepts residue labels such as `Ser195`, `A:195` or `D123A`. Bla
 
 The page also exports `pocket_benchmark_reference_template.csv` and `pocket_benchmark_reference_template.md` so M-CSA, PDB and literature-confirmed catalytic residue cases can be collected with a consistent schema before upload.
 
-Loaded UniProt, M-CSA, literature and AI residue evidence can also be converted into `pocket_benchmark_reference_candidate.csv` plus `pocket_benchmark_reference_import_summary.csv`. This is meant to accelerate curation, not to create an independent accuracy claim automatically, because the same external evidence may also have influenced detection or reranking.
+Loaded UniProt, M-CSA, literature and AI residue evidence can also be converted into `pocket_benchmark_reference_candidate.csv` plus `pocket_benchmark_reference_import_summary.csv`. The candidate review queue and checklist then split weak mapping, wildcard chain, missing residue identity, generic source and manual-review risks into row-level actions. This is meant to accelerate curation, not to create an independent accuracy claim automatically, because the same external evidence may also have influenced detection or reranking.
 
 After upload, the reference table is checked for curation risks before coverage metrics are interpreted. The check flags missing `benchmark_id`, generic source labels, wildcard chain matching, missing residue identity, numbering assumptions such as UniProt/mature-chain offsets, and residues that intentionally carry multiple roles or evidence sources.
 
@@ -258,6 +258,8 @@ The benchmark exports:
 - `pocket_benchmark_reference.csv`
 - `pocket_benchmark_reference_candidate.csv`
 - `pocket_benchmark_reference_import_summary.csv`
+- `pocket_benchmark_reference_candidate_review_queue.csv`
+- `pocket_benchmark_reference_candidate_review_checklist.md`
 - `pocket_benchmark_reference_template.csv`
 - `pocket_benchmark_reference_template.md`
 - `pocket_benchmark_reference_quality_issues.csv`
@@ -298,6 +300,7 @@ Current summary metrics:
 - Top-3 catalytic residue coverage.
 - Top-5 catalytic residue coverage.
 - External-evidence reference candidate import status.
+- External-evidence reference candidate review queue status.
 - Dataset-level claim readiness by Top-N.
 - Case interpretation matrix, summary and one-row-per-case queue across Top-1 / Top-3 / Top-5.
 - Dataset interpretation blocker/review queue, checklist and report.
@@ -505,7 +508,7 @@ Coverage includes:
 Latest full run:
 
 ```text
-221 passed
+222 passed
 ```
 
 ## Known Limits

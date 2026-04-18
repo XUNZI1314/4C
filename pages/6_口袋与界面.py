@@ -58,6 +58,8 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_quality_checklist_markdown,
     build_pocket_benchmark_reference_quality_issues,
     build_pocket_benchmark_reference_quality_summary,
+    build_pocket_benchmark_reference_candidate_review_checklist_markdown,
+    build_pocket_benchmark_reference_candidate_review_queue,
     build_pocket_benchmark_reference_from_external_evidence,
     build_pocket_benchmark_reference_import_summary,
     build_pocket_benchmark_reference_readiness_case_summary,
@@ -891,6 +893,8 @@ benchmark_reference_meta: dict = {}
 benchmark_reference_candidate_df = pd.DataFrame()
 benchmark_reference_candidate_meta: dict = {}
 benchmark_reference_import_summary_df = pd.DataFrame()
+benchmark_reference_candidate_review_queue_df = pd.DataFrame()
+benchmark_reference_candidate_review_checklist_markdown = ""
 benchmark_reference_is_provisional = False
 pocket_benchmark_reference_quality_issue_df = pd.DataFrame()
 pocket_benchmark_reference_quality_summary_df = pd.DataFrame()
@@ -1249,11 +1253,23 @@ if not external_site_df.empty:
         benchmark_reference_candidate_df,
         benchmark_reference_candidate_meta,
     )
+    benchmark_reference_candidate_review_queue_df = build_pocket_benchmark_reference_candidate_review_queue(
+        benchmark_reference_candidate_df
+    )
+    benchmark_reference_candidate_review_checklist_markdown = (
+        build_pocket_benchmark_reference_candidate_review_checklist_markdown(
+            benchmark_reference_candidate_review_queue_df
+        )
+    )
     if not benchmark_reference_import_summary_df.empty:
         import_row = benchmark_reference_import_summary_df.iloc[0]
         st.sidebar.caption(
             f"Benchmark reference candidate: {import_row.get('reference_rows') or 0} residues / "
             f"{import_row.get('import_status') or '-'}."
+        )
+    if not benchmark_reference_candidate_review_queue_df.empty:
+        st.sidebar.caption(
+            f"Benchmark reference candidate review: {len(benchmark_reference_candidate_review_queue_df)} actions."
         )
 if uploaded_conservation is not None:
     conservation_text = _read_uploaded_text(uploaded_conservation)
@@ -2179,6 +2195,10 @@ try:
             "pocket_benchmark_reference_candidate_rows": int(len(benchmark_reference_candidate_df)),
             "pocket_benchmark_reference_import_summary_rows": int(len(benchmark_reference_import_summary_df)),
             "pocket_benchmark_reference_import_status": str(benchmark_reference_import_summary_df.iloc[0].get("import_status") or "") if not benchmark_reference_import_summary_df.empty else "",
+            "pocket_benchmark_reference_candidate_review_rows": int(len(benchmark_reference_candidate_review_queue_df)),
+            "pocket_benchmark_reference_candidate_review_p1_rows": int(benchmark_reference_candidate_review_queue_df["priority"].astype(str).eq("P1").sum()) if not benchmark_reference_candidate_review_queue_df.empty and "priority" in benchmark_reference_candidate_review_queue_df.columns else 0,
+            "pocket_benchmark_reference_candidate_review_p2_rows": int(benchmark_reference_candidate_review_queue_df["priority"].astype(str).eq("P2").sum()) if not benchmark_reference_candidate_review_queue_df.empty and "priority" in benchmark_reference_candidate_review_queue_df.columns else 0,
+            "pocket_benchmark_reference_candidate_review_checklist_available": bool(benchmark_reference_candidate_review_checklist_markdown),
             "pocket_benchmark_reference_is_provisional": bool(benchmark_reference_is_provisional),
             "pocket_benchmark_reference_rows": int(len(benchmark_reference_df)),
             "pocket_benchmark_reference_template_rows": int(len(benchmark_reference_template_df)),
@@ -2435,6 +2455,12 @@ snapshot = build_analysis_snapshot(
         "pocket_benchmark_reference_import_summary_rows": int(len(benchmark_reference_import_summary_df)),
         "pocket_benchmark_reference_import_summary": benchmark_reference_import_summary_df.to_dict(orient="records"),
         "pocket_benchmark_reference_import_status": str(benchmark_reference_import_summary_df.iloc[0].get("import_status") or "") if not benchmark_reference_import_summary_df.empty else "",
+        "pocket_benchmark_reference_candidate_review_rows": int(len(benchmark_reference_candidate_review_queue_df)),
+        "pocket_benchmark_reference_candidate_review_queue": benchmark_reference_candidate_review_queue_df.to_dict(orient="records"),
+        "pocket_benchmark_reference_candidate_review_p1_rows": int(benchmark_reference_candidate_review_queue_df["priority"].astype(str).eq("P1").sum()) if not benchmark_reference_candidate_review_queue_df.empty and "priority" in benchmark_reference_candidate_review_queue_df.columns else 0,
+        "pocket_benchmark_reference_candidate_review_p2_rows": int(benchmark_reference_candidate_review_queue_df["priority"].astype(str).eq("P2").sum()) if not benchmark_reference_candidate_review_queue_df.empty and "priority" in benchmark_reference_candidate_review_queue_df.columns else 0,
+        "pocket_benchmark_reference_candidate_review_checklist_available": bool(benchmark_reference_candidate_review_checklist_markdown),
+        "pocket_benchmark_reference_candidate_review_checklist": benchmark_reference_candidate_review_checklist_markdown,
         "pocket_benchmark_reference_is_provisional": bool(benchmark_reference_is_provisional),
         "pocket_benchmark_reference_rows": int(len(benchmark_reference_df)),
         "pocket_benchmark_reference": benchmark_reference_df.to_dict(orient="records"),
@@ -2767,6 +2793,12 @@ if not benchmark_reference_candidate_df.empty:
         )
         if not benchmark_reference_import_summary_df.empty:
             st.dataframe(benchmark_reference_import_summary_df, use_container_width=True, hide_index=True)
+        if not benchmark_reference_candidate_review_queue_df.empty:
+            st.caption("Review queue: fix these items before promoting candidates into a curated benchmark reference.")
+            st.dataframe(benchmark_reference_candidate_review_queue_df, use_container_width=True, hide_index=True)
+            if benchmark_reference_candidate_review_checklist_markdown:
+                with st.expander("Benchmark reference candidate review checklist", expanded=False):
+                    st.markdown(benchmark_reference_candidate_review_checklist_markdown)
         st.dataframe(benchmark_reference_candidate_df, use_container_width=True, hide_index=True)
 if not pocket_benchmark_summary_df.empty:
     with st.expander("Catalytic pocket benchmark", expanded=True):
@@ -3687,6 +3719,20 @@ with tab_export:
                 file_name="pocket_benchmark_reference_import_summary.csv",
                 mime="text/csv",
             )
+        if not benchmark_reference_candidate_review_queue_df.empty:
+            st.download_button(
+                "Export benchmark reference candidate review queue CSV",
+                data=_to_csv_bytes(benchmark_reference_candidate_review_queue_df),
+                file_name="pocket_benchmark_reference_candidate_review_queue.csv",
+                mime="text/csv",
+            )
+        if benchmark_reference_candidate_review_checklist_markdown:
+            st.download_button(
+                "Export benchmark reference candidate review checklist MD",
+                data=benchmark_reference_candidate_review_checklist_markdown.encode("utf-8"),
+                file_name="pocket_benchmark_reference_candidate_review_checklist.md",
+                mime="text/markdown",
+            )
         if not benchmark_reference_df.empty:
             st.download_button(
                 "Export benchmark reference CSV",
@@ -4324,6 +4370,7 @@ with tab_export:
         f"Residue evidence consensus: {len(residue_evidence_consensus_df)} rows / top {top_residue_consensus.get('residue_anchor') if top_residue_consensus is not None else '-'} / tier {top_residue_consensus.get('consensus_tier') if top_residue_consensus is not None else '-'}",
         f"Pocket consensus coverage: {len(pocket_consensus_coverage_df)} rows / top {top_pocket_consensus_coverage.get('pocket_id') if top_pocket_consensus_coverage is not None else '-'} / label {top_pocket_consensus_coverage.get('pocket_consensus_label') if top_pocket_consensus_coverage is not None else '-'}",
         f"Benchmark reference candidate: {len(benchmark_reference_candidate_df)} rows / import {benchmark_reference_import_summary_df.iloc[0].get('import_status') if not benchmark_reference_import_summary_df.empty else '-'} / provisional used {'yes' if benchmark_reference_is_provisional else 'no'}",
+        f"Benchmark reference candidate review: {len(benchmark_reference_candidate_review_queue_df)} rows / P1 {int(benchmark_reference_candidate_review_queue_df['priority'].astype(str).eq('P1').sum()) if not benchmark_reference_candidate_review_queue_df.empty and 'priority' in benchmark_reference_candidate_review_queue_df.columns else 0} / P2 {int(benchmark_reference_candidate_review_queue_df['priority'].astype(str).eq('P2').sum()) if not benchmark_reference_candidate_review_queue_df.empty and 'priority' in benchmark_reference_candidate_review_queue_df.columns else 0} / checklist {'available' if benchmark_reference_candidate_review_checklist_markdown else 'not available'}",
         f"Catalytic pocket benchmark: references {len(benchmark_reference_df)} / Top-1 {top1_benchmark.get('coverage_ratio') if top1_benchmark is not None else '-'} / Top-3 {top3_benchmark.get('coverage_ratio') if top3_benchmark is not None else '-'} / best rank {top3_benchmark.get('best_rank') if top3_benchmark is not None else '-'}",
         f"Benchmark reference template: {len(benchmark_reference_template_df)} rows / notes {'available' if benchmark_reference_template_markdown else 'not available'}",
         f"Benchmark reference curation quality: {len(pocket_benchmark_reference_quality_issue_df)} issues / summary {len(pocket_benchmark_reference_quality_summary_df)} rows / checklist {'available' if pocket_benchmark_reference_quality_checklist_markdown else 'not available'}",

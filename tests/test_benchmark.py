@@ -16,6 +16,8 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_quality_checklist_markdown,
     build_pocket_benchmark_reference_quality_issues,
     build_pocket_benchmark_reference_quality_summary,
+    build_pocket_benchmark_reference_candidate_review_checklist_markdown,
+    build_pocket_benchmark_reference_candidate_review_queue,
     build_pocket_benchmark_reference_from_external_evidence,
     build_pocket_benchmark_reference_import_summary,
     build_pocket_benchmark_reference_readiness_case_summary,
@@ -730,6 +732,48 @@ def test_build_pocket_benchmark_reference_from_external_evidence_creates_candida
     assert int(summary_row["manual_review_rows"]) == 1
     assert int(summary_row["wildcard_chain_rows"]) == 1
     assert int(summary_row["missing_resname_rows"]) == 1
+
+
+def test_build_pocket_benchmark_reference_candidate_review_queue_lists_candidate_risks():
+    reference_df = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "1ABC",
+                "chain": "A",
+                "resid": 195,
+                "resname": "SER",
+                "reference_type": "Catalytic residue",
+                "reference_source": "M-CSA",
+                "reference_note": "mapping_level=exact; mapping_confidence=0.98; mapping_method=sifts",
+                "expected_pocket_id": "",
+            },
+            {
+                "benchmark_id": "1ABC",
+                "chain": "",
+                "resid": 57,
+                "resname": "",
+                "reference_type": "Catalytic residue",
+                "reference_source": "AI-Literature",
+                "reference_note": "requires_manual_review=true | mapping_level=weak; mapping_confidence=0.4; mapping_method=assumed-structure-numbering",
+                "expected_pocket_id": "",
+            },
+        ]
+    )
+
+    queue = build_pocket_benchmark_reference_candidate_review_queue(reference_df)
+    checklist = build_pocket_benchmark_reference_candidate_review_checklist_markdown(queue)
+
+    assert queue["action_id"].tolist() == ["REFC-001", "REFC-002", "REFC-003", "REFC-004"]
+    assert queue["priority"].tolist() == ["P1", "P1", "P2", "P2"]
+    assert queue["issue_type"].tolist() == [
+        "manual-review-required",
+        "weak-mapping",
+        "missing-resname",
+        "wildcard-chain",
+    ]
+    assert queue["residue_label"].eq("57").all()
+    assert "Benchmark reference candidate review checklist" in checklist
+    assert "`weak-mapping`" in checklist
 
 
 def test_build_pocket_benchmark_summary_reports_top1_and_top3_coverage():

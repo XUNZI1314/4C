@@ -297,6 +297,14 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         lines.append(
             f"Benchmark reference candidate: {benchmark_reference_candidate_rows} rows / import {import_status or '-'} / provisional used {provisional_status}"
         )
+    benchmark_reference_candidate_review_rows = int(extra.get("pocket_benchmark_reference_candidate_review_rows") or 0)
+    if benchmark_reference_candidate_review_rows > 0:
+        p1_rows = int(extra.get("pocket_benchmark_reference_candidate_review_p1_rows") or 0)
+        p2_rows = int(extra.get("pocket_benchmark_reference_candidate_review_p2_rows") or 0)
+        checklist_status = "available" if bool(extra.get("pocket_benchmark_reference_candidate_review_checklist_available")) else "not available"
+        lines.append(
+            f"Benchmark reference candidate review: {benchmark_reference_candidate_review_rows} rows / P1 {p1_rows} / P2 {p2_rows} / checklist {checklist_status}"
+        )
     benchmark_reference_rows = int(extra.get("pocket_benchmark_reference_rows") or 0)
     if benchmark_reference_rows > 0:
         top1_coverage = format_energy_value(extra.get("pocket_benchmark_top1_coverage"))
