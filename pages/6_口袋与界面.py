@@ -1416,16 +1416,19 @@ if benchmark_reference_loaded:
         pocket_benchmark_reference_readiness_queue_df = build_pocket_benchmark_reference_readiness_queue(
             pocket_benchmark_reference_quality_issue_df,
             pocket_benchmark_reference_structure_validation_df,
+            benchmark_reference_source_audit_df,
         )
         pocket_benchmark_reference_readiness_summary_df = build_pocket_benchmark_reference_readiness_summary(
             benchmark_reference_df,
             pocket_benchmark_reference_quality_issue_df,
             pocket_benchmark_reference_structure_validation_df,
+            benchmark_reference_source_audit_df,
         )
         pocket_benchmark_reference_readiness_case_summary_df = build_pocket_benchmark_reference_readiness_case_summary(
             benchmark_reference_df,
             pocket_benchmark_reference_quality_issue_df,
             pocket_benchmark_reference_structure_validation_df,
+            benchmark_reference_source_audit_df,
         )
         pocket_benchmark_reference_readiness_checklist_markdown = build_pocket_benchmark_reference_readiness_checklist_markdown(
             pocket_benchmark_reference_readiness_queue_df,
@@ -2313,6 +2316,7 @@ try:
             "pocket_benchmark_reference_readiness_status": str(pocket_benchmark_reference_readiness_summary_df.iloc[0].get("readiness_status") or "") if not pocket_benchmark_reference_readiness_summary_df.empty else "",
             "pocket_benchmark_reference_readiness_blocker_rows": int(pocket_benchmark_reference_readiness_summary_df.iloc[0].get("p0_p1_issue_count") or 0) if not pocket_benchmark_reference_readiness_summary_df.empty else 0,
             "pocket_benchmark_reference_readiness_review_rows": int(pocket_benchmark_reference_readiness_summary_df.iloc[0].get("p2_issue_count") or 0) if not pocket_benchmark_reference_readiness_summary_df.empty else 0,
+            "pocket_benchmark_reference_readiness_source_audit_issue_rows": int(pocket_benchmark_reference_readiness_summary_df.iloc[0].get("source_audit_issue_count") or 0) if not pocket_benchmark_reference_readiness_summary_df.empty else 0,
             "pocket_benchmark_reference_readiness_blocked_cases": int(pocket_benchmark_reference_readiness_case_summary_df["readiness_status"].astype(str).eq("blocked").sum()) if not pocket_benchmark_reference_readiness_case_summary_df.empty and "readiness_status" in pocket_benchmark_reference_readiness_case_summary_df.columns else 0,
             "pocket_benchmark_reference_readiness_review_cases": int(pocket_benchmark_reference_readiness_case_summary_df["readiness_status"].astype(str).eq("review-needed").sum()) if not pocket_benchmark_reference_readiness_case_summary_df.empty and "readiness_status" in pocket_benchmark_reference_readiness_case_summary_df.columns else 0,
             "pocket_benchmark_reference_readiness_checklist_available": bool(pocket_benchmark_reference_readiness_checklist_markdown),
@@ -2608,6 +2612,7 @@ snapshot = build_analysis_snapshot(
         "pocket_benchmark_reference_readiness_status": str(pocket_benchmark_reference_readiness_summary_df.iloc[0].get("readiness_status") or "") if not pocket_benchmark_reference_readiness_summary_df.empty else "",
         "pocket_benchmark_reference_readiness_blocker_rows": int(pocket_benchmark_reference_readiness_summary_df.iloc[0].get("p0_p1_issue_count") or 0) if not pocket_benchmark_reference_readiness_summary_df.empty else 0,
         "pocket_benchmark_reference_readiness_review_rows": int(pocket_benchmark_reference_readiness_summary_df.iloc[0].get("p2_issue_count") or 0) if not pocket_benchmark_reference_readiness_summary_df.empty else 0,
+        "pocket_benchmark_reference_readiness_source_audit_issue_rows": int(pocket_benchmark_reference_readiness_summary_df.iloc[0].get("source_audit_issue_count") or 0) if not pocket_benchmark_reference_readiness_summary_df.empty else 0,
         "pocket_benchmark_reference_readiness_blocked_cases": int(pocket_benchmark_reference_readiness_case_summary_df["readiness_status"].astype(str).eq("blocked").sum()) if not pocket_benchmark_reference_readiness_case_summary_df.empty and "readiness_status" in pocket_benchmark_reference_readiness_case_summary_df.columns else 0,
         "pocket_benchmark_reference_readiness_review_cases": int(pocket_benchmark_reference_readiness_case_summary_df["readiness_status"].astype(str).eq("review-needed").sum()) if not pocket_benchmark_reference_readiness_case_summary_df.empty and "readiness_status" in pocket_benchmark_reference_readiness_case_summary_df.columns else 0,
         "pocket_benchmark_reference_readiness_checklist_available": bool(pocket_benchmark_reference_readiness_checklist_markdown),
@@ -4558,7 +4563,7 @@ with tab_export:
         f"Benchmark reference template: {len(benchmark_reference_template_df)} rows / notes {'available' if benchmark_reference_template_markdown else 'not available'}",
         f"Benchmark reference curation quality: {len(pocket_benchmark_reference_quality_issue_df)} issues / summary {len(pocket_benchmark_reference_quality_summary_df)} rows / checklist {'available' if pocket_benchmark_reference_quality_checklist_markdown else 'not available'}",
         f"Benchmark reference structure validation: {len(pocket_benchmark_reference_structure_validation_df)} issues / summary {len(pocket_benchmark_reference_structure_validation_summary_df)} rows / checklist {'available' if pocket_benchmark_reference_structure_validation_checklist_markdown else 'not available'}",
-        f"Benchmark reference readiness: {pocket_benchmark_reference_readiness_summary_df.iloc[0].get('readiness_status') if not pocket_benchmark_reference_readiness_summary_df.empty else '-'} / blockers {pocket_benchmark_reference_readiness_summary_df.iloc[0].get('p0_p1_issue_count') if not pocket_benchmark_reference_readiness_summary_df.empty else 0} / review {pocket_benchmark_reference_readiness_summary_df.iloc[0].get('p2_issue_count') if not pocket_benchmark_reference_readiness_summary_df.empty else 0}",
+        f"Benchmark reference readiness: {pocket_benchmark_reference_readiness_summary_df.iloc[0].get('readiness_status') if not pocket_benchmark_reference_readiness_summary_df.empty else '-'} / blockers {pocket_benchmark_reference_readiness_summary_df.iloc[0].get('p0_p1_issue_count') if not pocket_benchmark_reference_readiness_summary_df.empty else 0} / review {pocket_benchmark_reference_readiness_summary_df.iloc[0].get('p2_issue_count') if not pocket_benchmark_reference_readiness_summary_df.empty else 0} / source audit {pocket_benchmark_reference_readiness_summary_df.iloc[0].get('source_audit_issue_count') if not pocket_benchmark_reference_readiness_summary_df.empty else 0}",
         f"Benchmark reference readiness cases: {len(pocket_benchmark_reference_readiness_case_summary_df)} rows / blocked {int(pocket_benchmark_reference_readiness_case_summary_df['readiness_status'].astype(str).eq('blocked').sum()) if not pocket_benchmark_reference_readiness_case_summary_df.empty and 'readiness_status' in pocket_benchmark_reference_readiness_case_summary_df.columns else 0} / review {int(pocket_benchmark_reference_readiness_case_summary_df['readiness_status'].astype(str).eq('review-needed').sum()) if not pocket_benchmark_reference_readiness_case_summary_df.empty and 'readiness_status' in pocket_benchmark_reference_readiness_case_summary_df.columns else 0}",
         f"Benchmark interpretation: {len(pocket_benchmark_interpretation_df)} rows / Top-1 claim {pocket_benchmark_interpretation_df[pocket_benchmark_interpretation_df['top_n'].astype(int) == 1].iloc[0].get('claim_status') if not pocket_benchmark_interpretation_df.empty and 'top_n' in pocket_benchmark_interpretation_df.columns and (pocket_benchmark_interpretation_df['top_n'].astype(int) == 1).any() else '-'} / Top-3 claim {pocket_benchmark_interpretation_df[pocket_benchmark_interpretation_df['top_n'].astype(int) == 3].iloc[0].get('claim_status') if not pocket_benchmark_interpretation_df.empty and 'top_n' in pocket_benchmark_interpretation_df.columns and (pocket_benchmark_interpretation_df['top_n'].astype(int) == 3).any() else '-'}",
         f"Benchmark case interpretation: {len(pocket_benchmark_case_interpretation_df)} rows / blocked {int(pocket_benchmark_case_interpretation_df['claim_status'].astype(str).eq('blocked').sum()) if not pocket_benchmark_case_interpretation_df.empty and 'claim_status' in pocket_benchmark_case_interpretation_df.columns else 0} / review {int(pocket_benchmark_case_interpretation_df['claim_status'].astype(str).eq('review-needed').sum()) if not pocket_benchmark_case_interpretation_df.empty and 'claim_status' in pocket_benchmark_case_interpretation_df.columns else 0}",

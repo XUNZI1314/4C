@@ -368,6 +368,7 @@ BENCHMARK_REFERENCE_READINESS_SUMMARY_COLUMNS = [
     "reference_residue_count",
     "curation_issue_count",
     "structure_validation_issue_count",
+    "source_audit_issue_count",
     "p0_p1_issue_count",
     "p2_issue_count",
     "blocking_issue_types",
@@ -2401,9 +2402,81 @@ def _reference_issue_queue_rows(issue_df: Optional[pd.DataFrame], *, issue_sourc
     return rows
 
 
+def _source_audit_readiness_issue(audit_row: pd.Series) -> tuple[str, str, str, str] | None:
+    source_claim_status = _safe_text(audit_row.get("source_claim_status"))
+    independent_claim_status = _safe_text(audit_row.get("can_support_independent_claim"))
+    if source_claim_status == "blocked-provisional" or independent_claim_status == "no":
+        return (
+            "P0",
+            "provisional_reference_source",
+            "Replace the provisional reference with a curated upload or accepted review decision before using coverage as a precision claim.",
+            "Provisional external evidence can overlap with detection inputs and cannot support independent benchmark claims.",
+        )
+    if source_claim_status == "source-unknown":
+        return (
+            "P1",
+            "unknown_reference_source",
+            "Record whether the reference came from curated upload, reviewed candidate, or provisional evidence before using benchmark coverage.",
+            "Unknown reference provenance can invalidate benchmark interpretation.",
+        )
+    if source_claim_status == "review-qualified" or independent_claim_status == "review-required":
+        return (
+            "P2",
+            "review_qualified_reference_source",
+            "Confirm the accepted candidate reference is independent from detection/reranking evidence before reporting final accuracy.",
+            "Reviewer-accepted candidate references are useful for triage but still need independence confirmation for precision claims.",
+        )
+    return None
+
+
+def _source_audit_queue_rows(source_audit_df: Optional[pd.DataFrame]) -> list[dict[str, object]]:
+    if source_audit_df is None or getattr(source_audit_df, "empty", True):
+        return []
+    working = source_audit_df.copy()
+    for column in (
+        "benchmark_id",
+        "chain",
+        "resid",
+        "resname",
+        "source_claim_status",
+        "can_support_independent_claim",
+        "recommended_action",
+        "provenance_warning",
+    ):
+        if column not in working.columns:
+            working[column] = ""
+
+    rows: list[dict[str, object]] = []
+    for _, audit in working.iterrows():
+        issue = _source_audit_readiness_issue(audit)
+        if issue is None:
+            continue
+        priority, issue_type, suggested_action, warning = issue
+        resid_value = _safe_int(audit.get("resid")) or 0
+        chain = _safe_text(audit.get("chain"))
+        resname = _safe_text(audit.get("resname")).upper()
+        rows.append(
+            {
+                "priority": priority,
+                "action_status": "blocker" if priority in {"P0", "P1"} else "review",
+                "issue_source": "source_audit",
+                "issue_type": issue_type,
+                "benchmark_id": _safe_text(audit.get("benchmark_id")),
+                "residue_label": _residue_label(chain, resid_value, resname) if resid_value else "",
+                "chain": chain,
+                "resid": _safe_text(audit.get("resid")),
+                "resname": resname,
+                "suggested_action": _safe_text(audit.get("recommended_action")) or suggested_action,
+                "readiness_warning": _safe_text(audit.get("provenance_warning")) or warning,
+            }
+        )
+    return rows
+
+
 def build_pocket_benchmark_reference_readiness_queue(
     quality_issue_df: Optional[pd.DataFrame],
     structure_validation_issue_df: Optional[pd.DataFrame],
+    source_audit_df: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """Combine reference curation and structure validation issues into one readiness queue."""
 
@@ -2414,6 +2487,7 @@ def build_pocket_benchmark_reference_readiness_queue(
             issue_source="structure_validation",
             warning_column="validation_warning",
         ),
+        *_source_audit_queue_rows(source_audit_df),
     ]
     if not rows:
         return _empty_reference_readiness_queue_df()
@@ -2433,11 +2507,12 @@ def build_pocket_benchmark_reference_readiness_summary(
     reference_df: Optional[pd.DataFrame],
     quality_issue_df: Optional[pd.DataFrame],
     structure_validation_issue_df: Optional[pd.DataFrame],
+    source_audit_df: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """Build a one-row gate for whether benchmark reference rows are ready for accuracy claims."""
 
     references = _reference_rows(reference_df)
-    queue = build_pocket_benchmark_reference_readiness_queue(quality_issue_df, structure_validation_issue_df)
+    queue = build_pocket_benchmark_reference_readiness_queue(quality_issue_df, structure_validation_issue_df, source_audit_df)
     reference_count = int(len(references))
     curation_count = 0 if quality_issue_df is None or getattr(quality_issue_df, "empty", True) else int(len(quality_issue_df))
     structure_count = (
@@ -2445,6 +2520,7 @@ def build_pocket_benchmark_reference_readiness_summary(
         if structure_validation_issue_df is None or getattr(structure_validation_issue_df, "empty", True)
         else int(len(structure_validation_issue_df))
     )
+    source_audit_count = int(queue["issue_source"].astype(str).eq("source_audit").sum()) if not queue.empty and "issue_source" in queue.columns else 0
 
     if reference_count <= 0:
         row = {
@@ -2452,6 +2528,7 @@ def build_pocket_benchmark_reference_readiness_summary(
             "reference_residue_count": 0,
             "curation_issue_count": curation_count,
             "structure_validation_issue_count": structure_count,
+            "source_audit_issue_count": source_audit_count,
             "p0_p1_issue_count": 0,
             "p2_issue_count": 0,
             "blocking_issue_types": "",
@@ -2479,12 +2556,20 @@ def build_pocket_benchmark_reference_readiness_summary(
 
     if p0_p1_count > 0:
         readiness_status = "blocked"
-        recommended_action = "Resolve P0/P1 reference curation or structure-mapping blockers before using coverage as a precision claim."
-        warning = "Current benchmark misses may reflect reference numbering or curation errors, not pocket-detection errors."
+        if "provisional_reference_source" in blocking_types or "unknown_reference_source" in blocking_types:
+            recommended_action = "Resolve P0/P1 reference provenance blockers before using coverage as a precision claim."
+            warning = "Current benchmark coverage may be based on non-independent or unknown reference evidence."
+        else:
+            recommended_action = "Resolve P0/P1 reference curation or structure-mapping blockers before using coverage as a precision claim."
+            warning = "Current benchmark misses may reflect reference numbering or curation errors, not pocket-detection errors."
     elif p2_count > 0:
         readiness_status = "review-needed"
-        recommended_action = "Review P2 issues, especially wildcard chain and residue identity assumptions, before publishing benchmark coverage."
-        warning = "Benchmark coverage can be inspected, but should be labeled as reviewer-pending."
+        if "review_qualified_reference_source" in review_types:
+            recommended_action = "Confirm source independence for reviewed candidate references before publishing benchmark coverage."
+            warning = "Benchmark coverage can be inspected, but reviewed candidate references should be labeled as independence-pending."
+        else:
+            recommended_action = "Review P2 issues, especially wildcard chain and residue identity assumptions, before publishing benchmark coverage."
+            warning = "Benchmark coverage can be inspected, but should be labeled as reviewer-pending."
     else:
         readiness_status = "ready"
         recommended_action = "Reference residues are ready for catalytic pocket coverage interpretation."
@@ -2495,6 +2580,7 @@ def build_pocket_benchmark_reference_readiness_summary(
         "reference_residue_count": reference_count,
         "curation_issue_count": curation_count,
         "structure_validation_issue_count": structure_count,
+        "source_audit_issue_count": source_audit_count,
         "p0_p1_issue_count": p0_p1_count,
         "p2_issue_count": p2_count,
         "blocking_issue_types": blocking_types,
@@ -2523,10 +2609,22 @@ def _readiness_issue_frame(issue_df: Optional[pd.DataFrame], *, issue_source: st
     return working[["benchmark_id", "severity", "issue_type", "issue_source"]].reset_index(drop=True)
 
 
+def _source_audit_readiness_issue_frame(source_audit_df: Optional[pd.DataFrame], *, default_benchmark_id: str) -> pd.DataFrame:
+    rows = _source_audit_queue_rows(source_audit_df)
+    if not rows:
+        return pd.DataFrame(columns=["benchmark_id", "severity", "issue_type", "issue_source"])
+    frame = pd.DataFrame(rows)
+    frame["benchmark_id"] = frame["benchmark_id"].map(lambda value: _normalized_case_id(value, default_benchmark_id))
+    frame["severity"] = frame["priority"].map(_safe_text)
+    frame["issue_source"] = "source_audit"
+    return frame[["benchmark_id", "severity", "issue_type", "issue_source"]].reset_index(drop=True)
+
+
 def build_pocket_benchmark_reference_readiness_case_summary(
     reference_df: Optional[pd.DataFrame],
     quality_issue_df: Optional[pd.DataFrame],
     structure_validation_issue_df: Optional[pd.DataFrame],
+    source_audit_df: Optional[pd.DataFrame] = None,
     *,
     default_benchmark_id: str = "current",
 ) -> pd.DataFrame:
@@ -2545,7 +2643,8 @@ def build_pocket_benchmark_reference_readiness_case_summary(
         issue_source="structure_validation",
         default_benchmark_id=fallback_id,
     )
-    issue_frame = pd.concat([quality_issues, structure_issues], ignore_index=True)
+    source_issues = _source_audit_readiness_issue_frame(source_audit_df, default_benchmark_id=fallback_id)
+    issue_frame = pd.concat([quality_issues, structure_issues, source_issues], ignore_index=True)
 
     case_ids = sorted(
         set(references["benchmark_id"].map(_safe_text).tolist())
@@ -2557,6 +2656,7 @@ def build_pocket_benchmark_reference_readiness_case_summary(
         case_issues = issue_frame[issue_frame["benchmark_id"].astype(str).eq(benchmark_id)]
         curation_count = int(case_issues["issue_source"].astype(str).eq("curation_quality").sum())
         structure_count = int(case_issues["issue_source"].astype(str).eq("structure_validation").sum())
+        source_audit_count = int(case_issues["issue_source"].astype(str).eq("source_audit").sum())
         p0_p1_count = int(case_issues["severity"].astype(str).isin(["P0", "P1"]).sum())
         p2_count = int(case_issues["severity"].astype(str).eq("P2").sum())
         blocking_types = "; ".join(
@@ -2568,12 +2668,20 @@ def build_pocket_benchmark_reference_readiness_case_summary(
 
         if p0_p1_count > 0:
             readiness_status = "blocked"
-            recommended_action = "Resolve this case's P0/P1 reference curation or structure-mapping blockers before using its coverage in dataset-level claims."
-            warning = "This case can distort dataset coverage until reference numbering and curation blockers are fixed."
+            if "provisional_reference_source" in blocking_types or "unknown_reference_source" in blocking_types:
+                recommended_action = "Resolve this case's reference provenance blockers before using its coverage in dataset-level claims."
+                warning = "This case can distort dataset coverage until provisional or unknown reference sources are replaced."
+            else:
+                recommended_action = "Resolve this case's P0/P1 reference curation or structure-mapping blockers before using its coverage in dataset-level claims."
+                warning = "This case can distort dataset coverage until reference numbering and curation blockers are fixed."
         elif p2_count > 0:
             readiness_status = "review-needed"
-            recommended_action = "Review this case's P2 assumptions before treating its coverage as publication-ready."
-            warning = "This case can be inspected, but should be labeled reviewer-pending."
+            if "review_qualified_reference_source" in review_types:
+                recommended_action = "Confirm this case's reviewed candidate references are independent before treating coverage as publication-ready."
+                warning = "This case can be inspected, but should be labeled source-independence-pending."
+            else:
+                recommended_action = "Review this case's P2 assumptions before treating its coverage as publication-ready."
+                warning = "This case can be inspected, but should be labeled reviewer-pending."
         else:
             readiness_status = "ready"
             recommended_action = "This case is ready for catalytic pocket coverage interpretation."
@@ -2586,6 +2694,7 @@ def build_pocket_benchmark_reference_readiness_case_summary(
                 "reference_residue_count": int(len(case_references)),
                 "curation_issue_count": curation_count,
                 "structure_validation_issue_count": structure_count,
+                "source_audit_issue_count": source_audit_count,
                 "p0_p1_issue_count": p0_p1_count,
                 "p2_issue_count": p2_count,
                 "blocking_issue_types": blocking_types,

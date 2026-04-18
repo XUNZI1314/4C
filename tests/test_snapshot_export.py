@@ -83,12 +83,13 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
             "pocket_benchmark_reference_structure_validation_issue_rows": 3,
             "pocket_benchmark_reference_structure_validation_summary_rows": 2,
             "pocket_benchmark_reference_structure_validation_checklist_available": True,
-            "pocket_benchmark_reference_readiness_queue_rows": 5,
+            "pocket_benchmark_reference_readiness_queue_rows": 8,
             "pocket_benchmark_reference_readiness_summary_rows": 1,
             "pocket_benchmark_reference_readiness_case_summary_rows": 4,
             "pocket_benchmark_reference_readiness_status": "blocked",
-            "pocket_benchmark_reference_readiness_blocker_rows": 3,
+            "pocket_benchmark_reference_readiness_blocker_rows": 6,
             "pocket_benchmark_reference_readiness_review_rows": 2,
+            "pocket_benchmark_reference_readiness_source_audit_issue_rows": 3,
             "pocket_benchmark_reference_readiness_blocked_cases": 1,
             "pocket_benchmark_reference_readiness_review_cases": 2,
             "pocket_benchmark_reference_readiness_checklist_available": True,
@@ -155,7 +156,7 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
     assert any("Benchmark reference template: 3 rows / notes available" in line for line in summary_lines)
     assert any("Benchmark reference curation quality: 2 issues / summary 1 rows / checklist available" in line for line in summary_lines)
     assert any("Benchmark reference structure validation: 3 issues / summary 2 rows / checklist available" in line for line in summary_lines)
-    assert any("Benchmark reference readiness: blocked / blockers 3 / review 2 / queue 5 / checklist available" in line for line in summary_lines)
+    assert any("Benchmark reference readiness: blocked / blockers 6 / review 2 / source audit 3 / queue 8 / checklist available" in line for line in summary_lines)
     assert any("Benchmark reference readiness cases: 4 rows / blocked 1 / review 2" in line for line in summary_lines)
     assert any("Benchmark interpretation: 3 rows / Top-1 claim blocked / Top-3 claim blocked" in line for line in summary_lines)
     assert any("Benchmark case interpretation: 6 rows / blocked 2 / review 1" in line for line in summary_lines)

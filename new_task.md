@@ -20,7 +20,7 @@
 - [x] External-evidence route 候选口袋生成。
 - [x] Literature A/B 和 evidence-route A/B。
 - [x] Catalytic pocket benchmark：提供 reference template、external-evidence reference candidate/import summary/review queue/checklist/decision loop/accepted candidate export、reference curation quality check、PDB structure validation、case-level readiness gate 和 case/dataset-level readiness-aware interpretation，上传 curated catalytic residues，计算 Top-1 / Top-3 / Top-5 coverage、case/dataset summary、case interpretation matrix/summary/queue、dataset claim readiness queue/checklist/report、best hit rank、missed residues、整体/case/dataset/residue 四层 current vs ablation variant comparison，以及 remediation queue / summary / checklist。
-- [x] Benchmark reference source control：无 curated 文件时优先 accepted reviewed candidate，未审核 external-evidence candidate 只作为显式 provisional fallback，并在 snapshot/report/source audit 记录 source mode 和 claim 安全状态。
+- [x] Benchmark reference source control：无 curated 文件时优先 accepted reviewed candidate，未审核 external-evidence candidate 只作为显式 provisional fallback，并在 snapshot/report/source audit/readiness gate 记录 source mode 和 claim 安全状态。
 - [x] Evidence quality label / score / warning。
 - [x] Pocket core / shell / rim 分层。
 - [x] Snapshot、report、history 中记录关键口袋证据。
@@ -32,7 +32,7 @@
 - [x] Release execution template、receipt import、validation、summary、report。
 - [x] Release closure certificate、closure ledger。
 - [x] Detached closure summary、blocker queue、remediation checklist、detached manifest。
-- [x] 单元测试和全量测试覆盖，最近一次验证：`228 passed`。
+- [x] 单元测试和全量测试覆盖，最近一次验证：`229 passed`。
 
 ## 当前导出重点
 
@@ -59,6 +59,7 @@
 - 已落地 current vs no-p2rank / no-literature / no-evidence-route / no-conservation-rerank 的整体、case、dataset 和 residue 四层 benchmark variant comparison，并生成 remediation queue / summary / checklist，用 coverage loss 与 lost/gained residue 定位证据路径贡献。
 - 已落地 benchmark reference candidate/import summary/review queue/checklist/decision loop/accepted candidate export，可把已加载的 UniProt / M-CSA / 文献 / AI 残基证据转换成待复核的 benchmark reference candidate，再把 weak mapping、wildcard chain、missing resname 和 manual-review 风险拆成行动队列，由 reviewer 回填 accept/reject/hold 决策，最终只导出 clean 或全部风险 action 被接受的 reference candidate，并明确提示不能直接当作独立精度证明。
 - 已落地 benchmark reference source control：在无 curated benchmark 文件时，accepted reviewed candidate 优先于 provisional external-evidence candidate；provisional 路径必须显式开启，并会在 snapshot/report/source audit 标记为 provisional 或 review-qualified。
+- 已落地 source-aware benchmark readiness gate：provisional reference source 进入 P0 blocker，review-qualified accepted candidate 进入 P2 independence review item，避免 coverage 在 reference 来源不独立时被解释为精度声明。
 - 已落地 benchmark reference template CSV/Markdown，方便后续收集 M-CSA + PDB + literature-confirmed catalytic residues。
 - 已落地 benchmark reference curation quality issues / summary / checklist，先检查 benchmark_id、source、chain、resname、编号假设和重复角色，再解释 coverage。
 - 已落地 benchmark reference structure validation，检查 curated residues 是否存在于当前 PDB、resname 是否匹配、空 chain 是否造成多链歧义。

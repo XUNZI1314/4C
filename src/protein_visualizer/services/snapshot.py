@@ -362,10 +362,11 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         readiness_status = str(extra.get("pocket_benchmark_reference_readiness_status") or "-").strip()
         blocker_rows = int(extra.get("pocket_benchmark_reference_readiness_blocker_rows") or 0)
         review_rows = int(extra.get("pocket_benchmark_reference_readiness_review_rows") or 0)
+        source_audit_rows = int(extra.get("pocket_benchmark_reference_readiness_source_audit_issue_rows") or 0)
         queue_rows = int(extra.get("pocket_benchmark_reference_readiness_queue_rows") or 0)
         checklist_status = "available" if bool(extra.get("pocket_benchmark_reference_readiness_checklist_available")) else "not available"
         lines.append(
-            f"Benchmark reference readiness: {readiness_status or '-'} / blockers {blocker_rows} / review {review_rows} / queue {queue_rows} / checklist {checklist_status}"
+            f"Benchmark reference readiness: {readiness_status or '-'} / blockers {blocker_rows} / review {review_rows} / source audit {source_audit_rows} / queue {queue_rows} / checklist {checklist_status}"
         )
     readiness_case_rows = int(extra.get("pocket_benchmark_reference_readiness_case_summary_rows") or 0)
     if readiness_case_rows > 0:

@@ -1023,6 +1023,58 @@ def test_benchmark_reference_source_audit_marks_claim_safety_by_source():
     assert bool(provisional_audit.iloc[0]["is_provisional"]) is True
 
 
+def test_benchmark_reference_readiness_uses_source_audit_as_gate():
+    reference_df = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "enzyme-a",
+                "chain": "A",
+                "resid": 195,
+                "resname": "SER",
+                "reference_type": "Catalytic residue",
+                "reference_source": "M-CSA",
+                "reference_note": "",
+                "expected_pocket_id": "",
+            }
+        ]
+    )
+    provisional_audit = build_pocket_benchmark_reference_source_audit(
+        reference_df,
+        source_mode="provisional-external-evidence",
+        is_provisional=True,
+    )
+    reviewed_audit = build_pocket_benchmark_reference_source_audit(
+        reference_df,
+        source_mode="accepted-reviewed-candidate",
+        is_reviewed_candidate=True,
+    )
+    unknown_audit = build_pocket_benchmark_reference_source_audit(reference_df)
+
+    provisional_queue = build_pocket_benchmark_reference_readiness_queue(None, None, provisional_audit)
+    unknown_queue = build_pocket_benchmark_reference_readiness_queue(None, None, unknown_audit)
+    provisional_summary = build_pocket_benchmark_reference_readiness_summary(reference_df, None, None, provisional_audit)
+    provisional_case_summary = build_pocket_benchmark_reference_readiness_case_summary(
+        reference_df,
+        None,
+        None,
+        provisional_audit,
+    )
+    reviewed_summary = build_pocket_benchmark_reference_readiness_summary(reference_df, None, None, reviewed_audit)
+
+    assert provisional_queue["issue_source"].tolist() == ["source_audit"]
+    assert provisional_queue["issue_type"].tolist() == ["provisional_reference_source"]
+    assert provisional_queue["priority"].tolist() == ["P0"]
+    assert unknown_queue["issue_type"].tolist() == ["unknown_reference_source"]
+    assert unknown_queue["priority"].tolist() == ["P1"]
+    assert provisional_summary.iloc[0]["readiness_status"] == "blocked"
+    assert int(provisional_summary.iloc[0]["source_audit_issue_count"]) == 1
+    assert int(provisional_summary.iloc[0]["p0_p1_issue_count"]) == 1
+    assert provisional_case_summary.iloc[0]["readiness_status"] == "blocked"
+    assert reviewed_summary.iloc[0]["readiness_status"] == "review-needed"
+    assert int(reviewed_summary.iloc[0]["source_audit_issue_count"]) == 1
+    assert int(reviewed_summary.iloc[0]["p2_issue_count"]) == 1
+
+
 def test_build_pocket_benchmark_summary_reports_top1_and_top3_coverage():
     reference_df, _ = parse_benchmark_reference_table(
         """chain,resid,resname,reference_type
