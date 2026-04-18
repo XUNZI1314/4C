@@ -237,11 +237,15 @@ Users can upload a curated catalytic residue table in the pocket page. Accepted 
 
 The parser also accepts residue labels such as `Ser195`, `A:195` or `D123A`. Blank chain is treated as a wildcard, which is useful when the curated source does not specify a PDB chain.
 
+The page also exports `pocket_benchmark_reference_template.csv` and `pocket_benchmark_reference_template.md` so M-CSA, PDB and literature-confirmed catalytic residue cases can be collected with a consistent schema before upload.
+
 ### Metrics
 
 The benchmark exports:
 
 - `pocket_benchmark_reference.csv`
+- `pocket_benchmark_reference_template.csv`
+- `pocket_benchmark_reference_template.md`
 - `pocket_benchmark_summary.csv`
 - `pocket_benchmark_case_summary.csv`
 - `pocket_benchmark_dataset_summary.csv`
@@ -464,7 +468,7 @@ Coverage includes:
 Latest full run:
 
 ```text
-206 passed
+207 passed
 ```
 
 ## Known Limits

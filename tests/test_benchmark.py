@@ -4,6 +4,8 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_case_summary,
     build_pocket_benchmark_dataset_summary,
     build_pocket_benchmark_details,
+    build_pocket_benchmark_reference_template,
+    build_pocket_benchmark_reference_template_markdown,
     build_pocket_benchmark_summary,
     build_pocket_benchmark_variant_comparison,
     build_pocket_benchmark_variant_case_comparison,
@@ -14,6 +16,26 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_variant_remediation_summary,
     parse_benchmark_reference_table,
 )
+
+
+def test_build_pocket_benchmark_reference_template_is_parseable():
+    template = build_pocket_benchmark_reference_template()
+    markdown = build_pocket_benchmark_reference_template_markdown()
+    reference_df, metadata = parse_benchmark_reference_table(template.to_csv(index=False))
+
+    assert list(template.columns) == [
+        "benchmark_id",
+        "chain",
+        "resid",
+        "resname",
+        "reference_type",
+        "reference_source",
+        "reference_note",
+        "expected_pocket_id",
+    ]
+    assert metadata["status"] == "ok"
+    assert int(metadata["reference_rows"]) == len(template)
+    assert "blank chain is treated as wildcard" in markdown.lower()
 
 
 def test_parse_benchmark_reference_table_accepts_catalytic_residue_aliases():

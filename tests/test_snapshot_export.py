@@ -56,6 +56,8 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
             "auto_detection_external_rows": 2,
             "auto_detection_external_sources": "M-CSA,UniProt",
             "pocket_benchmark_reference_rows": 3,
+            "pocket_benchmark_reference_template_rows": 3,
+            "pocket_benchmark_reference_template_notes_available": True,
             "pocket_benchmark_top1_coverage": 0.667,
             "pocket_benchmark_top1_status": "top1-partial-hit",
             "pocket_benchmark_top3_coverage": 1.0,
@@ -88,6 +90,7 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
     assert any("P2Rank: ok" in line for line in summary_lines)
     assert any("P2Rank A/B: enabled / rows 1" in line for line in summary_lines)
     assert any("Catalytic pocket benchmark: references 3 / Top-1 0.667" in line for line in summary_lines)
+    assert any("Benchmark reference template: 3 rows / notes available" in line for line in summary_lines)
     assert any("Catalytic benchmark dataset: cases 2 / summary rows 2" in line for line in summary_lines)
     assert any("Catalytic benchmark variants: 4 rows" in line for line in summary_lines)
     assert any("Catalytic benchmark variant cases: 4 rows / dataset rows 2" in line for line in summary_lines)

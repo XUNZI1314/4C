@@ -299,6 +299,10 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         lines.append(
             f"Catalytic pocket benchmark: references {benchmark_reference_rows} / Top-1 {top1_coverage} ({top1_status or '-'}) / Top-3 {top3_coverage} ({top3_status or '-'})"
         )
+    benchmark_template_rows = int(extra.get("pocket_benchmark_reference_template_rows") or 0)
+    if benchmark_template_rows > 0:
+        notes_status = "available" if bool(extra.get("pocket_benchmark_reference_template_notes_available")) else "not available"
+        lines.append(f"Benchmark reference template: {benchmark_template_rows} rows / notes {notes_status}")
     benchmark_case_summary = extra.get("pocket_benchmark_case_summary") or []
     benchmark_dataset_rows = int(extra.get("pocket_benchmark_dataset_summary_rows") or 0)
     if benchmark_dataset_rows > 0 or benchmark_case_summary:

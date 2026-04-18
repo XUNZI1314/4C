@@ -18,6 +18,10 @@ BENCHMARK_REFERENCE_COLUMNS = [
     "expected_pocket_id",
 ]
 
+BENCHMARK_REFERENCE_TEMPLATE_COLUMNS = [
+    *BENCHMARK_REFERENCE_COLUMNS,
+]
+
 BENCHMARK_DETAIL_COLUMNS = [
     *BENCHMARK_REFERENCE_COLUMNS,
     "residue_label",
@@ -233,6 +237,10 @@ def _empty_reference_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_REFERENCE_COLUMNS)
 
 
+def _empty_reference_template_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_TEMPLATE_COLUMNS)
+
+
 def _empty_detail_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_DETAIL_COLUMNS)
 
@@ -318,6 +326,75 @@ def _read_delimited_table(text: str) -> pd.DataFrame:
             continue
         return frame
     return pd.DataFrame()
+
+
+def build_pocket_benchmark_reference_template(*, include_examples: bool = True) -> pd.DataFrame:
+    """Build an editable curated catalytic residue benchmark template."""
+
+    if not include_examples:
+        return _empty_reference_template_df()
+    rows = [
+        {
+            "benchmark_id": "case-001",
+            "chain": "A",
+            "resid": 195,
+            "resname": "SER",
+            "reference_type": "Catalytic residue",
+            "reference_source": "M-CSA / PMID / DOI",
+            "reference_note": "Example nucleophile; replace with curated residue evidence.",
+            "expected_pocket_id": "",
+        },
+        {
+            "benchmark_id": "case-001",
+            "chain": "A",
+            "resid": 57,
+            "resname": "HIS",
+            "reference_type": "Catalytic residue",
+            "reference_source": "M-CSA / PMID / DOI",
+            "reference_note": "Example catalytic base; keep benchmark_id identical for the same enzyme/structure.",
+            "expected_pocket_id": "",
+        },
+        {
+            "benchmark_id": "case-002",
+            "chain": "",
+            "resid": 123,
+            "resname": "",
+            "reference_type": "Binding residue",
+            "reference_source": "curated literature",
+            "reference_note": "Blank chain acts as wildcard when source numbering is chain-agnostic.",
+            "expected_pocket_id": "",
+        },
+    ]
+    return pd.DataFrame(rows, columns=BENCHMARK_REFERENCE_TEMPLATE_COLUMNS)
+
+
+def build_pocket_benchmark_reference_template_markdown() -> str:
+    """Explain the curated benchmark reference template fields."""
+
+    lines = [
+        "# Pocket benchmark reference template",
+        "",
+        "Use this template to collect curated catalytic or binding residues for enzyme pocket accuracy checks.",
+        "",
+        "## Columns",
+        "",
+        "- `benchmark_id`: Case identifier. Use one ID per enzyme/structure; examples include a PDB ID, M-CSA entry, or local dataset case ID.",
+        "- `chain`: PDB chain. Leave blank only when the curated source is chain-agnostic; blank chain is treated as wildcard.",
+        "- `resid`: Required residue number in the numbering system you want to benchmark.",
+        "- `resname`: Optional three-letter residue name such as `SER`, `HIS`, or `ASP`.",
+        "- `reference_type`: Evidence role, for example `Catalytic residue`, `Binding residue`, `Metal binding`, or `Mutagenesis`.",
+        "- `reference_source`: Stable source label such as `M-CSA`, `PMID:...`, `DOI:...`, or a curated dataset name.",
+        "- `reference_note`: Free-text note for EC number, UniProt accession, mature-chain offset, paper quote, or curation caveat.",
+        "- `expected_pocket_id`: Optional pocket ID if a validated pocket label is already known.",
+        "",
+        "## Rules",
+        "",
+        "- Keep all catalytic residues from the same enzyme/structure under the same `benchmark_id`.",
+        "- Prefer structure author residue numbering when benchmarking uploaded PDB coordinates.",
+        "- If using UniProt or mature-chain numbering, record the mapping assumption in `reference_note`.",
+        "- Do not mix different structures under the same `benchmark_id` unless residue numbering is intentionally shared.",
+    ]
+    return "\n".join(lines).strip() + "\n"
 
 
 def _extract_residue_token(value: object) -> tuple[str, str, Optional[int]]:

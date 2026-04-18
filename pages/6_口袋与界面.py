@@ -46,6 +46,8 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_case_summary,
     build_pocket_benchmark_dataset_summary,
     build_pocket_benchmark_details,
+    build_pocket_benchmark_reference_template,
+    build_pocket_benchmark_reference_template_markdown,
     build_pocket_benchmark_summary,
     build_pocket_benchmark_variant_comparison,
     build_pocket_benchmark_variant_case_comparison,
@@ -200,6 +202,10 @@ def _uploaded_file_entry(uploaded_file) -> dict | None:
 
 def _to_csv_bytes(table: pd.DataFrame) -> bytes:
     return table.to_csv(index=False).encode("utf-8")
+
+
+benchmark_reference_template_df = build_pocket_benchmark_reference_template()
+benchmark_reference_template_markdown = build_pocket_benchmark_reference_template_markdown()
 
 
 def _external_evidence_counts(table: pd.DataFrame) -> dict[str, int]:
@@ -787,6 +793,18 @@ with st.sidebar:
         st.caption(
             "Columns can include chain,resid,resname,reference_type,reference_source,reference_note,expected_pocket_id. "
             "Blank chain is treated as wildcard."
+        )
+        st.download_button(
+            "Download benchmark reference template CSV",
+            data=_to_csv_bytes(benchmark_reference_template_df),
+            file_name="pocket_benchmark_reference_template.csv",
+            mime="text/csv",
+        )
+        st.download_button(
+            "Download benchmark reference template notes",
+            data=benchmark_reference_template_markdown.encode("utf-8"),
+            file_name="pocket_benchmark_reference_template.md",
+            mime="text/markdown",
         )
 
 hotspot_df = (
@@ -1974,6 +1992,8 @@ try:
             "top_pocket_consensus_anchor_count": int(top_pocket_consensus_coverage.get("rank_safe_anchor_count") or 0) if top_pocket_consensus_coverage is not None else 0,
             "top_pocket_consensus_best_score": float(top_pocket_consensus_coverage.get("best_consensus_score")) if top_pocket_consensus_coverage is not None and pd.notna(top_pocket_consensus_coverage.get("best_consensus_score")) else None,
             "pocket_benchmark_reference_rows": int(len(benchmark_reference_df)),
+            "pocket_benchmark_reference_template_rows": int(len(benchmark_reference_template_df)),
+            "pocket_benchmark_reference_template_notes_available": bool(benchmark_reference_template_markdown),
             "pocket_benchmark_top1_coverage": float(top1_benchmark.get("coverage_ratio") or 0.0) if top1_benchmark is not None else None,
             "pocket_benchmark_top1_status": str(top1_benchmark.get("benchmark_status") or "") if top1_benchmark is not None else None,
             "pocket_benchmark_top3_coverage": float(top3_benchmark.get("coverage_ratio") or 0.0) if top3_benchmark is not None else None,
@@ -2185,6 +2205,9 @@ snapshot = build_analysis_snapshot(
         "top_pocket_consensus_best_score": float(top_pocket_consensus_coverage.get("best_consensus_score")) if top_pocket_consensus_coverage is not None and pd.notna(top_pocket_consensus_coverage.get("best_consensus_score")) else None,
         "pocket_benchmark_reference_rows": int(len(benchmark_reference_df)),
         "pocket_benchmark_reference": benchmark_reference_df.to_dict(orient="records"),
+        "pocket_benchmark_reference_template_rows": int(len(benchmark_reference_template_df)),
+        "pocket_benchmark_reference_template": benchmark_reference_template_df.to_dict(orient="records"),
+        "pocket_benchmark_reference_template_notes_available": bool(benchmark_reference_template_markdown),
         "pocket_benchmark_summary_rows": int(len(pocket_benchmark_summary_df)),
         "pocket_benchmark_summary": pocket_benchmark_summary_df.to_dict(orient="records"),
         "pocket_benchmark_details_rows": int(len(pocket_benchmark_details_df)),
@@ -3305,6 +3328,18 @@ with tab_export:
                 file_name="pocket_benchmark_reference.csv",
                 mime="text/csv",
             )
+        st.download_button(
+            "Export benchmark reference template CSV",
+            data=_to_csv_bytes(benchmark_reference_template_df),
+            file_name="pocket_benchmark_reference_template.csv",
+            mime="text/csv",
+        )
+        st.download_button(
+            "Export benchmark reference template notes",
+            data=benchmark_reference_template_markdown.encode("utf-8"),
+            file_name="pocket_benchmark_reference_template.md",
+            mime="text/markdown",
+        )
         if not pocket_benchmark_summary_df.empty:
             st.download_button(
                 "Export pocket benchmark summary CSV",
@@ -3790,6 +3825,7 @@ with tab_export:
         f"Residue evidence consensus: {len(residue_evidence_consensus_df)} rows / top {top_residue_consensus.get('residue_anchor') if top_residue_consensus is not None else '-'} / tier {top_residue_consensus.get('consensus_tier') if top_residue_consensus is not None else '-'}",
         f"Pocket consensus coverage: {len(pocket_consensus_coverage_df)} rows / top {top_pocket_consensus_coverage.get('pocket_id') if top_pocket_consensus_coverage is not None else '-'} / label {top_pocket_consensus_coverage.get('pocket_consensus_label') if top_pocket_consensus_coverage is not None else '-'}",
         f"Catalytic pocket benchmark: references {len(benchmark_reference_df)} / Top-1 {top1_benchmark.get('coverage_ratio') if top1_benchmark is not None else '-'} / Top-3 {top3_benchmark.get('coverage_ratio') if top3_benchmark is not None else '-'} / best rank {top3_benchmark.get('best_rank') if top3_benchmark is not None else '-'}",
+        f"Benchmark reference template: {len(benchmark_reference_template_df)} rows / notes {'available' if benchmark_reference_template_markdown else 'not available'}",
         f"Catalytic benchmark dataset: cases {int(pocket_benchmark_case_summary_df['benchmark_id'].nunique()) if not pocket_benchmark_case_summary_df.empty and 'benchmark_id' in pocket_benchmark_case_summary_df.columns else 0} / dataset rows {len(pocket_benchmark_dataset_summary_df)}",
         f"Catalytic benchmark variants: {len(pocket_benchmark_variant_comparison_df)} rows / current vs ablations {'available' if not pocket_benchmark_variant_comparison_df.empty else 'not available'}",
         f"Catalytic benchmark variant cases: {len(pocket_benchmark_variant_case_comparison_df)} rows / variant dataset rows {len(pocket_benchmark_variant_dataset_comparison_df)}",
