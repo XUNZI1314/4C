@@ -290,6 +290,28 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         lines.append(
             f"Pocket consensus coverage: {pocket_consensus_rows} rows / top {top_pocket or '-'} ({top_label or '-'}, anchors {anchor_count}, score {best_score})"
         )
+    benchmark_reference_rows = int(extra.get("pocket_benchmark_reference_rows") or 0)
+    if benchmark_reference_rows > 0:
+        top1_coverage = format_energy_value(extra.get("pocket_benchmark_top1_coverage"))
+        top3_coverage = format_energy_value(extra.get("pocket_benchmark_top3_coverage"))
+        top1_status = str(extra.get("pocket_benchmark_top1_status") or "-").strip()
+        top3_status = str(extra.get("pocket_benchmark_top3_status") or "-").strip()
+        lines.append(
+            f"Catalytic pocket benchmark: references {benchmark_reference_rows} / Top-1 {top1_coverage} ({top1_status or '-'}) / Top-3 {top3_coverage} ({top3_status or '-'})"
+        )
+    benchmark_case_summary = extra.get("pocket_benchmark_case_summary") or []
+    benchmark_dataset_rows = int(extra.get("pocket_benchmark_dataset_summary_rows") or 0)
+    if benchmark_dataset_rows > 0 or benchmark_case_summary:
+        case_ids = {
+            str(row.get("benchmark_id") or "").strip()
+            for row in benchmark_case_summary
+            if isinstance(row, dict) and str(row.get("benchmark_id") or "").strip()
+        }
+        case_count = len(case_ids) if case_ids else int(extra.get("pocket_benchmark_case_summary_rows") or 0)
+        lines.append(f"Catalytic benchmark dataset: cases {case_count} / summary rows {benchmark_dataset_rows}")
+    benchmark_variant_rows = int(extra.get("pocket_benchmark_variant_comparison_rows") or 0)
+    if benchmark_variant_rows > 0:
+        lines.append(f"Catalytic benchmark variants: {benchmark_variant_rows} rows")
     consensus_rerank_rows = int(extra.get("consensus_rerank_suggestion_rows") or 0)
     if consensus_rerank_rows > 0:
         rerank_pocket = str(extra.get("top_consensus_rerank_pocket_id") or "-").strip()

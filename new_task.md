@@ -19,7 +19,7 @@
 - [x] Conservation rerank-only 信号和 A/B 对比。
 - [x] External-evidence route 候选口袋生成。
 - [x] Literature A/B 和 evidence-route A/B。
-- [x] Catalytic pocket benchmark：上传 curated catalytic residues，计算 Top-1 / Top-3 / Top-5 coverage、best hit rank、missed residues 和 current vs ablation variant comparison。
+- [x] Catalytic pocket benchmark：上传 curated catalytic residues，计算 Top-1 / Top-3 / Top-5 coverage、case/dataset summary、best hit rank、missed residues 和 current vs ablation variant comparison。
 - [x] Evidence quality label / score / warning。
 - [x] Pocket core / shell / rim 分层。
 - [x] Snapshot、report、history 中记录关键口袋证据。
@@ -31,7 +31,7 @@
 - [x] Release execution template、receipt import、validation、summary、report。
 - [x] Release closure certificate、closure ledger。
 - [x] Detached closure summary、blocker queue、remediation checklist、detached manifest。
-- [x] 单元测试和全量测试覆盖，最近一次验证：`200 passed`。
+- [x] 单元测试和全量测试覆盖，最近一次验证：`201 passed`。
 
 ## 当前导出重点
 
@@ -54,9 +54,9 @@
 
 ### P0：扩展真实 benchmark 数据集
 
-- 已落地单结构 benchmark 评估框架：上传 curated catalytic residues 后可输出 Top-1 / Top-3 / Top-5 catalytic coverage。
+- 已落地 benchmark 评估框架：上传 curated catalytic residues 后可输出 Top-1 / Top-3 / Top-5 catalytic coverage，并按 benchmark_id/case_id 输出 case summary 与 dataset summary。
 - 已落地 current vs no-p2rank / no-literature / no-evidence-route / no-conservation-rerank 的 benchmark variant comparison，用 coverage loss 量化证据路径贡献。
-- 下一步收集 M-CSA + PDB + catalytic residue 数据集，形成批量 benchmark。
+- 下一步收集 M-CSA + PDB + catalytic residue 数据集，形成可重复运行的真实批量 benchmark。
 - 下一步扩展批量数据集层面的独立贡献评估。
 
 ### P1：继续增强文献证据片段

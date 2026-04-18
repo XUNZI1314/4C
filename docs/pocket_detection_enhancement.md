@@ -243,6 +243,8 @@ The benchmark exports:
 
 - `pocket_benchmark_reference.csv`
 - `pocket_benchmark_summary.csv`
+- `pocket_benchmark_case_summary.csv`
+- `pocket_benchmark_dataset_summary.csv`
 - `pocket_benchmark_variant_comparison.csv`
 - `pocket_benchmark_details.csv`
 - `p2rank_ab_comparison.csv`
@@ -254,9 +256,15 @@ Current summary metrics:
 - Top-5 catalytic residue coverage.
 - Best hit rank and best hit pocket.
 - Matched and missed catalytic residues.
+- Case-level Top-N coverage split by `benchmark_id` / `case_id`.
+- Dataset-level mean/median/min/max coverage, any-hit rate and all-hit rate.
 - Coverage delta / loss for current vs ablated variants.
 
 This gives a concrete accuracy check before claiming that the top-ranked pocket is the active-site pocket.
+
+### Case and Dataset Summary
+
+If the uploaded reference table includes `benchmark_id`, `case_id`, `enzyme_id`, `pdb_id` or similar columns, benchmark summaries are split by case before aggregation. This avoids over-weighting enzymes with many curated catalytic residues and makes the page closer to a real benchmark dataset workflow.
 
 ### Variant Comparison
 
@@ -440,7 +448,7 @@ Coverage includes:
 Latest full run:
 
 ```text
-200 passed
+201 passed
 ```
 
 ## Known Limits

@@ -1,6 +1,8 @@
 import pandas as pd
 
 from protein_visualizer.services.benchmark import (
+    build_pocket_benchmark_case_summary,
+    build_pocket_benchmark_dataset_summary,
     build_pocket_benchmark_details,
     build_pocket_benchmark_summary,
     build_pocket_benchmark_variant_comparison,
@@ -87,6 +89,53 @@ def test_build_pocket_benchmark_summary_handles_missing_reference():
     summary = build_pocket_benchmark_summary(pd.DataFrame(), pd.DataFrame())
 
     assert summary.empty
+
+
+def test_build_pocket_benchmark_case_and_dataset_summary_separate_cases():
+    reference_df, _ = parse_benchmark_reference_table(
+        """case_id,chain,resid,resname
+enzyme-a,A,10,SER
+enzyme-a,A,20,HIS
+enzyme-b,B,5,ASP
+"""
+    )
+    pocket_df = pd.DataFrame(
+        [
+            {"pocket_id": "Pocket-1", "chain": "A", "resid": 10, "resname": "SER"},
+            {"pocket_id": "Pocket-1", "chain": "A", "resid": 20, "resname": "HIS"},
+            {"pocket_id": "Pocket-2", "chain": "B", "resid": 99, "resname": "GLY"},
+        ]
+    )
+    pocket_summary = pd.DataFrame(
+        [
+            {"pocket_id": "Pocket-1", "smart_rank_order": 1, "smart_rank_score": 0.90},
+            {"pocket_id": "Pocket-2", "smart_rank_order": 2, "smart_rank_score": 0.70},
+        ]
+    )
+
+    case_summary = build_pocket_benchmark_case_summary(
+        reference_df,
+        pocket_df,
+        pocket_summary,
+        top_ns=(1,),
+    )
+    dataset_summary = build_pocket_benchmark_dataset_summary(case_summary)
+
+    assert set(case_summary["benchmark_id"].astype(str).tolist()) == {"enzyme-a", "enzyme-b"}
+    enzyme_a = case_summary[case_summary["benchmark_id"] == "enzyme-a"].iloc[0]
+    enzyme_b = case_summary[case_summary["benchmark_id"] == "enzyme-b"].iloc[0]
+    assert float(enzyme_a["coverage_ratio"]) == 1.0
+    assert bool(enzyme_a["all_hit"])
+    assert float(enzyme_b["coverage_ratio"]) == 0.0
+    assert str(enzyme_b["benchmark_status"]) == "top1-miss"
+
+    top1_dataset = dataset_summary[dataset_summary["top_n"] == 1].iloc[0]
+    assert int(top1_dataset["case_count"]) == 2
+    assert int(top1_dataset["reference_residue_count"]) == 3
+    assert int(top1_dataset["matched_reference_count"]) == 2
+    assert float(top1_dataset["mean_coverage_ratio"]) == 0.5
+    assert float(top1_dataset["any_hit_rate"]) == 0.5
+    assert str(top1_dataset["benchmark_status"]) == "mixed-hit"
 
 
 def test_build_pocket_benchmark_variant_comparison_reports_ablation_loss():

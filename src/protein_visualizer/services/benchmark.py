@@ -49,6 +49,30 @@ BENCHMARK_SUMMARY_COLUMNS = [
     "benchmark_warning",
 ]
 
+BENCHMARK_CASE_SUMMARY_COLUMNS = [
+    "benchmark_id",
+    *BENCHMARK_SUMMARY_COLUMNS,
+]
+
+BENCHMARK_DATASET_SUMMARY_COLUMNS = [
+    "top_n",
+    "case_count",
+    "reference_residue_count",
+    "matched_reference_count",
+    "mean_coverage_ratio",
+    "median_coverage_ratio",
+    "min_coverage_ratio",
+    "max_coverage_ratio",
+    "any_hit_case_count",
+    "all_hit_case_count",
+    "miss_case_count",
+    "any_hit_rate",
+    "all_hit_rate",
+    "mean_best_rank",
+    "benchmark_status",
+    "benchmark_warning",
+]
+
 BENCHMARK_VARIANT_COMPARISON_COLUMNS = [
     "variant_label",
     "reference_variant_label",
@@ -107,6 +131,14 @@ def _empty_detail_df() -> pd.DataFrame:
 
 def _empty_summary_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_SUMMARY_COLUMNS)
+
+
+def _empty_case_summary_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_CASE_SUMMARY_COLUMNS)
+
+
+def _empty_dataset_summary_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_DATASET_SUMMARY_COLUMNS)
 
 
 def _empty_variant_comparison_df() -> pd.DataFrame:
@@ -477,6 +509,116 @@ def build_pocket_benchmark_summary(
         )
 
     return pd.DataFrame(rows, columns=BENCHMARK_SUMMARY_COLUMNS)
+
+
+def build_pocket_benchmark_case_summary(
+    reference_df: Optional[pd.DataFrame],
+    pocket_df: Optional[pd.DataFrame],
+    pocket_summary_df: Optional[pd.DataFrame] = None,
+    *,
+    top_ns: Sequence[int] = (1, 3),
+    default_benchmark_id: str = "current",
+) -> pd.DataFrame:
+    """Build Top-N coverage summaries per benchmark case.
+
+    A curated dataset can contain multiple `benchmark_id`/`case_id` values.
+    Keeping case rows separate prevents enzymes with many curated residues from
+    dominating the reported accuracy.
+    """
+
+    references = _reference_rows(reference_df)
+    if references.empty:
+        return _empty_case_summary_df()
+
+    working = references.copy()
+    fallback_id = str(default_benchmark_id or "current").strip() or "current"
+    working["benchmark_id"] = working["benchmark_id"].astype(str).str.strip().replace("", fallback_id)
+
+    rows: list[dict[str, object]] = []
+    for benchmark_id, case_reference_df in working.groupby("benchmark_id", sort=True, dropna=False):
+        summary = build_pocket_benchmark_summary(
+            case_reference_df,
+            pocket_df,
+            pocket_summary_df,
+            top_ns=top_ns,
+        )
+        for row in summary.to_dict(orient="records"):
+            rows.append({"benchmark_id": str(benchmark_id or fallback_id), **row})
+
+    if not rows:
+        return _empty_case_summary_df()
+    return pd.DataFrame(rows, columns=BENCHMARK_CASE_SUMMARY_COLUMNS)
+
+
+def _dataset_summary_status(case_count: int, any_hit_count: int, all_hit_count: int) -> tuple[str, str]:
+    if case_count <= 0:
+        return "no-cases", "No benchmark cases are available."
+    if all_hit_count == case_count:
+        return "all-cases-complete-hit", "All benchmark cases have complete catalytic residue coverage."
+    if any_hit_count == case_count:
+        return "all-cases-any-hit", "Every benchmark case has at least one catalytic residue covered."
+    if any_hit_count > 0:
+        return "mixed-hit", "Some benchmark cases are hit while others miss; inspect case_summary before claiming dataset accuracy."
+    return "all-cases-miss", "No benchmark case has catalytic residue coverage."
+
+
+def build_pocket_benchmark_dataset_summary(case_summary_df: Optional[pd.DataFrame]) -> pd.DataFrame:
+    """Aggregate per-case benchmark coverage into dataset-level metrics."""
+
+    if case_summary_df is None or getattr(case_summary_df, "empty", True) or "top_n" not in case_summary_df.columns:
+        return _empty_dataset_summary_df()
+
+    working = case_summary_df.copy()
+    working["top_n"] = pd.to_numeric(working["top_n"], errors="coerce")
+    working = working[working["top_n"].notna()].copy()
+    if working.empty:
+        return _empty_dataset_summary_df()
+
+    for column in ["reference_residue_count", "matched_reference_count", "best_rank"]:
+        if column not in working.columns:
+            working[column] = 0
+        working[column] = pd.to_numeric(working[column], errors="coerce").fillna(0)
+    if "coverage_ratio" not in working.columns:
+        working["coverage_ratio"] = 0.0
+    working["coverage_ratio"] = pd.to_numeric(working["coverage_ratio"], errors="coerce").fillna(0.0)
+    if "any_hit" not in working.columns:
+        working["any_hit"] = False
+    if "all_hit" not in working.columns:
+        working["all_hit"] = False
+    working["any_hit"] = working["any_hit"].astype(bool)
+    working["all_hit"] = working["all_hit"].astype(bool)
+
+    rows: list[dict[str, object]] = []
+    for top_n, group in working.groupby("top_n", sort=True, dropna=False):
+        case_count = int(len(group))
+        any_hit_count = int(group["any_hit"].sum())
+        all_hit_count = int(group["all_hit"].sum())
+        best_ranks = group.loc[group["best_rank"] > 0, "best_rank"]
+        status, warning = _dataset_summary_status(case_count, any_hit_count, all_hit_count)
+        rows.append(
+            {
+                "top_n": int(top_n),
+                "case_count": case_count,
+                "reference_residue_count": int(group["reference_residue_count"].sum()),
+                "matched_reference_count": int(group["matched_reference_count"].sum()),
+                "mean_coverage_ratio": round(float(group["coverage_ratio"].mean()), 3) if case_count else 0.0,
+                "median_coverage_ratio": round(float(group["coverage_ratio"].median()), 3) if case_count else 0.0,
+                "min_coverage_ratio": round(float(group["coverage_ratio"].min()), 3) if case_count else 0.0,
+                "max_coverage_ratio": round(float(group["coverage_ratio"].max()), 3) if case_count else 0.0,
+                "any_hit_case_count": any_hit_count,
+                "all_hit_case_count": all_hit_count,
+                "miss_case_count": int(case_count - any_hit_count),
+                "any_hit_rate": round(float(any_hit_count) / float(case_count), 3) if case_count else 0.0,
+                "all_hit_rate": round(float(all_hit_count) / float(case_count), 3) if case_count else 0.0,
+                "mean_best_rank": round(float(best_ranks.mean()), 3) if not best_ranks.empty else 0.0,
+                "benchmark_status": status,
+                "benchmark_warning": warning,
+            }
+        )
+
+    if not rows:
+        return _empty_dataset_summary_df()
+    return pd.DataFrame(rows, columns=BENCHMARK_DATASET_SUMMARY_COLUMNS)
 
 
 def build_pocket_benchmark_variant_comparison(

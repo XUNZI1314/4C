@@ -55,6 +55,18 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
             "p2rank_ab_comparison": [{"pocket_id": "Pocket-1", "rank_delta": 1}],
             "auto_detection_external_rows": 2,
             "auto_detection_external_sources": "M-CSA,UniProt",
+            "pocket_benchmark_reference_rows": 3,
+            "pocket_benchmark_top1_coverage": 0.667,
+            "pocket_benchmark_top1_status": "top1-partial-hit",
+            "pocket_benchmark_top3_coverage": 1.0,
+            "pocket_benchmark_top3_status": "topn-complete-hit",
+            "pocket_benchmark_case_summary_rows": 2,
+            "pocket_benchmark_case_summary": [
+                {"benchmark_id": "enzyme-a", "top_n": 1},
+                {"benchmark_id": "enzyme-b", "top_n": 1},
+            ],
+            "pocket_benchmark_dataset_summary_rows": 2,
+            "pocket_benchmark_variant_comparison_rows": 4,
             "auto_detection_metadata": {
                 "methods_used": "geometry-cluster",
                 "diagnostics": [{"method": "geometry-cluster", "status": "used"}],
@@ -69,6 +81,9 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
     assert any("geometry-cluster" in line for line in summary_lines)
     assert any("P2Rank: ok" in line for line in summary_lines)
     assert any("P2Rank A/B: enabled / rows 1" in line for line in summary_lines)
+    assert any("Catalytic pocket benchmark: references 3 / Top-1 0.667" in line for line in summary_lines)
+    assert any("Catalytic benchmark dataset: cases 2 / summary rows 2" in line for line in summary_lines)
+    assert any("Catalytic benchmark variants: 4 rows" in line for line in summary_lines)
     assert b'"auto_detection_metadata": {' in json_bytes
     assert b'"diagnostics": [' in json_bytes
 
