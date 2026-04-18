@@ -1,3 +1,5 @@
+import pandas as pd
+
 from protein_visualizer.sample_data import MMPBSA_TEXT, PDB_TEXT
 from protein_visualizer.services.energy import prepare_energy_table
 from protein_visualizer.services.hotspot import identify_hotspots
@@ -35,6 +37,56 @@ def test_snapshot_exports_generate_json_svg_and_pdf():
     assert "A³".encode("utf-8") in svg_bytes
     assert pdf_bytes.startswith(b"%PDF")
     assert len(pdf_bytes) > 1000
+
+
+def test_snapshot_summary_lines_do_not_expose_mojibake_labels():
+    atom_df = parse_pdb_atoms(PDB_TEXT)
+    energy_df = parse_mmpbsa_delta_total(MMPBSA_TEXT)
+    energy_table = prepare_energy_table(atom_df, energy_df)
+    pocket_summary = pd.DataFrame(
+        [
+            {
+                "pocket_id": "Pocket-1",
+                "smart_rank_label": "优先验证",
+                "evidence_quality_label": "direct-anchor",
+                "evidence_quality_score": 0.91,
+            }
+        ]
+    )
+    joint_candidate_df = pd.DataFrame(
+        [
+            {
+                "pocket_id": "Pocket-1",
+                "recommendation_label": "建议验证",
+                "recommendation_action": "validate",
+            }
+        ]
+    )
+    snapshot = build_analysis_snapshot(
+        energy_table,
+        pocket_summary=pocket_summary,
+        joint_candidate_df=joint_candidate_df,
+        extra={
+            "auto_detection_methods_used": "geometry-cluster",
+            "auto_detection_status_summary": "geometry-cluster:used",
+            "auto_detection_external_rows": 2,
+            "auto_detection_external_sources": "M-CSA,UniProt",
+        },
+    )
+
+    summary_lines = snapshot_to_summary_lines(snapshot)
+    summary_text = "\n".join(summary_lines)
+
+    for snippet in ["鑱", "鍙", "妫", "澶", "鎺", "鐑", "鏅"]:
+        assert snippet not in summary_text
+    assert "联合推荐条目数: 1" in summary_text
+    assert "自动口袋方法: geometry-cluster" in summary_text
+    assert "检测状态: geometry-cluster:used" in summary_text
+    assert "外部位点证据: 2 (M-CSA,UniProt)" in summary_text
+    assert "Top 口袋: Pocket-1 (优先验证)" in summary_text
+    assert "Top 口袋证据质量: direct-anchor (0.910)" in summary_text
+    assert "Top 联合动作: validate" in summary_text
+    assert "Top 联合推荐: Pocket-1 (建议验证)" in summary_text
 
 
 def test_snapshot_extra_preserves_nested_detection_payloads():

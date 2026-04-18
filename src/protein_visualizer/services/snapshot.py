@@ -209,13 +209,13 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
     if snapshot.get("pocket_rows") is not None:
         lines.append(f"口袋条目数: {snapshot.get('pocket_rows')}")
     if snapshot.get("joint_candidate_rows") is not None:
-        lines.append(f"鑱斿悎鎺ㄨ崘鏉＄洰鏁? {snapshot.get('joint_candidate_rows')}")
+        lines.append(f"联合推荐条目数: {snapshot.get('joint_candidate_rows')}")
     methods_used = str(extra.get("auto_detection_methods_used") or "").strip()
     if methods_used:
-        lines.append(f"鑷姩鍙ｈ鏂规硶: {methods_used}")
+        lines.append(f"自动口袋方法: {methods_used}")
     status_summary = str(extra.get("auto_detection_status_summary") or "").strip()
     if status_summary:
-        lines.append(f"妫€娴嬬姸鎬? {status_summary}")
+        lines.append(f"检测状态: {status_summary}")
     p2rank_status = str(extra.get("auto_detection_p2rank_status") or "").strip()
     if p2rank_status:
         lines.append(
@@ -231,7 +231,7 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         external_rows = 0
     if external_rows > 0:
         source_text = str(extra.get("auto_detection_external_sources") or "external").strip()
-        lines.append(f"澶栭儴浣嶇偣璇佹嵁: {external_rows} ({source_text})")
+        lines.append(f"外部位点证据: {external_rows} ({source_text})")
     ai_rows = int(extra.get("ai_evidence_rows") or 0)
     ai_status = str(extra.get("ai_evidence_status") or "").strip()
     if ai_rows > 0 or ai_status:
@@ -831,11 +831,11 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         top_pocket = pocket_preview[0]
         pocket_id = top_pocket.get("pocket_id") or "-"
         rank_label = top_pocket.get("smart_rank_label") or "-"
-        lines.append(f"Top 鍙ｈ: {pocket_id} ({rank_label})")
+        lines.append(f"Top 口袋: {pocket_id} ({rank_label})")
         evidence_quality = top_pocket.get("evidence_quality_label") or ""
         evidence_score = top_pocket.get("evidence_quality_score")
         if evidence_quality:
-            lines.append(f"Top pocket evidence quality: {evidence_quality} ({format_energy_value(evidence_score)})")
+            lines.append(f"Top 口袋证据质量: {evidence_quality} ({format_energy_value(evidence_score)})")
     joint_preview = snapshot.get("joint_candidate_preview") or []
     if joint_preview:
         top_joint = joint_preview[0]
@@ -843,8 +843,8 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         joint_label = top_joint.get("recommendation_label") or "-"
         joint_action = top_joint.get("recommendation_action") or "-"
         if joint_action != "-":
-            lines.append(f"Top joint action: {joint_action}")
-        lines.append(f"Top 鑱斿悎鎺ㄨ崘: {joint_id} ({joint_label})")
+            lines.append(f"Top 联合动作: {joint_action}")
+        lines.append(f"Top 联合推荐: {joint_id} ({joint_label})")
     decision_label = str(extra.get("top_pocket_decision_label") or "").strip()
     decision_score = extra.get("top_pocket_decision_score")
     audit_status = str(extra.get("top_pocket_audit_status") or "").strip()

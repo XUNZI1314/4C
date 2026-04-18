@@ -151,12 +151,12 @@ def build_text_report(energy_table, pocket_summary=None, joint_candidate_table=N
             top_evidence_warning = top_pocket.get("evidence_quality_warning") or ""
             pocket_lines = [
                 "",
-                "鏅鸿兘鍙ｈ鎽樿:",
-                f"- Top1 鍙ｈ: {top_pocket_id}",
-                f"- 鎺掑簭绛夌骇: {top_rank_label}",
-                f"- 鎺掑簭鍒嗘暟: {top_rank_score}",
-                f"- 鐑偣瑕嗙洊鏁? {top_hotspot_text}",
-                f"- 鎺掑簭鐞嗙敱: {top_reason}",
+                "智能口袋摘要:",
+                f"- Top1 口袋: {top_pocket_id}",
+                f"- 排序等级: {top_rank_label}",
+                f"- 排序分数: {top_rank_score}",
+                f"- 热点覆盖数: {top_hotspot_text}",
+                f"- 排序理由: {top_reason}",
             ]
             if top_external_exact is not None and not pd.isna(top_external_exact):
                 pocket_lines.append(f"- 外部关键位点命中: {int(top_external_exact)}")
@@ -164,10 +164,10 @@ def build_text_report(energy_table, pocket_summary=None, joint_candidate_table=N
                 pocket_lines.append(f"- 外部证据均值: {format_energy_value(top_external_support)}")
             if top_evidence_quality != "-":
                 pocket_lines.append(
-                    f"- Evidence quality: {top_evidence_quality} ({format_energy_value(top_evidence_quality_score)})"
+                    f"- 证据质量: {top_evidence_quality} ({format_energy_value(top_evidence_quality_score)})"
                 )
             if top_evidence_warning:
-                pocket_lines.append(f"- Evidence warning: {top_evidence_warning}")
+                pocket_lines.append(f"- 证据提醒: {top_evidence_warning}")
             lines[12:12] = pocket_lines
         except Exception:
             pass
@@ -191,8 +191,8 @@ def build_text_report(energy_table, pocket_summary=None, joint_candidate_table=N
             ]
             joint_lines.extend(
                 [
-                    f"- Recommendation action: {top_joint_action}",
-                    f"- Evidence quality: {top_joint_evidence}",
+                    f"- 推荐动作: {top_joint_action}",
+                    f"- 证据质量: {top_joint_evidence}",
                 ]
             )
             lines[12:12] = joint_lines
