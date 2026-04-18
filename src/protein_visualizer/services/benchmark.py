@@ -264,6 +264,34 @@ BENCHMARK_REFERENCE_STRUCTURE_VALIDATION_SUMMARY_COLUMNS = [
     "summary_warning",
 ]
 
+BENCHMARK_REFERENCE_READINESS_QUEUE_COLUMNS = [
+    "action_id",
+    "priority",
+    "action_status",
+    "issue_source",
+    "issue_type",
+    "benchmark_id",
+    "residue_label",
+    "chain",
+    "resid",
+    "resname",
+    "suggested_action",
+    "readiness_warning",
+]
+
+BENCHMARK_REFERENCE_READINESS_SUMMARY_COLUMNS = [
+    "readiness_status",
+    "reference_residue_count",
+    "curation_issue_count",
+    "structure_validation_issue_count",
+    "p0_p1_issue_count",
+    "p2_issue_count",
+    "blocking_issue_types",
+    "review_issue_types",
+    "recommended_action",
+    "readiness_warning",
+]
+
 CHAIN_ALIASES = {"chain", "chainid", "chain_id", "authasymid", "auth_asym_id", "asymid", "asym_id"}
 RESID_ALIASES = {
     "resid",
@@ -373,6 +401,14 @@ def _empty_reference_structure_validation_df() -> pd.DataFrame:
 
 def _empty_reference_structure_validation_summary_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_REFERENCE_STRUCTURE_VALIDATION_SUMMARY_COLUMNS)
+
+
+def _empty_reference_readiness_queue_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_READINESS_QUEUE_COLUMNS)
+
+
+def _empty_reference_readiness_summary_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_READINESS_SUMMARY_COLUMNS)
 
 
 def _simplify_column_name(value: object) -> str:
@@ -1146,6 +1182,178 @@ def build_pocket_benchmark_reference_structure_validation_checklist_markdown(
         structure_text = f"structure chains `{row.structure_chains or '-'}`, resnames `{row.structure_resnames or '-'}`"
         lines.append(
             f"- [ ] {row.severity} `{row.issue_type}` for {case_text}, residue `{row.residue_label}` ({structure_text}): {row.suggested_action}"
+        )
+    return "\n".join(lines).strip() + "\n"
+
+
+def _reference_issue_queue_rows(issue_df: Optional[pd.DataFrame], *, issue_source: str, warning_column: str) -> list[dict[str, object]]:
+    if issue_df is None or getattr(issue_df, "empty", True):
+        return []
+    working = issue_df.copy()
+    for column in ("severity", "issue_type", "benchmark_id", "residue_label", "chain", "resid", "resname", "suggested_action", warning_column):
+        if column not in working.columns:
+            working[column] = ""
+    rows: list[dict[str, object]] = []
+    for _, issue in working.iterrows():
+        priority = _safe_text(issue.get("severity")) or "P3"
+        if priority not in {"P0", "P1", "P2"}:
+            continue
+        rows.append(
+            {
+                "priority": priority,
+                "action_status": "blocker" if priority in {"P0", "P1"} else "review",
+                "issue_source": issue_source,
+                "issue_type": _safe_text(issue.get("issue_type")),
+                "benchmark_id": _safe_text(issue.get("benchmark_id")),
+                "residue_label": _safe_text(issue.get("residue_label")),
+                "chain": _safe_text(issue.get("chain")),
+                "resid": _safe_text(issue.get("resid")),
+                "resname": _safe_text(issue.get("resname")).upper(),
+                "suggested_action": _safe_text(issue.get("suggested_action")),
+                "readiness_warning": _safe_text(issue.get(warning_column)),
+            }
+        )
+    return rows
+
+
+def build_pocket_benchmark_reference_readiness_queue(
+    quality_issue_df: Optional[pd.DataFrame],
+    structure_validation_issue_df: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    """Combine reference curation and structure validation issues into one readiness queue."""
+
+    rows = [
+        *_reference_issue_queue_rows(quality_issue_df, issue_source="curation_quality", warning_column="quality_warning"),
+        *_reference_issue_queue_rows(
+            structure_validation_issue_df,
+            issue_source="structure_validation",
+            warning_column="validation_warning",
+        ),
+    ]
+    if not rows:
+        return _empty_reference_readiness_queue_df()
+
+    severity_order = {"P0": 0, "P1": 1, "P2": 2}
+    queue = pd.DataFrame(rows)
+    queue["_priority_order"] = queue["priority"].map(severity_order).fillna(9)
+    queue = queue.sort_values(
+        ["_priority_order", "issue_source", "issue_type", "benchmark_id", "chain", "resid"],
+        ascending=[True, True, True, True, True, True],
+    ).drop(columns=["_priority_order"]).reset_index(drop=True)
+    queue["action_id"] = [f"REFR-{index + 1:03d}" for index in range(len(queue))]
+    return queue[BENCHMARK_REFERENCE_READINESS_QUEUE_COLUMNS]
+
+
+def build_pocket_benchmark_reference_readiness_summary(
+    reference_df: Optional[pd.DataFrame],
+    quality_issue_df: Optional[pd.DataFrame],
+    structure_validation_issue_df: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    """Build a one-row gate for whether benchmark reference rows are ready for accuracy claims."""
+
+    references = _reference_rows(reference_df)
+    queue = build_pocket_benchmark_reference_readiness_queue(quality_issue_df, structure_validation_issue_df)
+    reference_count = int(len(references))
+    curation_count = 0 if quality_issue_df is None or getattr(quality_issue_df, "empty", True) else int(len(quality_issue_df))
+    structure_count = (
+        0
+        if structure_validation_issue_df is None or getattr(structure_validation_issue_df, "empty", True)
+        else int(len(structure_validation_issue_df))
+    )
+
+    if reference_count <= 0:
+        row = {
+            "readiness_status": "no-reference",
+            "reference_residue_count": 0,
+            "curation_issue_count": curation_count,
+            "structure_validation_issue_count": structure_count,
+            "p0_p1_issue_count": 0,
+            "p2_issue_count": 0,
+            "blocking_issue_types": "",
+            "review_issue_types": "",
+            "recommended_action": "Upload curated catalytic residues before running benchmark readiness checks.",
+            "readiness_warning": "Benchmark accuracy cannot be interpreted without reference residues.",
+        }
+        return pd.DataFrame([row], columns=BENCHMARK_REFERENCE_READINESS_SUMMARY_COLUMNS)
+
+    p0_p1_count = (
+        int(queue["priority"].astype(str).isin(["P0", "P1"]).sum())
+        if not queue.empty and "priority" in queue.columns
+        else 0
+    )
+    p2_count = int(queue["priority"].astype(str).eq("P2").sum()) if not queue.empty and "priority" in queue.columns else 0
+    blocking_types = ""
+    review_types = ""
+    if not queue.empty:
+        blocking_types = "; ".join(
+            sorted(queue.loc[queue["priority"].astype(str).isin(["P0", "P1"]), "issue_type"].map(_safe_text).drop_duplicates().tolist())
+        )
+        review_types = "; ".join(
+            sorted(queue.loc[queue["priority"].astype(str).eq("P2"), "issue_type"].map(_safe_text).drop_duplicates().tolist())
+        )
+
+    if p0_p1_count > 0:
+        readiness_status = "blocked"
+        recommended_action = "Resolve P0/P1 reference curation or structure-mapping blockers before using coverage as a precision claim."
+        warning = "Current benchmark misses may reflect reference numbering or curation errors, not pocket-detection errors."
+    elif p2_count > 0:
+        readiness_status = "review-needed"
+        recommended_action = "Review P2 issues, especially wildcard chain and residue identity assumptions, before publishing benchmark coverage."
+        warning = "Benchmark coverage can be inspected, but should be labeled as reviewer-pending."
+    else:
+        readiness_status = "ready"
+        recommended_action = "Reference residues are ready for catalytic pocket coverage interpretation."
+        warning = "No benchmark reference readiness blockers detected."
+
+    row = {
+        "readiness_status": readiness_status,
+        "reference_residue_count": reference_count,
+        "curation_issue_count": curation_count,
+        "structure_validation_issue_count": structure_count,
+        "p0_p1_issue_count": p0_p1_count,
+        "p2_issue_count": p2_count,
+        "blocking_issue_types": blocking_types,
+        "review_issue_types": review_types,
+        "recommended_action": recommended_action,
+        "readiness_warning": warning,
+    }
+    return pd.DataFrame([row], columns=BENCHMARK_REFERENCE_READINESS_SUMMARY_COLUMNS)
+
+
+def build_pocket_benchmark_reference_readiness_checklist_markdown(
+    readiness_queue_df: Optional[pd.DataFrame],
+    readiness_summary_df: Optional[pd.DataFrame] = None,
+) -> str:
+    """Render the combined benchmark reference readiness gate as a checklist."""
+
+    if readiness_queue_df is None or getattr(readiness_queue_df, "empty", True):
+        return ""
+    queue = readiness_queue_df.copy()
+    summary = _empty_reference_readiness_summary_df() if readiness_summary_df is None else readiness_summary_df
+    lines = [
+        "# Benchmark reference readiness checklist",
+        "",
+        "Use this checklist before interpreting catalytic pocket benchmark coverage as an accuracy claim.",
+        "",
+    ]
+    if summary is not None and not getattr(summary, "empty", True):
+        row = summary.iloc[0]
+        lines.extend(
+            [
+                "## Gate",
+                "",
+                f"- Status: `{_safe_text(row.get('readiness_status')) or '-'}`.",
+                f"- P0/P1 blockers: {int(row.get('p0_p1_issue_count') or 0)}.",
+                f"- P2 review items: {int(row.get('p2_issue_count') or 0)}.",
+                f"- Recommended action: {_safe_text(row.get('recommended_action')) or '-'}",
+                "",
+            ]
+        )
+    lines.extend(["## Actions", ""])
+    for row in queue.itertuples(index=False):
+        case_text = f"case `{row.benchmark_id}`" if _safe_text(row.benchmark_id) else "unnamed case"
+        lines.append(
+            f"- [ ] {row.priority} `{row.issue_source}/{row.issue_type}` for {case_text}, residue `{row.residue_label or '-'}`: {row.suggested_action}"
         )
     return "\n".join(lines).strip() + "\n"
 

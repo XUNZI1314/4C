@@ -317,6 +317,16 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         lines.append(
             f"Benchmark reference structure validation: {benchmark_structure_validation_rows} issues / summary {validation_summary_rows} rows / checklist {checklist_status}"
         )
+    benchmark_readiness_rows = int(extra.get("pocket_benchmark_reference_readiness_summary_rows") or 0)
+    if benchmark_readiness_rows > 0:
+        readiness_status = str(extra.get("pocket_benchmark_reference_readiness_status") or "-").strip()
+        blocker_rows = int(extra.get("pocket_benchmark_reference_readiness_blocker_rows") or 0)
+        review_rows = int(extra.get("pocket_benchmark_reference_readiness_review_rows") or 0)
+        queue_rows = int(extra.get("pocket_benchmark_reference_readiness_queue_rows") or 0)
+        checklist_status = "available" if bool(extra.get("pocket_benchmark_reference_readiness_checklist_available")) else "not available"
+        lines.append(
+            f"Benchmark reference readiness: {readiness_status or '-'} / blockers {blocker_rows} / review {review_rows} / queue {queue_rows} / checklist {checklist_status}"
+        )
     benchmark_case_summary = extra.get("pocket_benchmark_case_summary") or []
     benchmark_dataset_rows = int(extra.get("pocket_benchmark_dataset_summary_rows") or 0)
     if benchmark_dataset_rows > 0 or benchmark_case_summary:

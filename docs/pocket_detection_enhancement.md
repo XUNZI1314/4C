@@ -243,6 +243,8 @@ After upload, the reference table is checked for curation risks before coverage 
 
 The same reference residues are also validated against the uploaded PDB atom table. This catches reference residues absent from the structure, residue-name mismatches, and wildcard-chain residues that match multiple chains. These rows should be resolved before interpreting benchmark misses as pocket detection failures.
 
+A benchmark reference readiness gate combines curation quality and structure validation into one decision. `P0/P1` issues block precision claims, while `P2` issues require reviewer sign-off before benchmark coverage should be treated as publication-ready.
+
 ### Metrics
 
 The benchmark exports:
@@ -256,6 +258,9 @@ The benchmark exports:
 - `pocket_benchmark_reference_structure_validation.csv`
 - `pocket_benchmark_reference_structure_validation_summary.csv`
 - `pocket_benchmark_reference_structure_validation_checklist.md`
+- `pocket_benchmark_reference_readiness_summary.csv`
+- `pocket_benchmark_reference_readiness_queue.csv`
+- `pocket_benchmark_reference_readiness_checklist.md`
 - `pocket_benchmark_summary.csv`
 - `pocket_benchmark_case_summary.csv`
 - `pocket_benchmark_dataset_summary.csv`
@@ -478,7 +483,7 @@ Coverage includes:
 Latest full run:
 
 ```text
-209 passed
+210 passed
 ```
 
 ## Known Limits

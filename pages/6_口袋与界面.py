@@ -49,6 +49,9 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_quality_checklist_markdown,
     build_pocket_benchmark_reference_quality_issues,
     build_pocket_benchmark_reference_quality_summary,
+    build_pocket_benchmark_reference_readiness_checklist_markdown,
+    build_pocket_benchmark_reference_readiness_queue,
+    build_pocket_benchmark_reference_readiness_summary,
     build_pocket_benchmark_reference_structure_validation,
     build_pocket_benchmark_reference_structure_validation_checklist_markdown,
     build_pocket_benchmark_reference_structure_validation_summary,
@@ -874,6 +877,9 @@ pocket_benchmark_reference_quality_checklist_markdown = ""
 pocket_benchmark_reference_structure_validation_df = pd.DataFrame()
 pocket_benchmark_reference_structure_validation_summary_df = pd.DataFrame()
 pocket_benchmark_reference_structure_validation_checklist_markdown = ""
+pocket_benchmark_reference_readiness_queue_df = pd.DataFrame()
+pocket_benchmark_reference_readiness_summary_df = pd.DataFrame()
+pocket_benchmark_reference_readiness_checklist_markdown = ""
 pocket_benchmark_summary_df = pd.DataFrame()
 pocket_benchmark_details_df = pd.DataFrame()
 pocket_benchmark_case_summary_df = pd.DataFrame()
@@ -1242,6 +1248,19 @@ if benchmark_reference_text.strip():
                 pocket_benchmark_reference_structure_validation_summary_df,
             )
         )
+        pocket_benchmark_reference_readiness_queue_df = build_pocket_benchmark_reference_readiness_queue(
+            pocket_benchmark_reference_quality_issue_df,
+            pocket_benchmark_reference_structure_validation_df,
+        )
+        pocket_benchmark_reference_readiness_summary_df = build_pocket_benchmark_reference_readiness_summary(
+            benchmark_reference_df,
+            pocket_benchmark_reference_quality_issue_df,
+            pocket_benchmark_reference_structure_validation_df,
+        )
+        pocket_benchmark_reference_readiness_checklist_markdown = build_pocket_benchmark_reference_readiness_checklist_markdown(
+            pocket_benchmark_reference_readiness_queue_df,
+            pocket_benchmark_reference_readiness_summary_df,
+        )
         p1_quality_issues = (
             int(pocket_benchmark_reference_quality_issue_df["severity"].astype(str).isin(["P0", "P1"]).sum())
             if not pocket_benchmark_reference_quality_issue_df.empty and "severity" in pocket_benchmark_reference_quality_issue_df.columns
@@ -1263,6 +1282,12 @@ if benchmark_reference_text.strip():
         st.sidebar.caption(
             f"Benchmark reference structure validation: {len(pocket_benchmark_reference_structure_validation_df)} issues / P0-P1 {p1_structure_issues}."
         )
+        if not pocket_benchmark_reference_readiness_summary_df.empty:
+            readiness_row = pocket_benchmark_reference_readiness_summary_df.iloc[0]
+            st.sidebar.caption(
+                f"Benchmark readiness: {readiness_row.get('readiness_status') or '-'} / "
+                f"blockers {readiness_row.get('p0_p1_issue_count') or 0} / review {readiness_row.get('p2_issue_count') or 0}."
+            )
 
 residue_evidence_consensus_df = build_residue_evidence_consensus(
     external_site_df,
@@ -2049,6 +2074,12 @@ try:
             "pocket_benchmark_reference_structure_validation_issue_rows": int(len(pocket_benchmark_reference_structure_validation_df)),
             "pocket_benchmark_reference_structure_validation_summary_rows": int(len(pocket_benchmark_reference_structure_validation_summary_df)),
             "pocket_benchmark_reference_structure_validation_checklist_available": bool(pocket_benchmark_reference_structure_validation_checklist_markdown),
+            "pocket_benchmark_reference_readiness_queue_rows": int(len(pocket_benchmark_reference_readiness_queue_df)),
+            "pocket_benchmark_reference_readiness_summary_rows": int(len(pocket_benchmark_reference_readiness_summary_df)),
+            "pocket_benchmark_reference_readiness_status": str(pocket_benchmark_reference_readiness_summary_df.iloc[0].get("readiness_status") or "") if not pocket_benchmark_reference_readiness_summary_df.empty else "",
+            "pocket_benchmark_reference_readiness_blocker_rows": int(pocket_benchmark_reference_readiness_summary_df.iloc[0].get("p0_p1_issue_count") or 0) if not pocket_benchmark_reference_readiness_summary_df.empty else 0,
+            "pocket_benchmark_reference_readiness_review_rows": int(pocket_benchmark_reference_readiness_summary_df.iloc[0].get("p2_issue_count") or 0) if not pocket_benchmark_reference_readiness_summary_df.empty else 0,
+            "pocket_benchmark_reference_readiness_checklist_available": bool(pocket_benchmark_reference_readiness_checklist_markdown),
             "pocket_benchmark_top1_coverage": float(top1_benchmark.get("coverage_ratio") or 0.0) if top1_benchmark is not None else None,
             "pocket_benchmark_top1_status": str(top1_benchmark.get("benchmark_status") or "") if top1_benchmark is not None else None,
             "pocket_benchmark_top3_coverage": float(top3_benchmark.get("coverage_ratio") or 0.0) if top3_benchmark is not None else None,
@@ -2275,6 +2306,15 @@ snapshot = build_analysis_snapshot(
         "pocket_benchmark_reference_structure_validation_summary": pocket_benchmark_reference_structure_validation_summary_df.to_dict(orient="records"),
         "pocket_benchmark_reference_structure_validation_checklist_available": bool(pocket_benchmark_reference_structure_validation_checklist_markdown),
         "pocket_benchmark_reference_structure_validation_checklist": pocket_benchmark_reference_structure_validation_checklist_markdown,
+        "pocket_benchmark_reference_readiness_queue_rows": int(len(pocket_benchmark_reference_readiness_queue_df)),
+        "pocket_benchmark_reference_readiness_queue": pocket_benchmark_reference_readiness_queue_df.to_dict(orient="records"),
+        "pocket_benchmark_reference_readiness_summary_rows": int(len(pocket_benchmark_reference_readiness_summary_df)),
+        "pocket_benchmark_reference_readiness_summary": pocket_benchmark_reference_readiness_summary_df.to_dict(orient="records"),
+        "pocket_benchmark_reference_readiness_status": str(pocket_benchmark_reference_readiness_summary_df.iloc[0].get("readiness_status") or "") if not pocket_benchmark_reference_readiness_summary_df.empty else "",
+        "pocket_benchmark_reference_readiness_blocker_rows": int(pocket_benchmark_reference_readiness_summary_df.iloc[0].get("p0_p1_issue_count") or 0) if not pocket_benchmark_reference_readiness_summary_df.empty else 0,
+        "pocket_benchmark_reference_readiness_review_rows": int(pocket_benchmark_reference_readiness_summary_df.iloc[0].get("p2_issue_count") or 0) if not pocket_benchmark_reference_readiness_summary_df.empty else 0,
+        "pocket_benchmark_reference_readiness_checklist_available": bool(pocket_benchmark_reference_readiness_checklist_markdown),
+        "pocket_benchmark_reference_readiness_checklist": pocket_benchmark_reference_readiness_checklist_markdown,
         "pocket_benchmark_summary_rows": int(len(pocket_benchmark_summary_df)),
         "pocket_benchmark_summary": pocket_benchmark_summary_df.to_dict(orient="records"),
         "pocket_benchmark_details_rows": int(len(pocket_benchmark_details_df)),
@@ -2576,6 +2616,14 @@ if not pocket_benchmark_summary_df.empty:
             if pocket_benchmark_reference_structure_validation_checklist_markdown:
                 with st.expander("Benchmark reference structure validation checklist", expanded=False):
                     st.markdown(pocket_benchmark_reference_structure_validation_checklist_markdown)
+        if not pocket_benchmark_reference_readiness_summary_df.empty:
+            st.caption("Benchmark reference readiness gate: one combined decision before using coverage as an accuracy claim.")
+            st.dataframe(pocket_benchmark_reference_readiness_summary_df, use_container_width=True, hide_index=True)
+            if not pocket_benchmark_reference_readiness_queue_df.empty:
+                st.dataframe(pocket_benchmark_reference_readiness_queue_df, use_container_width=True, hide_index=True)
+            if pocket_benchmark_reference_readiness_checklist_markdown:
+                with st.expander("Benchmark reference readiness checklist", expanded=False):
+                    st.markdown(pocket_benchmark_reference_readiness_checklist_markdown)
         st.dataframe(pocket_benchmark_summary_df, use_container_width=True, hide_index=True)
         if not pocket_benchmark_dataset_summary_df.empty:
             st.caption("Benchmark dataset summary: case-level aggregation prevents large catalytic sets from dominating accuracy.")
@@ -3467,6 +3515,27 @@ with tab_export:
                 file_name="pocket_benchmark_reference_structure_validation_checklist.md",
                 mime="text/markdown",
             )
+        if not pocket_benchmark_reference_readiness_summary_df.empty:
+            st.download_button(
+                "Export benchmark reference readiness summary CSV",
+                data=_to_csv_bytes(pocket_benchmark_reference_readiness_summary_df),
+                file_name="pocket_benchmark_reference_readiness_summary.csv",
+                mime="text/csv",
+            )
+        if not pocket_benchmark_reference_readiness_queue_df.empty:
+            st.download_button(
+                "Export benchmark reference readiness queue CSV",
+                data=_to_csv_bytes(pocket_benchmark_reference_readiness_queue_df),
+                file_name="pocket_benchmark_reference_readiness_queue.csv",
+                mime="text/csv",
+            )
+        if pocket_benchmark_reference_readiness_checklist_markdown:
+            st.download_button(
+                "Export benchmark reference readiness checklist",
+                data=pocket_benchmark_reference_readiness_checklist_markdown.encode("utf-8"),
+                file_name="pocket_benchmark_reference_readiness_checklist.md",
+                mime="text/markdown",
+            )
         if not pocket_benchmark_summary_df.empty:
             st.download_button(
                 "Export pocket benchmark summary CSV",
@@ -3955,6 +4024,7 @@ with tab_export:
         f"Benchmark reference template: {len(benchmark_reference_template_df)} rows / notes {'available' if benchmark_reference_template_markdown else 'not available'}",
         f"Benchmark reference curation quality: {len(pocket_benchmark_reference_quality_issue_df)} issues / summary {len(pocket_benchmark_reference_quality_summary_df)} rows / checklist {'available' if pocket_benchmark_reference_quality_checklist_markdown else 'not available'}",
         f"Benchmark reference structure validation: {len(pocket_benchmark_reference_structure_validation_df)} issues / summary {len(pocket_benchmark_reference_structure_validation_summary_df)} rows / checklist {'available' if pocket_benchmark_reference_structure_validation_checklist_markdown else 'not available'}",
+        f"Benchmark reference readiness: {pocket_benchmark_reference_readiness_summary_df.iloc[0].get('readiness_status') if not pocket_benchmark_reference_readiness_summary_df.empty else '-'} / blockers {pocket_benchmark_reference_readiness_summary_df.iloc[0].get('p0_p1_issue_count') if not pocket_benchmark_reference_readiness_summary_df.empty else 0} / review {pocket_benchmark_reference_readiness_summary_df.iloc[0].get('p2_issue_count') if not pocket_benchmark_reference_readiness_summary_df.empty else 0}",
         f"Catalytic benchmark dataset: cases {int(pocket_benchmark_case_summary_df['benchmark_id'].nunique()) if not pocket_benchmark_case_summary_df.empty and 'benchmark_id' in pocket_benchmark_case_summary_df.columns else 0} / dataset rows {len(pocket_benchmark_dataset_summary_df)}",
         f"Catalytic benchmark variants: {len(pocket_benchmark_variant_comparison_df)} rows / current vs ablations {'available' if not pocket_benchmark_variant_comparison_df.empty else 'not available'}",
         f"Catalytic benchmark variant cases: {len(pocket_benchmark_variant_case_comparison_df)} rows / variant dataset rows {len(pocket_benchmark_variant_dataset_comparison_df)}",

@@ -7,6 +7,9 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_quality_checklist_markdown,
     build_pocket_benchmark_reference_quality_issues,
     build_pocket_benchmark_reference_quality_summary,
+    build_pocket_benchmark_reference_readiness_checklist_markdown,
+    build_pocket_benchmark_reference_readiness_queue,
+    build_pocket_benchmark_reference_readiness_summary,
     build_pocket_benchmark_reference_structure_validation,
     build_pocket_benchmark_reference_structure_validation_checklist_markdown,
     build_pocket_benchmark_reference_structure_validation_summary,
@@ -101,6 +104,35 @@ enzyme-a,B,999,GLY,Catalytic residue,M-CSA
     }
     assert summary["issue_count"].astype(int).sum() == len(issues)
     assert "Benchmark reference structure validation checklist" in checklist
+
+
+def test_build_pocket_benchmark_reference_readiness_gate_blocks_bad_references():
+    reference_df, _ = parse_benchmark_reference_table(
+        """case_id,chain,resid,resname,type,source,note
+, ,195,,Catalytic residue,,UniProt mature-chain numbering needs offset check
+enzyme-a,A,102,ASP,Catalytic residue,M-CSA,
+"""
+    )
+    atom_df = pd.DataFrame(
+        [
+            {"record_type": "ATOM", "chain": "A", "resid": 102, "resname": "ASN"},
+            {"record_type": "ATOM", "chain": "A", "resid": 195, "resname": "SER"},
+            {"record_type": "ATOM", "chain": "B", "resid": 195, "resname": "SER"},
+        ]
+    )
+    quality_issues = build_pocket_benchmark_reference_quality_issues(reference_df)
+    structure_issues = build_pocket_benchmark_reference_structure_validation(reference_df, atom_df)
+
+    queue = build_pocket_benchmark_reference_readiness_queue(quality_issues, structure_issues)
+    summary = build_pocket_benchmark_reference_readiness_summary(reference_df, quality_issues, structure_issues)
+    checklist = build_pocket_benchmark_reference_readiness_checklist_markdown(queue, summary)
+
+    gate = summary.iloc[0]
+    assert str(gate["readiness_status"]) == "blocked"
+    assert int(gate["reference_residue_count"]) == 2
+    assert int(gate["p0_p1_issue_count"]) >= 1
+    assert set(queue["action_status"].astype(str)).issuperset({"blocker", "review"})
+    assert "Benchmark reference readiness checklist" in checklist
 
 
 def test_parse_benchmark_reference_table_accepts_catalytic_residue_aliases():
