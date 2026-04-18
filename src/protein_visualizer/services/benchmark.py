@@ -188,6 +188,23 @@ BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_OUTCOME_COLUMNS = [
     "next_action",
 ]
 
+BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_OUTCOME_SUMMARY_COLUMNS = [
+    "summary_id",
+    "closure_status",
+    "case_count",
+    "blocked_cases",
+    "pending_cases",
+    "held_cases",
+    "replaced_cases",
+    "cleared_cases",
+    "source_ready_cases",
+    "actionable_case_count",
+    "closed_actionable_case_count",
+    "open_actionable_case_count",
+    "recommended_action",
+    "summary_warning",
+]
+
 BENCHMARK_DETAIL_COLUMNS = [
     *BENCHMARK_REFERENCE_COLUMNS,
     "residue_label",
@@ -669,6 +686,10 @@ def _empty_reference_source_audit_case_decision_validation_df() -> pd.DataFrame:
 
 def _empty_reference_source_audit_case_decision_outcome_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_OUTCOME_COLUMNS)
+
+
+def _empty_reference_source_audit_case_decision_outcome_summary_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_OUTCOME_SUMMARY_COLUMNS)
 
 
 def _empty_detail_df() -> pd.DataFrame:
@@ -2643,6 +2664,81 @@ def build_pocket_benchmark_reference_source_audit_case_decision_outcomes(
     frame["_status_rank"] = frame["applied_status"].map(status_rank).fillna(99)
     frame = frame.sort_values(["_status_rank", "benchmark_id"]).drop(columns=["_status_rank"]).reset_index(drop=True)
     return frame[BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_OUTCOME_COLUMNS]
+
+
+def build_pocket_benchmark_reference_source_audit_case_decision_outcome_summary(
+    outcome_df: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    """Summarize whether source-audit case decision outcomes close source risk."""
+
+    if outcome_df is None or getattr(outcome_df, "empty", True):
+        return _empty_reference_source_audit_case_decision_outcome_summary_df()
+
+    outcomes = outcome_df.copy()
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_OUTCOME_COLUMNS:
+        if column not in outcomes.columns:
+            outcomes[column] = ""
+    status = outcomes["applied_status"].astype(str).str.strip().str.lower()
+
+    blocked_cases = int(status.eq("blocked").sum())
+    pending_cases = int(status.eq("pending").sum())
+    held_cases = int(status.eq("held").sum())
+    replaced_cases = int(status.eq("replaced").sum())
+    cleared_cases = int(status.eq("cleared").sum())
+    source_ready_cases = int(status.eq("source-ready").sum())
+    recognized_statuses = {"blocked", "pending", "held", "replaced", "cleared", "source-ready"}
+    unknown_status_cases = int((~status.isin(recognized_statuses)).sum())
+    case_count = int(len(outcomes))
+    actionable_case_count = int(max(case_count - source_ready_cases, 0))
+    closed_actionable_case_count = int(cleared_cases + replaced_cases)
+    open_actionable_case_count = int(blocked_cases + pending_cases + held_cases + unknown_status_cases)
+
+    if blocked_cases:
+        closure_status = "blocked"
+        recommended_action = "Fix blocked source-audit case decisions before using benchmark coverage in precision claims."
+        summary_warning = "At least one source-audit case decision is invalid or blocked."
+    elif pending_cases:
+        closure_status = "pending"
+        recommended_action = "Upload or complete source-audit case decisions for pending cases."
+        summary_warning = "Some source-risk cases still have no clearing decision."
+    elif held_cases:
+        closure_status = "held"
+        recommended_action = "Resolve held source-risk cases or exclude them from independent benchmark claims."
+        summary_warning = "Held cases remain outside claim-ready source provenance."
+    elif actionable_case_count > 0 and open_actionable_case_count == 0:
+        closure_status = "closed"
+        recommended_action = "Keep validated source-audit decisions with benchmark exports before reporting precision."
+        summary_warning = "All actionable source-risk cases have been cleared or replaced."
+    elif actionable_case_count == 0:
+        closure_status = "source-ready"
+        recommended_action = "Keep source audit with benchmark exports."
+        summary_warning = "No actionable source-risk cases were present."
+    else:
+        closure_status = "review"
+        recommended_action = "Review source-audit case decision outcomes before reporting benchmark precision."
+        summary_warning = "Source-audit case closure status could not be determined from applied statuses."
+
+    return pd.DataFrame(
+        [
+            {
+                "summary_id": "BRSDOS-001",
+                "closure_status": closure_status,
+                "case_count": case_count,
+                "blocked_cases": blocked_cases,
+                "pending_cases": pending_cases,
+                "held_cases": held_cases,
+                "replaced_cases": replaced_cases,
+                "cleared_cases": cleared_cases,
+                "source_ready_cases": source_ready_cases,
+                "actionable_case_count": actionable_case_count,
+                "closed_actionable_case_count": closed_actionable_case_count,
+                "open_actionable_case_count": open_actionable_case_count,
+                "recommended_action": recommended_action,
+                "summary_warning": summary_warning,
+            }
+        ],
+        columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_OUTCOME_SUMMARY_COLUMNS,
+    )
 
 
 def _normalize_pocket_rows(pocket_df: Optional[pd.DataFrame]) -> pd.DataFrame:

@@ -28,6 +28,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_source_audit_action_queue,
     build_pocket_benchmark_reference_source_audit_case_checklist_markdown,
     build_pocket_benchmark_reference_source_audit_case_decision_outcomes,
+    build_pocket_benchmark_reference_source_audit_case_decision_outcome_summary,
     build_pocket_benchmark_reference_source_audit_case_decision_template,
     build_pocket_benchmark_reference_source_audit_case_decision_validation,
     build_pocket_benchmark_reference_source_audit_case_summary,
@@ -1385,6 +1386,27 @@ enzyme-a,accept,Alice,uploaded-curated,yes,,independent source verified
     assert statuses["enzyme-a"] == "cleared"
     assert statuses["enzyme-b"] == "pending"
     assert statuses["enzyme-ready"] == "source-ready"
+
+
+def test_benchmark_reference_source_audit_case_decision_outcome_summary_flags_open_cases():
+    outcomes = pd.DataFrame(
+        [
+            {"benchmark_id": "enzyme-a", "applied_status": "cleared"},
+            {"benchmark_id": "enzyme-b", "applied_status": "pending"},
+            {"benchmark_id": "enzyme-ready", "applied_status": "source-ready"},
+        ]
+    )
+
+    summary = build_pocket_benchmark_reference_source_audit_case_decision_outcome_summary(outcomes)
+
+    assert len(summary) == 1
+    row = summary.iloc[0]
+    assert row["closure_status"] == "pending"
+    assert row["case_count"] == 3
+    assert row["actionable_case_count"] == 2
+    assert row["closed_actionable_case_count"] == 1
+    assert row["open_actionable_case_count"] == 1
+    assert row["pending_cases"] == 1
 
 
 def test_benchmark_reference_readiness_uses_source_audit_as_gate():
