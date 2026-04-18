@@ -8,6 +8,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_quality_checklist_markdown,
     build_pocket_benchmark_reference_quality_issues,
     build_pocket_benchmark_reference_quality_summary,
+    build_pocket_benchmark_reference_readiness_case_summary,
     build_pocket_benchmark_reference_readiness_checklist_markdown,
     build_pocket_benchmark_reference_readiness_queue,
     build_pocket_benchmark_reference_readiness_summary,
@@ -134,6 +135,38 @@ enzyme-a,A,102,ASP,Catalytic residue,M-CSA,
     assert int(gate["p0_p1_issue_count"]) >= 1
     assert set(queue["action_status"].astype(str)).issuperset({"blocker", "review"})
     assert "Benchmark reference readiness checklist" in checklist
+
+
+def test_build_pocket_benchmark_reference_readiness_case_summary_splits_cases():
+    reference_df, _ = parse_benchmark_reference_table(
+        """case_id,chain,resid,resname,type,source
+enzyme-a,,195,SER,Catalytic residue,
+enzyme-b,A,57,HIS,Catalytic residue,M-CSA
+enzyme-c,A,102,ASP,Catalytic residue,M-CSA
+"""
+    )
+    atom_df = pd.DataFrame(
+        [
+            {"record_type": "ATOM", "chain": "A", "resid": 57, "resname": "HIS"},
+            {"record_type": "ATOM", "chain": "A", "resid": 102, "resname": "ASP"},
+            {"record_type": "ATOM", "chain": "B", "resid": 102, "resname": "ASP"},
+        ]
+    )
+    quality_issues = build_pocket_benchmark_reference_quality_issues(reference_df)
+    structure_issues = build_pocket_benchmark_reference_structure_validation(reference_df, atom_df)
+
+    case_summary = build_pocket_benchmark_reference_readiness_case_summary(
+        reference_df,
+        quality_issues,
+        structure_issues,
+    )
+
+    statuses = dict(zip(case_summary["benchmark_id"], case_summary["readiness_status"]))
+    assert statuses["enzyme-a"] == "blocked"
+    assert statuses["enzyme-b"] == "ready"
+    assert statuses["enzyme-c"] == "ready"
+    enzyme_a = case_summary[case_summary["benchmark_id"] == "enzyme-a"].iloc[0]
+    assert int(enzyme_a["p0_p1_issue_count"]) >= 1
 
 
 def test_build_pocket_benchmark_interpretation_respects_readiness_gate():

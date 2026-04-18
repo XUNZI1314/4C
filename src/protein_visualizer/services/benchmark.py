@@ -292,6 +292,11 @@ BENCHMARK_REFERENCE_READINESS_SUMMARY_COLUMNS = [
     "readiness_warning",
 ]
 
+BENCHMARK_REFERENCE_READINESS_CASE_SUMMARY_COLUMNS = [
+    "benchmark_id",
+    *BENCHMARK_REFERENCE_READINESS_SUMMARY_COLUMNS,
+]
+
 BENCHMARK_INTERPRETATION_COLUMNS = [
     "top_n",
     "reference_residue_count",
@@ -425,6 +430,10 @@ def _empty_reference_readiness_queue_df() -> pd.DataFrame:
 
 def _empty_reference_readiness_summary_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_REFERENCE_READINESS_SUMMARY_COLUMNS)
+
+
+def _empty_reference_readiness_case_summary_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_READINESS_CASE_SUMMARY_COLUMNS)
 
 
 def _empty_interpretation_df() -> pd.DataFrame:
@@ -1338,6 +1347,101 @@ def build_pocket_benchmark_reference_readiness_summary(
         "readiness_warning": warning,
     }
     return pd.DataFrame([row], columns=BENCHMARK_REFERENCE_READINESS_SUMMARY_COLUMNS)
+
+
+def _normalized_case_id(value: object, default_benchmark_id: str) -> str:
+    return _safe_text(value) or _safe_text(default_benchmark_id) or "current"
+
+
+def _readiness_issue_frame(issue_df: Optional[pd.DataFrame], *, issue_source: str, default_benchmark_id: str) -> pd.DataFrame:
+    if issue_df is None or getattr(issue_df, "empty", True):
+        return pd.DataFrame(columns=["benchmark_id", "severity", "issue_type", "issue_source"])
+    working = issue_df.copy()
+    for column in ("benchmark_id", "severity", "issue_type"):
+        if column not in working.columns:
+            working[column] = ""
+    working["benchmark_id"] = working["benchmark_id"].map(lambda value: _normalized_case_id(value, default_benchmark_id))
+    working["severity"] = working["severity"].map(_safe_text)
+    working["issue_type"] = working["issue_type"].map(_safe_text)
+    working["issue_source"] = issue_source
+    return working[["benchmark_id", "severity", "issue_type", "issue_source"]].reset_index(drop=True)
+
+
+def build_pocket_benchmark_reference_readiness_case_summary(
+    reference_df: Optional[pd.DataFrame],
+    quality_issue_df: Optional[pd.DataFrame],
+    structure_validation_issue_df: Optional[pd.DataFrame],
+    *,
+    default_benchmark_id: str = "current",
+) -> pd.DataFrame:
+    """Build per-case benchmark reference readiness gates."""
+
+    references = _reference_rows(reference_df)
+    if references.empty:
+        return _empty_reference_readiness_case_summary_df()
+
+    fallback_id = _safe_text(default_benchmark_id) or "current"
+    references = references.copy()
+    references["benchmark_id"] = references["benchmark_id"].map(lambda value: _normalized_case_id(value, fallback_id))
+    quality_issues = _readiness_issue_frame(quality_issue_df, issue_source="curation_quality", default_benchmark_id=fallback_id)
+    structure_issues = _readiness_issue_frame(
+        structure_validation_issue_df,
+        issue_source="structure_validation",
+        default_benchmark_id=fallback_id,
+    )
+    issue_frame = pd.concat([quality_issues, structure_issues], ignore_index=True)
+
+    case_ids = sorted(
+        set(references["benchmark_id"].map(_safe_text).tolist())
+        | set(issue_frame["benchmark_id"].map(_safe_text).replace("", pd.NA).dropna().tolist())
+    )
+    rows: list[dict[str, object]] = []
+    for benchmark_id in case_ids:
+        case_references = references[references["benchmark_id"].astype(str).eq(benchmark_id)]
+        case_issues = issue_frame[issue_frame["benchmark_id"].astype(str).eq(benchmark_id)]
+        curation_count = int(case_issues["issue_source"].astype(str).eq("curation_quality").sum())
+        structure_count = int(case_issues["issue_source"].astype(str).eq("structure_validation").sum())
+        p0_p1_count = int(case_issues["severity"].astype(str).isin(["P0", "P1"]).sum())
+        p2_count = int(case_issues["severity"].astype(str).eq("P2").sum())
+        blocking_types = "; ".join(
+            sorted(case_issues.loc[case_issues["severity"].astype(str).isin(["P0", "P1"]), "issue_type"].map(_safe_text).drop_duplicates().tolist())
+        )
+        review_types = "; ".join(
+            sorted(case_issues.loc[case_issues["severity"].astype(str).eq("P2"), "issue_type"].map(_safe_text).drop_duplicates().tolist())
+        )
+
+        if p0_p1_count > 0:
+            readiness_status = "blocked"
+            recommended_action = "Resolve this case's P0/P1 reference curation or structure-mapping blockers before using its coverage in dataset-level claims."
+            warning = "This case can distort dataset coverage until reference numbering and curation blockers are fixed."
+        elif p2_count > 0:
+            readiness_status = "review-needed"
+            recommended_action = "Review this case's P2 assumptions before treating its coverage as publication-ready."
+            warning = "This case can be inspected, but should be labeled reviewer-pending."
+        else:
+            readiness_status = "ready"
+            recommended_action = "This case is ready for catalytic pocket coverage interpretation."
+            warning = "No case-level readiness blockers detected."
+
+        rows.append(
+            {
+                "benchmark_id": benchmark_id,
+                "readiness_status": readiness_status,
+                "reference_residue_count": int(len(case_references)),
+                "curation_issue_count": curation_count,
+                "structure_validation_issue_count": structure_count,
+                "p0_p1_issue_count": p0_p1_count,
+                "p2_issue_count": p2_count,
+                "blocking_issue_types": blocking_types,
+                "review_issue_types": review_types,
+                "recommended_action": recommended_action,
+                "readiness_warning": warning,
+            }
+        )
+
+    if not rows:
+        return _empty_reference_readiness_case_summary_df()
+    return pd.DataFrame(rows, columns=BENCHMARK_REFERENCE_READINESS_CASE_SUMMARY_COLUMNS)
 
 
 def build_pocket_benchmark_reference_readiness_checklist_markdown(

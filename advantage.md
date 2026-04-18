@@ -221,6 +221,7 @@ ProteinInsight 不追求找出所有可能 druggable pocket，而是优先定位
 - `pocket_benchmark_reference_structure_validation_summary.csv`
 - `pocket_benchmark_reference_structure_validation_checklist.md`
 - `pocket_benchmark_reference_readiness_summary.csv`
+- `pocket_benchmark_reference_readiness_case_summary.csv`
 - `pocket_benchmark_reference_readiness_queue.csv`
 - `pocket_benchmark_reference_readiness_checklist.md`
 - `pocket_benchmark_interpretation.csv`

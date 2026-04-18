@@ -245,6 +245,8 @@ The same reference residues are also validated against the uploaded PDB atom tab
 
 A benchmark reference readiness gate combines curation quality and structure validation into one decision. `P0/P1` issues block precision claims, while `P2` issues require reviewer sign-off before benchmark coverage should be treated as publication-ready.
 
+For batch-like reference tables, readiness is also split by `benchmark_id` / `case_id`. This makes it clear which enzyme or structure cases are blocked, reviewer-pending, or ready instead of letting one bad case obscure the rest of the dataset.
+
 Benchmark interpretation then joins Top-N coverage with the readiness gate. A coverage row can be `claim-ready`, `review-needed`, `blocked`, or `readiness-unknown`, so low or high coverage is not misrepresented when reference curation is still unsafe.
 
 ### Metrics
@@ -261,6 +263,7 @@ The benchmark exports:
 - `pocket_benchmark_reference_structure_validation_summary.csv`
 - `pocket_benchmark_reference_structure_validation_checklist.md`
 - `pocket_benchmark_reference_readiness_summary.csv`
+- `pocket_benchmark_reference_readiness_case_summary.csv`
 - `pocket_benchmark_reference_readiness_queue.csv`
 - `pocket_benchmark_reference_readiness_checklist.md`
 - `pocket_benchmark_interpretation.csv`
@@ -486,7 +489,7 @@ Coverage includes:
 Latest full run:
 
 ```text
-211 passed
+212 passed
 ```
 
 ## Known Limits
