@@ -571,6 +571,22 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         lines.append(
             f"Benchmark source-audit decision dataset impact cases: {source_dataset_impact_case_rows} rows / blockers {blocker_rows} / review {review_rows} / mismatch {mismatch_rows} / checklist {checklist_status} / report {report_status}"
         )
+    source_dataset_impact_action_queue_rows = int(
+        extra.get("pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_rows") or 0
+    )
+    if source_dataset_impact_action_queue_rows > 0:
+        blocker_rows = int(
+            extra.get("pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_blocker_rows") or 0
+        )
+        review_rows = int(
+            extra.get("pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_review_rows") or 0
+        )
+        mismatch_rows = int(
+            extra.get("pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_mismatch_rows") or 0
+        )
+        lines.append(
+            f"Benchmark source-audit decision dataset impact action queue: {source_dataset_impact_action_queue_rows} rows / blockers {blocker_rows} / review {review_rows} / mismatch {mismatch_rows}"
+        )
     benchmark_dataset_interpretation_queue_rows = int(extra.get("pocket_benchmark_dataset_interpretation_queue_rows") or 0)
     if benchmark_dataset_interpretation_queue_rows > 0:
         blocker_rows = int(extra.get("pocket_benchmark_dataset_interpretation_queue_blocker_rows") or 0)

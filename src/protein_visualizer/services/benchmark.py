@@ -318,6 +318,30 @@ BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_CASE_COLUMNS = [
     "impact_warning",
 ]
 
+BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_ACTION_QUEUE_COLUMNS = [
+    "action_id",
+    "priority",
+    "action_status",
+    "impact_case_id",
+    "top_n",
+    "benchmark_id",
+    "source_impact_status",
+    "source_gate_mismatch",
+    "claim_status",
+    "coverage_ratio",
+    "best_rank",
+    "best_pocket_id",
+    "readiness_status",
+    "applied_status",
+    "source_decision",
+    "validation_status",
+    "adjusted_source_priority",
+    "adjusted_source_issue_type",
+    "readiness_impact",
+    "recommended_action",
+    "impact_warning",
+]
+
 BENCHMARK_DETAIL_COLUMNS = [
     *BENCHMARK_REFERENCE_COLUMNS,
     "residue_label",
@@ -823,6 +847,10 @@ def _empty_reference_source_audit_case_decision_dataset_impact_df() -> pd.DataFr
 
 def _empty_reference_source_audit_case_decision_dataset_impact_case_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_CASE_COLUMNS)
+
+
+def _empty_reference_source_audit_case_decision_dataset_impact_action_queue_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_ACTION_QUEUE_COLUMNS)
 
 
 def _empty_detail_df() -> pd.DataFrame:
@@ -3559,6 +3587,78 @@ def build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_c
     if remaining > 0:
         lines.append(f"- [ ] Review {remaining} additional source-impact case actions in the CSV export.")
     return "\n".join(lines).strip() + "\n"
+
+
+def build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue(
+    impact_case_df: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    """Build a machine-readable action queue from source-audit dataset impact cases."""
+
+    if impact_case_df is None or getattr(impact_case_df, "empty", True):
+        return _empty_reference_source_audit_case_decision_dataset_impact_action_queue_df()
+
+    working = impact_case_df.copy()
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_CASE_COLUMNS:
+        if column not in working.columns:
+            working[column] = ""
+    working["top_n"] = pd.to_numeric(working["top_n"], errors="coerce").fillna(0).astype(int)
+    working["coverage_ratio"] = pd.to_numeric(working["coverage_ratio"], errors="coerce").fillna(0.0)
+    working["best_rank"] = pd.to_numeric(working["best_rank"], errors="coerce").fillna(0).astype(int)
+    working["source_gate_mismatch"] = working["source_gate_mismatch"].map(_claim_ready_bool)
+    working["source_action_status"] = working["source_action_status"].astype(str).str.strip().str.lower()
+    actionable = working[
+        working["source_action_status"].isin(["blocker", "review"]) | working["source_gate_mismatch"].map(bool)
+    ].copy()
+    if actionable.empty:
+        return _empty_reference_source_audit_case_decision_dataset_impact_action_queue_df()
+
+    rows: list[dict[str, object]] = []
+    for _, row in actionable.iterrows():
+        action_status = _safe_text(row.get("source_action_status")) or "review"
+        source_impact_status = _safe_text(row.get("source_impact_status"))
+        if bool(row.get("source_gate_mismatch")) or action_status == "blocker" or source_impact_status == "source-blocked":
+            priority = "P0"
+        elif action_status == "review" or source_impact_status in {"source-review-needed", "source-open"}:
+            priority = "P2"
+        else:
+            priority = "P3"
+        rows.append(
+            {
+                "action_id": "",
+                "priority": priority,
+                "action_status": action_status,
+                "impact_case_id": _safe_text(row.get("impact_case_id")),
+                "top_n": int(row.get("top_n") or 0),
+                "benchmark_id": _safe_text(row.get("benchmark_id")) or "current",
+                "source_impact_status": source_impact_status,
+                "source_gate_mismatch": bool(row.get("source_gate_mismatch")),
+                "claim_status": _safe_text(row.get("claim_status")) or "readiness-unknown",
+                "coverage_ratio": round(float(row.get("coverage_ratio") or 0.0), 3),
+                "best_rank": int(row.get("best_rank") or 0),
+                "best_pocket_id": _safe_text(row.get("best_pocket_id")),
+                "readiness_status": _safe_text(row.get("readiness_status")),
+                "applied_status": _safe_text(row.get("applied_status")),
+                "source_decision": _safe_text(row.get("source_decision")),
+                "validation_status": _safe_text(row.get("validation_status")),
+                "adjusted_source_priority": _safe_text(row.get("adjusted_source_priority")),
+                "adjusted_source_issue_type": _safe_text(row.get("adjusted_source_issue_type")),
+                "readiness_impact": _safe_text(row.get("readiness_impact")),
+                "recommended_action": _safe_text(row.get("recommended_action"))
+                or "Review this source-audit dataset impact case before reporting benchmark claims.",
+                "impact_warning": _safe_text(row.get("impact_warning")),
+            }
+        )
+
+    frame = pd.DataFrame(rows, columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_ACTION_QUEUE_COLUMNS)
+    priority_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    status_rank = {"blocker": 0, "review": 1}
+    frame["_priority_rank"] = frame["priority"].map(priority_rank).fillna(9)
+    frame["_status_rank"] = frame["action_status"].map(status_rank).fillna(9)
+    frame = frame.sort_values(["_priority_rank", "_status_rank", "top_n", "benchmark_id", "source_impact_status"]).drop(
+        columns=["_priority_rank", "_status_rank"]
+    ).reset_index(drop=True)
+    frame["action_id"] = [f"BRSDIA-{index + 1:03d}" for index in range(len(frame))]
+    return frame[BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_ACTION_QUEUE_COLUMNS]
 
 
 def build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_report_markdown(

@@ -153,6 +153,10 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
             "pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_blocker_rows": 2,
             "pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_review_rows": 1,
             "pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_mismatch_rows": 1,
+            "pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_rows": 3,
+            "pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_blocker_rows": 2,
+            "pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_review_rows": 1,
+            "pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_mismatch_rows": 1,
             "pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_checklist_available": True,
             "pocket_benchmark_reference_source_audit_case_decision_dataset_impact_report_available": True,
             "pocket_benchmark_dataset_interpretation_queue_rows": 2,
@@ -223,6 +227,7 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
     assert any("Benchmark dataset interpretation: 3 rows / blocked 1 / review 1" in line for line in summary_lines)
     assert any("Benchmark source-audit decision dataset impact: 3 rows / blockers 1 / review 1 / mismatch 0" in line for line in summary_lines)
     assert any("Benchmark source-audit decision dataset impact cases: 6 rows / blockers 2 / review 1 / mismatch 1 / checklist available / report available" in line for line in summary_lines)
+    assert any("Benchmark source-audit decision dataset impact action queue: 3 rows / blockers 2 / review 1 / mismatch 1" in line for line in summary_lines)
     assert any("Benchmark dataset interpretation queue: 2 rows / blockers 1 / review 1 / checklist available / report available" in line for line in summary_lines)
     assert any("Catalytic benchmark dataset: cases 2 / summary rows 2" in line for line in summary_lines)
     assert any("Catalytic benchmark variants: 4 rows" in line for line in summary_lines)
