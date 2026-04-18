@@ -205,6 +205,7 @@ SNAPSHOT_TEXT_REPLACEMENTS = [
     ("closed-and-verified", "已关闭并校验"),
     ("ledger-blocked", "台账阻断"),
     ("missing-evidence", "缺少证据"),
+    ("not available", "不可用"),
     ("executed", "已执行"),
     ("available", "可用"),
     ("verified", "已校验"),
@@ -277,6 +278,103 @@ SNAPSHOT_CONSENSUS_LINE_REPLACEMENTS = [
 ]
 
 
+SNAPSHOT_BENCHMARK_LINE_REPLACEMENTS = [
+    ("Benchmark source-audit decision dataset impact action summary", "基准来源审计决策数据集影响行动汇总"),
+    ("Benchmark source-audit decision dataset impact action queue", "基准来源审计决策数据集影响行动队列"),
+    ("Benchmark source-audit decision dataset impact artifacts", "基准来源审计决策数据集影响产物"),
+    ("Benchmark source-audit decision dataset impact cases", "基准来源审计决策数据集影响案例"),
+    ("Benchmark source-audit decision dataset impact", "基准来源审计决策数据集影响"),
+    ("Benchmark reference source audit case decision readiness impact summary", "基准参考来源审计案例决策就绪影响汇总"),
+    ("Benchmark reference source audit case decision readiness impact", "基准参考来源审计案例决策就绪影响"),
+    ("Benchmark reference source audit case decision closure checklist", "基准参考来源审计案例决策关闭清单"),
+    ("Benchmark reference source audit case decision closure queue", "基准参考来源审计案例决策关闭队列"),
+    ("Benchmark reference source audit case decision outcome summary", "基准参考来源审计案例决策结果汇总"),
+    ("Benchmark reference source audit case decision outcomes", "基准参考来源审计案例决策结果"),
+    ("Benchmark reference source audit case decision template", "基准参考来源审计案例决策模板"),
+    ("Benchmark reference source audit case decisions", "基准参考来源审计案例决策"),
+    ("Benchmark reference source audit action queue", "基准参考来源审计行动队列"),
+    ("Benchmark reference source audit case checklist", "基准参考来源审计案例清单"),
+    ("Benchmark reference source audit checklist", "基准参考来源审计清单"),
+    ("Benchmark reference source audit summary", "基准参考来源审计汇总"),
+    ("Benchmark reference source audit cases", "基准参考来源审计案例"),
+    ("Benchmark reference source audit", "基准参考来源审计"),
+    ("Benchmark reference candidate review decisions", "基准参考候选复核决策"),
+    ("Benchmark reference candidate review", "基准参考候选复核"),
+    ("Benchmark reference candidate", "基准参考候选"),
+    ("Benchmark reference curation quality", "基准参考整理质量"),
+    ("Benchmark reference structure validation", "基准参考结构校验"),
+    ("Benchmark reference readiness cases", "基准参考就绪案例"),
+    ("Benchmark reference readiness", "基准参考就绪"),
+    ("Benchmark reference template", "基准参考模板"),
+    ("Benchmark reference source", "基准参考来源"),
+    ("Catalytic pocket benchmark", "催化口袋基准"),
+    ("Benchmark case interpretation matrix summary", "基准案例解释矩阵汇总"),
+    ("Benchmark case interpretation matrix queue", "基准案例解释矩阵队列"),
+    ("Benchmark case interpretation matrix", "基准案例解释矩阵"),
+    ("Benchmark case interpretation", "基准案例解释"),
+    ("Benchmark dataset interpretation queue", "基准数据集解释队列"),
+    ("Benchmark dataset interpretation report", "基准数据集解释报告"),
+    ("Benchmark dataset interpretation", "基准数据集解释"),
+    ("Benchmark interpretation", "基准解释"),
+    ("Catalytic benchmark remediation queue", "催化基准修复队列"),
+    ("Catalytic benchmark variant residues", "催化基准变体残基"),
+    ("Catalytic benchmark variant cases", "催化基准变体案例"),
+    ("Catalytic benchmark variants", "催化基准变体"),
+    ("Catalytic benchmark dataset", "催化基准数据集"),
+    ("provisional-external-evidence", "临时外部证据"),
+    ("topn-complete-hit", "Top-N 完全命中"),
+    ("top1-partial-hit", "Top-1 部分命中"),
+    ("blocked-provisional", "临时参考阻断"),
+    ("source-gate-mismatch", "来源门控不匹配"),
+    ("review-needed", "需复核"),
+    ("validation blocked", "校验阻断"),
+    (" / top ", " / Top "),
+    ("accepted references", "已接受参考"),
+    ("accepted actions", "已接受动作"),
+    ("provisional used", "使用临时参考"),
+    ("reviewed candidate", "已复核候选"),
+    ("independent claim", "独立结论"),
+    ("claim status", "结论状态"),
+    ("top status", "Top 状态"),
+    ("provisional rows", "临时参考行"),
+    ("reviewed rows", "已复核行"),
+    ("net blocker delta", "阻断项净变化"),
+    ("Top-1 claim", "Top-1 结论"),
+    ("Top-3 claim", "Top-3 结论"),
+    ("dataset rows", "数据集行"),
+    ("summary rows", "汇总行"),
+    ("P0 groups", "P0 组"),
+    ("mismatches", "不匹配项"),
+    ("mismatch", "不匹配"),
+    ("references", "参考"),
+    ("reference", "参考"),
+    ("checklist", "清单"),
+    ("report", "报告"),
+    ("import", "导入"),
+    ("notes", "备注"),
+    ("issues", "问题"),
+    ("issue", "问题"),
+    ("summary", "汇总"),
+    ("source audit", "来源审计"),
+    ("queue", "队列"),
+    ("actions", "动作"),
+    ("action", "动作"),
+    ("bytes", "字节"),
+    ("hashes", "哈希"),
+    ("cases", "案例"),
+    ("case", "案例"),
+    ("usable", "可用"),
+    ("open", "未关闭"),
+    ("pending", "待处理"),
+    ("cleared", "已清除"),
+    ("blocked", "阻断"),
+    ("blockers", "阻断项"),
+    ("review", "复核"),
+    ("status", "状态"),
+    ("provisional", "临时参考"),
+]
+
+
 def _snapshot_value_label(value: Any, *, default: str = "-") -> str:
     text = str(value or "").strip()
     if not text:
@@ -293,6 +391,11 @@ def _snapshot_text_label(value: Any, *, default: str = "-") -> str:
 
 def _snapshot_summary_line_label(line: str) -> str:
     text = str(line)
+    if text.startswith(("Benchmark ", "Catalytic ")):
+        for source, target in SNAPSHOT_BENCHMARK_LINE_REPLACEMENTS:
+            text = text.replace(source, target)
+        text = text.replace(" rows", " 行").replace(" files", " 个文件")
+        return _snapshot_text_label(text)
     if not text.startswith(("Residue evidence consensus", "Pocket consensus coverage", "Consensus rerank")):
         return text
     for source, target in SNAPSHOT_CONSENSUS_LINE_REPLACEMENTS:
