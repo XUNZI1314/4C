@@ -2,6 +2,7 @@ import pandas as pd
 
 from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_case_interpretation_summary,
+    build_pocket_benchmark_dataset_interpretation,
     build_pocket_benchmark_interpretation_summary,
     build_pocket_benchmark_case_summary,
     build_pocket_benchmark_dataset_summary,
@@ -269,6 +270,64 @@ def test_build_pocket_benchmark_case_interpretation_uses_case_readiness():
     statuses = dict(zip(interpretation["benchmark_id"], interpretation["claim_status"]))
     assert statuses["enzyme-a"] == "blocked"
     assert statuses["enzyme-b"] == "claim-ready"
+
+
+def test_build_pocket_benchmark_dataset_interpretation_aggregates_case_claims():
+    case_interpretation = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "enzyme-a",
+                "top_n": 1,
+                "coverage_ratio": 1.0,
+                "claim_status": "claim-ready",
+                "claim_ready": True,
+            },
+            {
+                "benchmark_id": "enzyme-b",
+                "top_n": 1,
+                "coverage_ratio": 0.5,
+                "claim_status": "blocked",
+                "claim_ready": False,
+            },
+            {
+                "benchmark_id": "enzyme-c",
+                "top_n": 1,
+                "coverage_ratio": 0.0,
+                "claim_status": "review-needed",
+                "claim_ready": False,
+            },
+            {
+                "benchmark_id": "enzyme-a",
+                "top_n": 3,
+                "coverage_ratio": 1.0,
+                "claim_status": "claim-ready",
+                "claim_ready": True,
+            },
+            {
+                "benchmark_id": "enzyme-b",
+                "top_n": 3,
+                "coverage_ratio": 0.8,
+                "claim_status": "claim-ready",
+                "claim_ready": True,
+            },
+        ]
+    )
+
+    dataset_interpretation = build_pocket_benchmark_dataset_interpretation(case_interpretation)
+
+    top1 = dataset_interpretation[dataset_interpretation["top_n"] == 1].iloc[0]
+    assert int(top1["case_count"]) == 3
+    assert int(top1["claim_ready_case_count"]) == 1
+    assert int(top1["blocked_case_count"]) == 1
+    assert int(top1["review_case_count"]) == 1
+    assert float(top1["mean_claim_ready_coverage"]) == 1.0
+    assert float(top1["mean_all_case_coverage"]) == 0.5
+    assert str(top1["dataset_claim_status"]) == "blocked"
+
+    top3 = dataset_interpretation[dataset_interpretation["top_n"] == 3].iloc[0]
+    assert int(top3["case_count"]) == 2
+    assert float(top3["mean_claim_ready_coverage"]) == 0.9
+    assert str(top3["dataset_claim_status"]) == "claim-ready"
 
 
 def test_parse_benchmark_reference_table_accepts_catalytic_residue_aliases():

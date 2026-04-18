@@ -318,6 +318,24 @@ BENCHMARK_CASE_INTERPRETATION_COLUMNS = [
     *BENCHMARK_INTERPRETATION_COLUMNS,
 ]
 
+BENCHMARK_DATASET_INTERPRETATION_COLUMNS = [
+    "top_n",
+    "case_count",
+    "claim_ready_case_count",
+    "blocked_case_count",
+    "review_case_count",
+    "unknown_case_count",
+    "mean_claim_ready_coverage",
+    "mean_all_case_coverage",
+    "claim_ready_rate",
+    "blocked_case_rate",
+    "review_case_rate",
+    "dataset_claim_status",
+    "interpretation_label",
+    "recommended_action",
+    "interpretation_warning",
+]
+
 CHAIN_ALIASES = {"chain", "chainid", "chain_id", "authasymid", "auth_asym_id", "asymid", "asym_id"}
 RESID_ALIASES = {
     "resid",
@@ -447,6 +465,10 @@ def _empty_interpretation_df() -> pd.DataFrame:
 
 def _empty_case_interpretation_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_CASE_INTERPRETATION_COLUMNS)
+
+
+def _empty_dataset_interpretation_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_DATASET_INTERPRETATION_COLUMNS)
 
 
 def _simplify_column_name(value: object) -> str:
@@ -1763,6 +1785,144 @@ def build_pocket_benchmark_case_interpretation_summary(
     if not rows:
         return _empty_case_interpretation_df()
     return pd.DataFrame(rows, columns=BENCHMARK_CASE_INTERPRETATION_COLUMNS)
+
+
+def _claim_ready_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = _safe_text(value).strip().lower()
+    return text in {"1", "true", "yes", "y", "ready", "claim-ready"}
+
+
+def _normalized_claim_status(value: object) -> str:
+    return re.sub(r"[\s_]+", "-", _safe_text(value).strip().lower())
+
+
+def _dataset_interpretation_status(
+    case_count: int,
+    claim_ready_count: int,
+    blocked_count: int,
+    review_count: int,
+    unknown_count: int,
+    top_n: int,
+) -> tuple[str, str, str, str]:
+    if case_count <= 0:
+        return (
+            "no-cases",
+            f"Top-{top_n} dataset interpretation has no benchmark cases.",
+            "Add benchmark cases before reporting dataset-level catalytic pocket coverage.",
+            "No benchmark cases are available for dataset-level interpretation.",
+        )
+    if blocked_count > 0:
+        return (
+            "blocked",
+            f"Top-{top_n} dataset interpretation is blocked because one or more benchmark cases are not claim-ready.",
+            "Fix blocked cases before using dataset-level coverage as a precision claim.",
+            "At least one benchmark case is blocked; dataset-level coverage is not claimable.",
+        )
+    if review_count > 0 or unknown_count > 0:
+        return (
+            "review-needed",
+            f"Top-{top_n} dataset interpretation needs review because some cases are reviewer-pending or unknown.",
+            "Review non-claim-ready cases before publishing dataset-level coverage.",
+            "Some benchmark cases are not claim-ready; dataset-level coverage needs reviewer interpretation.",
+        )
+    if claim_ready_count == case_count:
+        return (
+            "claim-ready",
+            f"Top-{top_n} dataset interpretation is claim-ready across all benchmark cases.",
+            "Report dataset coverage with case count and mean claim-ready coverage.",
+            "All benchmark cases are claim-ready for this Top-N dataset interpretation.",
+        )
+    return (
+        "review-needed",
+        f"Top-{top_n} dataset interpretation needs review because not all cases are claim-ready.",
+        "Review non-claim-ready cases before publishing dataset-level coverage.",
+        "Dataset-level readiness could not be fully resolved from case-level interpretation.",
+    )
+
+
+def build_pocket_benchmark_dataset_interpretation(case_interpretation_df: Optional[pd.DataFrame]) -> pd.DataFrame:
+    """Aggregate case-level benchmark interpretations into dataset-level claim readiness."""
+
+    if case_interpretation_df is None or getattr(case_interpretation_df, "empty", True) or "top_n" not in case_interpretation_df.columns:
+        return _empty_dataset_interpretation_df()
+
+    working = case_interpretation_df.copy()
+    working["top_n"] = pd.to_numeric(working["top_n"], errors="coerce")
+    working = working[working["top_n"].notna()].copy()
+    if working.empty:
+        return _empty_dataset_interpretation_df()
+
+    if "coverage_ratio" not in working.columns:
+        working["coverage_ratio"] = 0.0
+    working["coverage_ratio"] = pd.to_numeric(working["coverage_ratio"], errors="coerce").fillna(0.0)
+
+    if "claim_ready" not in working.columns:
+        working["claim_ready"] = False
+    working["claim_ready"] = working["claim_ready"].map(_claim_ready_bool)
+
+    if "claim_status" not in working.columns:
+        working["claim_status"] = ""
+    working["claim_status"] = working.apply(
+        lambda row: _normalized_claim_status(row.get("claim_status"))
+        or ("claim-ready" if bool(row.get("claim_ready")) else "readiness-unknown"),
+        axis=1,
+    )
+    known_statuses = {"claim-ready", "blocked", "review-needed", "readiness-unknown"}
+    working.loc[~working["claim_status"].isin(known_statuses), "claim_status"] = "readiness-unknown"
+    working.loc[working["claim_ready"] & working["claim_status"].eq("readiness-unknown"), "claim_status"] = "claim-ready"
+
+    if "benchmark_id" not in working.columns:
+        working["benchmark_id"] = [f"case-{index}" for index in working.index]
+    else:
+        working["benchmark_id"] = [
+            _safe_text(value).strip() or f"case-{index}"
+            for index, value in zip(working.index, working["benchmark_id"])
+        ]
+
+    rows: list[dict[str, object]] = []
+    for top_n, group in working.groupby("top_n", sort=True, dropna=False):
+        top_n_int = int(top_n)
+        case_group = group.drop_duplicates(subset=["benchmark_id"], keep="first").copy()
+        case_count = int(len(case_group))
+        claim_ready_count = int(case_group["claim_status"].eq("claim-ready").sum())
+        blocked_count = int(case_group["claim_status"].eq("blocked").sum())
+        review_count = int(case_group["claim_status"].eq("review-needed").sum())
+        unknown_count = int(case_group["claim_status"].eq("readiness-unknown").sum())
+        claim_ready_rows = case_group[case_group["claim_status"].eq("claim-ready")]
+        dataset_status, label, action, warning = _dataset_interpretation_status(
+            case_count,
+            claim_ready_count,
+            blocked_count,
+            review_count,
+            unknown_count,
+            top_n_int,
+        )
+
+        rows.append(
+            {
+                "top_n": top_n_int,
+                "case_count": case_count,
+                "claim_ready_case_count": claim_ready_count,
+                "blocked_case_count": blocked_count,
+                "review_case_count": review_count,
+                "unknown_case_count": unknown_count,
+                "mean_claim_ready_coverage": round(float(claim_ready_rows["coverage_ratio"].mean()), 3) if not claim_ready_rows.empty else 0.0,
+                "mean_all_case_coverage": round(float(case_group["coverage_ratio"].mean()), 3) if case_count else 0.0,
+                "claim_ready_rate": round(float(claim_ready_count) / float(case_count), 3) if case_count else 0.0,
+                "blocked_case_rate": round(float(blocked_count) / float(case_count), 3) if case_count else 0.0,
+                "review_case_rate": round(float(review_count) / float(case_count), 3) if case_count else 0.0,
+                "dataset_claim_status": dataset_status,
+                "interpretation_label": label,
+                "recommended_action": action,
+                "interpretation_warning": warning,
+            }
+        )
+
+    if not rows:
+        return _empty_dataset_interpretation_df()
+    return pd.DataFrame(rows, columns=BENCHMARK_DATASET_INTERPRETATION_COLUMNS)
 
 
 def build_pocket_benchmark_case_summary(
