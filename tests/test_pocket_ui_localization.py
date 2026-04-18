@@ -92,8 +92,11 @@ def test_results_page_keeps_pocket_export_labels_readable():
         'label="导出智能口袋摘要 CSV"',
         'label="导出口袋明细 CSV"',
         "def localize_display_table",
+        "def localize_column_name",
         '"pocket_id": "口袋 ID"',
         '"recommendation_reason": "推荐理由"',
+        '"recommendation": "推荐"',
+        '"overlap": "重叠"',
     ]
 
     for snippet in forbidden_mojibake_snippets:

@@ -69,6 +69,62 @@ DISPLAY_COLUMN_LABELS = {
 }
 
 
+DISPLAY_COLUMN_TOKEN_LABELS = {
+    "ai": "AI",
+    "pocket": "口袋",
+    "joint": "联合",
+    "candidate": "候选",
+    "recommendation": "推荐",
+    "rank": "排名",
+    "label": "标签",
+    "score": "得分",
+    "action": "动作",
+    "reason": "理由",
+    "smart": "智能",
+    "hotspot": "热点",
+    "interface": "界面",
+    "triple": "三重",
+    "overlap": "重叠",
+    "count": "数量",
+    "residue": "残基",
+    "classification": "分类",
+    "color": "颜色",
+    "description": "说明",
+    "energy": "能量",
+    "delta": "变化",
+    "total": "总计",
+    "raw": "原始",
+    "is": "是否",
+    "detection": "识别",
+    "route": "路径",
+    "consensus": "共识",
+    "methods": "方法",
+    "method": "方法",
+    "vote": "投票",
+    "volume": "体积",
+    "evidence": "证据",
+    "quality": "质量",
+    "anchor": "锚点",
+    "support": "支持",
+    "risk": "风险",
+    "id": "ID",
+}
+
+
+def localize_column_name(column: object) -> object:
+    if not isinstance(column, str):
+        return column
+    if column in DISPLAY_COLUMN_LABELS:
+        return DISPLAY_COLUMN_LABELS[column]
+    if "_" not in column:
+        return DISPLAY_COLUMN_TOKEN_LABELS.get(column.lower(), column)
+    parts = column.split("_")
+    localized_parts = [DISPLAY_COLUMN_TOKEN_LABELS.get(part.lower(), part) for part in parts]
+    if localized_parts != parts:
+        return " ".join(localized_parts)
+    return column
+
+
 def localize_display_table(table: pd.DataFrame) -> pd.DataFrame:
     if table is None or table.empty:
         return table
@@ -76,7 +132,7 @@ def localize_display_table(table: pd.DataFrame) -> pd.DataFrame:
     for column in display.columns:
         if pd.api.types.is_bool_dtype(display[column]):
             display[column] = display[column].map(lambda value: "是" if bool(value) else "否")
-    return display.rename(columns={column: DISPLAY_COLUMN_LABELS.get(column, column) for column in display.columns})
+    return display.rename(columns={column: localize_column_name(column) for column in display.columns})
 
 
 st.set_page_config(page_title="结果与导出", layout="wide")
