@@ -348,6 +348,13 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         lines.append(
             f"Benchmark case interpretation: {benchmark_case_interpretation_rows} rows / blocked {blocked_rows} / review {review_rows}"
         )
+    benchmark_case_interpretation_matrix_rows = int(extra.get("pocket_benchmark_case_interpretation_matrix_rows") or 0)
+    if benchmark_case_interpretation_matrix_rows > 0:
+        blocked_rows = int(extra.get("pocket_benchmark_case_interpretation_matrix_blocked_rows") or 0)
+        review_rows = int(extra.get("pocket_benchmark_case_interpretation_matrix_review_rows") or 0)
+        lines.append(
+            f"Benchmark case interpretation matrix: {benchmark_case_interpretation_matrix_rows} rows / blocked {blocked_rows} / review {review_rows}"
+        )
     benchmark_dataset_interpretation_rows = int(extra.get("pocket_benchmark_dataset_interpretation_rows") or 0)
     if benchmark_dataset_interpretation_rows > 0:
         blocked_rows = int(extra.get("pocket_benchmark_dataset_interpretation_blocked_rows") or 0)

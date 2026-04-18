@@ -2,6 +2,7 @@ import pandas as pd
 
 from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_case_interpretation_summary,
+    build_pocket_benchmark_case_interpretation_matrix,
     build_pocket_benchmark_dataset_interpretation_checklist_markdown,
     build_pocket_benchmark_dataset_interpretation_report_markdown,
     build_pocket_benchmark_dataset_interpretation,
@@ -273,6 +274,57 @@ def test_build_pocket_benchmark_case_interpretation_uses_case_readiness():
     statuses = dict(zip(interpretation["benchmark_id"], interpretation["claim_status"]))
     assert statuses["enzyme-a"] == "blocked"
     assert statuses["enzyme-b"] == "claim-ready"
+
+
+def test_build_pocket_benchmark_case_interpretation_matrix_pivots_topn_rows():
+    case_interpretation = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "enzyme-a",
+                "top_n": 1,
+                "coverage_ratio": 0.0,
+                "claim_status": "review-needed",
+                "claim_ready": False,
+                "best_rank": 0,
+                "best_pocket_id": "",
+                "benchmark_status": "top1-miss",
+            },
+            {
+                "benchmark_id": "enzyme-a",
+                "top_n": 3,
+                "coverage_ratio": 0.8,
+                "claim_status": "claim-ready",
+                "claim_ready": True,
+                "best_rank": 2,
+                "best_pocket_id": "Pocket-2",
+                "benchmark_status": "topn-partial-hit",
+            },
+            {
+                "benchmark_id": "enzyme-b",
+                "top_n": 1,
+                "coverage_ratio": 0.5,
+                "claim_status": "blocked",
+                "claim_ready": False,
+                "best_rank": 1,
+                "best_pocket_id": "Pocket-1",
+                "benchmark_status": "top1-partial-hit",
+            },
+        ]
+    )
+
+    matrix = build_pocket_benchmark_case_interpretation_matrix(case_interpretation, top_ns=(1, 3))
+
+    enzyme_a = matrix[matrix["benchmark_id"] == "enzyme-a"].iloc[0]
+    enzyme_b = matrix[matrix["benchmark_id"] == "enzyme-b"].iloc[0]
+    assert int(enzyme_a["best_claim_ready_top_n"]) == 3
+    assert float(enzyme_a["best_claim_ready_coverage"]) == 0.8
+    assert str(enzyme_a["case_interpretation_status"]) == "review-needed"
+    assert str(enzyme_a["top1_claim_status"]) == "review-needed"
+    assert str(enzyme_a["top3_claim_status"]) == "claim-ready"
+    assert str(enzyme_a["top3_best_pocket_id"]) == "Pocket-2"
+    assert bool(enzyme_b["any_blocked"])
+    assert str(enzyme_b["case_interpretation_status"]) == "blocked"
+    assert int(enzyme_b["top3_best_rank"]) == 0
 
 
 def test_build_pocket_benchmark_dataset_interpretation_aggregates_case_claims():

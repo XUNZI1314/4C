@@ -318,6 +318,19 @@ BENCHMARK_CASE_INTERPRETATION_COLUMNS = [
     *BENCHMARK_INTERPRETATION_COLUMNS,
 ]
 
+BENCHMARK_CASE_INTERPRETATION_MATRIX_BASE_COLUMNS = [
+    "benchmark_id",
+    "top_n_count",
+    "best_claim_ready_top_n",
+    "best_claim_ready_coverage",
+    "best_claim_ready_rank",
+    "any_blocked",
+    "any_review_needed",
+    "any_readiness_unknown",
+    "case_interpretation_status",
+    "recommended_action",
+]
+
 BENCHMARK_DATASET_INTERPRETATION_COLUMNS = [
     "top_n",
     "case_count",
@@ -482,6 +495,27 @@ def _empty_interpretation_df() -> pd.DataFrame:
 
 def _empty_case_interpretation_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_CASE_INTERPRETATION_COLUMNS)
+
+
+def _case_interpretation_matrix_columns(top_ns: Sequence[int] = (1, 3, 5)) -> list[str]:
+    columns = list(BENCHMARK_CASE_INTERPRETATION_MATRIX_BASE_COLUMNS)
+    for top_n in top_ns:
+        prefix = f"top{int(top_n)}"
+        columns.extend(
+            [
+                f"{prefix}_claim_status",
+                f"{prefix}_claim_ready",
+                f"{prefix}_coverage_ratio",
+                f"{prefix}_best_rank",
+                f"{prefix}_best_pocket_id",
+                f"{prefix}_benchmark_status",
+            ]
+        )
+    return columns
+
+
+def _empty_case_interpretation_matrix_df(top_ns: Sequence[int] = (1, 3, 5)) -> pd.DataFrame:
+    return pd.DataFrame(columns=_case_interpretation_matrix_columns(top_ns))
 
 
 def _empty_dataset_interpretation_df() -> pd.DataFrame:
@@ -1817,6 +1851,115 @@ def _claim_ready_bool(value: object) -> bool:
 
 def _normalized_claim_status(value: object) -> str:
     return re.sub(r"[\s_]+", "-", _safe_text(value).strip().lower())
+
+
+def _case_matrix_status(
+    has_claim_ready: bool,
+    any_blocked: bool,
+    any_review_needed: bool,
+    any_readiness_unknown: bool,
+) -> tuple[str, str]:
+    if any_blocked:
+        return "blocked", "Fix blocked Top-N case interpretation rows before using this case in dataset-level claims."
+    if any_review_needed or any_readiness_unknown:
+        return "review-needed", "Resolve reviewer-pending or unknown Top-N rows before using this case in dataset-level claims."
+    if has_claim_ready:
+        return "claim-ready", "Use the earliest claim-ready Top-N row as case-level benchmark support."
+    return "no-claim-ready", "Inspect coverage misses, ranking thresholds or reference readiness before claiming this case."
+
+
+def build_pocket_benchmark_case_interpretation_matrix(
+    case_interpretation_df: Optional[pd.DataFrame],
+    *,
+    top_ns: Optional[Sequence[int]] = None,
+) -> pd.DataFrame:
+    """Pivot case-level Top-N interpretation rows into one row per benchmark case."""
+
+    normalized_top_values: list[int] = []
+    for value in top_ns or ():
+        try:
+            top_n_value = int(value)
+        except (TypeError, ValueError):
+            continue
+        if top_n_value > 0:
+            normalized_top_values.append(top_n_value)
+    normalized_top_ns = tuple(sorted(set(normalized_top_values)))
+    if (
+        case_interpretation_df is None
+        or getattr(case_interpretation_df, "empty", True)
+        or "benchmark_id" not in case_interpretation_df.columns
+        or "top_n" not in case_interpretation_df.columns
+    ):
+        return _empty_case_interpretation_matrix_df(normalized_top_ns or (1, 3, 5))
+
+    working = case_interpretation_df.copy()
+    for column in BENCHMARK_CASE_INTERPRETATION_COLUMNS:
+        if column not in working.columns:
+            working[column] = ""
+    working["top_n"] = pd.to_numeric(working["top_n"], errors="coerce")
+    working = working[working["top_n"].notna()].copy()
+    if working.empty:
+        return _empty_case_interpretation_matrix_df(normalized_top_ns or (1, 3, 5))
+
+    working["top_n"] = working["top_n"].astype(int)
+    if not normalized_top_ns:
+        normalized_top_ns = tuple(sorted({int(value) for value in working["top_n"].dropna().tolist() if int(value) > 0}))
+    if not normalized_top_ns:
+        normalized_top_ns = (1, 3, 5)
+
+    working = working[working["top_n"].isin(normalized_top_ns)].copy()
+    if working.empty:
+        return _empty_case_interpretation_matrix_df(normalized_top_ns)
+
+    working["benchmark_id"] = working["benchmark_id"].map(lambda value: _safe_text(value) or "current")
+    working["claim_status"] = working["claim_status"].map(_normalized_claim_status)
+    working.loc[working["claim_status"].eq(""), "claim_status"] = "readiness-unknown"
+    working["claim_ready"] = working["claim_ready"].map(_claim_ready_bool)
+    working.loc[working["claim_ready"] & working["claim_status"].eq("readiness-unknown"), "claim_status"] = "claim-ready"
+    working["coverage_ratio"] = pd.to_numeric(working["coverage_ratio"], errors="coerce").fillna(0.0)
+    working["best_rank"] = pd.to_numeric(working["best_rank"], errors="coerce").fillna(0).astype(int)
+
+    rows: list[dict[str, object]] = []
+    for benchmark_id, group in working.groupby("benchmark_id", sort=True, dropna=False):
+        group = group.sort_values("top_n")
+        claim_ready_rows = group[group["claim_status"].eq("claim-ready")]
+        best_claim = claim_ready_rows.iloc[0] if not claim_ready_rows.empty else None
+        any_blocked = bool(group["claim_status"].eq("blocked").any())
+        any_review_needed = bool(group["claim_status"].eq("review-needed").any())
+        any_readiness_unknown = bool(group["claim_status"].eq("readiness-unknown").any())
+        case_status, action = _case_matrix_status(
+            best_claim is not None,
+            any_blocked,
+            any_review_needed,
+            any_readiness_unknown,
+        )
+        row: dict[str, object] = {
+            "benchmark_id": _safe_text(benchmark_id) or "current",
+            "top_n_count": int(group["top_n"].nunique()),
+            "best_claim_ready_top_n": int(best_claim.get("top_n") or 0) if best_claim is not None else 0,
+            "best_claim_ready_coverage": round(float(best_claim.get("coverage_ratio") or 0.0), 3) if best_claim is not None else 0.0,
+            "best_claim_ready_rank": int(best_claim.get("best_rank") or 0) if best_claim is not None else 0,
+            "any_blocked": any_blocked,
+            "any_review_needed": any_review_needed,
+            "any_readiness_unknown": any_readiness_unknown,
+            "case_interpretation_status": case_status,
+            "recommended_action": action,
+        }
+        for top_n in normalized_top_ns:
+            prefix = f"top{int(top_n)}"
+            top_group = group[group["top_n"].eq(int(top_n))]
+            top_row = top_group.iloc[0] if not top_group.empty else None
+            row[f"{prefix}_claim_status"] = _safe_text(top_row.get("claim_status")) if top_row is not None else ""
+            row[f"{prefix}_claim_ready"] = bool(top_row.get("claim_ready")) if top_row is not None else False
+            row[f"{prefix}_coverage_ratio"] = round(float(top_row.get("coverage_ratio") or 0.0), 3) if top_row is not None else 0.0
+            row[f"{prefix}_best_rank"] = int(top_row.get("best_rank") or 0) if top_row is not None else 0
+            row[f"{prefix}_best_pocket_id"] = _safe_text(top_row.get("best_pocket_id")) if top_row is not None else ""
+            row[f"{prefix}_benchmark_status"] = _safe_text(top_row.get("benchmark_status")) if top_row is not None else ""
+        rows.append(row)
+
+    if not rows:
+        return _empty_case_interpretation_matrix_df(normalized_top_ns)
+    return pd.DataFrame(rows, columns=_case_interpretation_matrix_columns(normalized_top_ns))
 
 
 def _dataset_interpretation_status(

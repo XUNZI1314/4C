@@ -247,7 +247,7 @@ A benchmark reference readiness gate combines curation quality and structure val
 
 For batch-like reference tables, readiness is also split by `benchmark_id` / `case_id`. This makes it clear which enzyme or structure cases are blocked, reviewer-pending, or ready instead of letting one bad case obscure the rest of the dataset.
 
-Benchmark interpretation then joins Top-N coverage with the readiness gate. A coverage row can be `claim-ready`, `review-needed`, `blocked`, or `readiness-unknown`, so low or high coverage is not misrepresented when reference curation is still unsafe. The same interpretation is also available per benchmark case and as a dataset-level Top-N aggregate. Non-claim-ready cases are emitted as a dataset interpretation queue and Markdown checklist, while a dataset interpretation report summarizes Top-N claim status, mean coverage and queued actions for reporting or archiving.
+Benchmark interpretation then joins Top-N coverage with the readiness gate. A coverage row can be `claim-ready`, `review-needed`, `blocked`, or `readiness-unknown`, so low or high coverage is not misrepresented when reference curation is still unsafe. The same interpretation is also available per benchmark case, as a case interpretation matrix across Top-N, and as a dataset-level Top-N aggregate. Non-claim-ready cases are emitted as a dataset interpretation queue and Markdown checklist, while a dataset interpretation report summarizes Top-N claim status, mean coverage and queued actions for reporting or archiving.
 
 ### Metrics
 
@@ -268,6 +268,7 @@ The benchmark exports:
 - `pocket_benchmark_reference_readiness_checklist.md`
 - `pocket_benchmark_interpretation.csv`
 - `pocket_benchmark_case_interpretation.csv`
+- `pocket_benchmark_case_interpretation_matrix.csv`
 - `pocket_benchmark_dataset_interpretation.csv`
 - `pocket_benchmark_dataset_interpretation_queue.csv`
 - `pocket_benchmark_dataset_interpretation_checklist.md`
@@ -291,6 +292,7 @@ Current summary metrics:
 - Top-3 catalytic residue coverage.
 - Top-5 catalytic residue coverage.
 - Dataset-level claim readiness by Top-N.
+- Case interpretation matrix across Top-1 / Top-3 / Top-5.
 - Dataset interpretation blocker/review queue, checklist and report.
 - Best hit rank and best hit pocket.
 - Matched and missed catalytic residues.
@@ -496,7 +498,7 @@ Coverage includes:
 Latest full run:
 
 ```text
-217 passed
+218 passed
 ```
 
 ## Known Limits

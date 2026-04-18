@@ -19,7 +19,7 @@
 - [x] Conservation rerank-only 信号和 A/B 对比。
 - [x] External-evidence route 候选口袋生成。
 - [x] Literature A/B 和 evidence-route A/B。
-- [x] Catalytic pocket benchmark：提供 reference template、reference curation quality check、PDB structure validation、case-level readiness gate 和 case/dataset-level readiness-aware interpretation，上传 curated catalytic residues，计算 Top-1 / Top-3 / Top-5 coverage、case/dataset summary、dataset claim readiness queue/checklist/report、best hit rank、missed residues、整体/case/dataset/residue 四层 current vs ablation variant comparison，以及 remediation queue / summary / checklist。
+- [x] Catalytic pocket benchmark：提供 reference template、reference curation quality check、PDB structure validation、case-level readiness gate 和 case/dataset-level readiness-aware interpretation，上传 curated catalytic residues，计算 Top-1 / Top-3 / Top-5 coverage、case/dataset summary、case interpretation matrix、dataset claim readiness queue/checklist/report、best hit rank、missed residues、整体/case/dataset/residue 四层 current vs ablation variant comparison，以及 remediation queue / summary / checklist。
 - [x] Evidence quality label / score / warning。
 - [x] Pocket core / shell / rim 分层。
 - [x] Snapshot、report、history 中记录关键口袋证据。
@@ -31,7 +31,7 @@
 - [x] Release execution template、receipt import、validation、summary、report。
 - [x] Release closure certificate、closure ledger。
 - [x] Detached closure summary、blocker queue、remediation checklist、detached manifest。
-- [x] 单元测试和全量测试覆盖，最近一次验证：`217 passed`。
+- [x] 单元测试和全量测试覆盖，最近一次验证：`218 passed`。
 
 ## 当前导出重点
 
@@ -63,6 +63,7 @@
 - 已落地 benchmark reference readiness case summary，按 benchmark_id/case_id 定位 blocked / review-needed / ready 的具体酶或结构 case。
 - 已落地 readiness-aware benchmark interpretation，把 Top-N coverage 标记为 claim-ready / review-needed / blocked / readiness-unknown，避免把不可靠参考集上的 coverage 当作精度结论。
 - 已落地 benchmark case interpretation，把每个 benchmark_id/case_id 的 Top-N coverage 和 case readiness 绑定，区分哪些 case 可声明、待复核或被阻断。
+- 已落地 benchmark case interpretation matrix，把每个 benchmark_id 横向展开 Top-1 / Top-3 / Top-5 的 claim status、coverage、best rank 和 best pocket，方便快速定位 case 级瓶颈。
 - 已落地 benchmark dataset interpretation，按 Top-N 汇总 claim-ready、blocked、review-needed 和 unknown case 数量、比例与平均 coverage，避免单个 case 状态被总 coverage 掩盖。
 - 已落地 benchmark dataset interpretation queue/checklist/report，把非 claim-ready case 拆成 P0 blocker / P2 review 队列、人工勾选清单和可归档报告，方便优先修复阻断 dataset-level claim 的 case。
 - 下一步收集 M-CSA + PDB + catalytic residue 数据集，形成可重复运行的真实批量 benchmark。
