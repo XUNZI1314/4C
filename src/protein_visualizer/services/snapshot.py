@@ -188,9 +188,92 @@ SNAPSHOT_TEXT_REPLACEMENTS = [
     ("Geometry consensus", "几何共识"),
     ("Evidence A/B movement", "证据 A/B 变化"),
     ("Actionability", "可操作性"),
+    ("validated-anchor", "已验证锚点"),
+    ("consensus-validated-pocket", "共识已验证口袋"),
+    ("keep-prioritized", "保持优先"),
+    ("would-keep-priority", "将保持优先"),
+    ("no-change-needed", "无需变更"),
+    ("validation-anchor-ready", "验证锚点就绪"),
+    ("keep-current-ready", "保留当前且就绪"),
+    ("frozen-blocker", "冻结阻断"),
+    ("likely-precision-gain", "可能提升精度"),
+    ("manual-review-ready", "人工复核就绪"),
+    ("allow-after-review", "复核后允许"),
+    ("manual-consensus-rerank", "人工共识重排"),
+    ("approved-for-manual-release", "批准人工发布"),
+    ("ready-for-manual-apply", "可人工应用"),
+    ("closed-and-verified", "已关闭并校验"),
+    ("ledger-blocked", "台账阻断"),
+    ("missing-evidence", "缺少证据"),
+    ("executed", "已执行"),
+    ("available", "可用"),
+    ("verified", "已校验"),
+    ("ok", "正常"),
     (": pass", ": 通过"),
     (": review", ": 复核"),
     (": missing", ": 缺失"),
+    (", pass", ", 通过"),
+    (" yes", " 是"),
+    (" no", " 否"),
+]
+
+
+SNAPSHOT_CONSENSUS_LINE_REPLACEMENTS = [
+    ("Consensus rerank release closure detached manifest", "共识重排发布关闭外置清单"),
+    ("Consensus rerank release closure remediation checklist", "共识重排发布关闭修复清单"),
+    ("Consensus rerank release closure blockers", "共识重排发布关闭阻断项"),
+    ("Consensus rerank release closure readiness", "共识重排发布关闭就绪"),
+    ("Consensus rerank release closure ledger", "共识重排发布关闭台账"),
+    ("Consensus rerank release closure certificate", "共识重排发布关闭证书"),
+    ("Consensus rerank release execution validation", "共识重排发布执行校验"),
+    ("Consensus rerank release execution template", "共识重排发布执行模板"),
+    ("Consensus rerank release execution receipt", "共识重排发布执行回执"),
+    ("Consensus rerank release execution report", "共识重排发布执行报告"),
+    ("Consensus rerank release execution", "共识重排发布执行"),
+    ("Consensus rerank release apply report", "共识重排发布应用报告"),
+    ("Consensus rerank release apply plan", "共识重排发布应用计划"),
+    ("Consensus rerank release decision validation", "共识重排发布决策校验"),
+    ("Consensus rerank release decision template", "共识重排发布决策模板"),
+    ("Consensus rerank release decisions", "共识重排发布决策"),
+    ("Consensus rerank release review", "共识重排发布复核"),
+    ("Consensus rerank guardrail bundle verification", "共识重排护栏包校验"),
+    ("Consensus rerank guardrail handoff certificate", "共识重排护栏交接证书"),
+    ("Consensus rerank guardrail handoff bundle", "共识重排护栏交接包"),
+    ("Consensus rerank precision guardrail report", "共识重排精度护栏报告"),
+    ("Consensus rerank precision guardrail", "共识重排精度护栏"),
+    ("Consensus rerank precision scorecard", "共识重排精度评分卡"),
+    ("Consensus rerank simulation delta", "共识重排模拟变化"),
+    ("Consensus rerank apply simulation", "共识重排应用模拟"),
+    ("Consensus rerank action checklist", "共识重排行动清单"),
+    ("Consensus rerank action queue", "共识重排行动队列"),
+    ("Consensus rerank policy gate", "共识重排策略门控"),
+    ("Consensus rerank suggestions", "共识重排建议"),
+    ("Consensus rerank preview", "共识重排预览"),
+    ("Residue evidence consensus", "残基证据共识"),
+    ("Pocket consensus coverage", "口袋共识覆盖"),
+    ("ledger-blocked", "台账阻断"),
+    ("rank delta ", "排名变化 "),
+    ("source audit ", "来源审计 "),
+    ("claim ", "结论 "),
+    ("accepted ", "已接受 "),
+    ("positive ", "正向 "),
+    ("blockers ", "阻断项 "),
+    ("blocked ", "阻断 "),
+    ("changed ", "变化 "),
+    ("decision ", "决策 "),
+    ("status ", "状态 "),
+    ("allowed ", "允许 "),
+    ("complete ", "完成 "),
+    ("closed ", "关闭 "),
+    ("anchors ", "锚点 "),
+    ("score ", "评分 "),
+    ("mode ", "模式 "),
+    ("manifest ", "清单 "),
+    ("files ", "文件数 "),
+    ("failed ", "失败 "),
+    (" / top ", " / Top "),
+    (" rows", " 行"),
+    (" files", " 个文件"),
 ]
 
 
@@ -206,6 +289,15 @@ def _snapshot_text_label(value: Any, *, default: str = "-") -> str:
     for source, target in SNAPSHOT_TEXT_REPLACEMENTS:
         text = text.replace(source, target)
     return text
+
+
+def _snapshot_summary_line_label(line: str) -> str:
+    text = str(line)
+    if not text.startswith(("Residue evidence consensus", "Pocket consensus coverage", "Consensus rerank")):
+        return text
+    for source, target in SNAPSHOT_CONSENSUS_LINE_REPLACEMENTS:
+        text = text.replace(source, target)
+    return _snapshot_text_label(text)
 
 
 def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
@@ -890,7 +982,7 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
     reliability_gaps = str(extra.get("top_pocket_reliability_gaps") or "").strip()
     if reliability_gaps:
         lines.append(f"Top 口袋可靠性缺口: {_snapshot_text_label(reliability_gaps)}")
-    return lines
+    return [_snapshot_summary_line_label(line) for line in lines]
 
 
 def _svg_escape(text: Any) -> str:
