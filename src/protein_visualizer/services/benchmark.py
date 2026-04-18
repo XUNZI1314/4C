@@ -289,6 +289,35 @@ BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_COLUMNS = [
     "impact_warning",
 ]
 
+BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_CASE_COLUMNS = [
+    "impact_case_id",
+    "top_n",
+    "benchmark_id",
+    "claim_status",
+    "claim_ready",
+    "coverage_ratio",
+    "best_rank",
+    "best_pocket_id",
+    "benchmark_status",
+    "readiness_status",
+    "source_tracked",
+    "applied_status",
+    "source_decision",
+    "validation_status",
+    "original_source_priority",
+    "original_source_issue_type",
+    "adjusted_source_priority",
+    "adjusted_source_issue_type",
+    "readiness_impact",
+    "source_impact_status",
+    "source_action_status",
+    "source_gate_mismatch",
+    "outcome_reason",
+    "readiness_note",
+    "recommended_action",
+    "impact_warning",
+]
+
 BENCHMARK_DETAIL_COLUMNS = [
     *BENCHMARK_REFERENCE_COLUMNS,
     "residue_label",
@@ -790,6 +819,10 @@ def _empty_reference_source_audit_case_decision_readiness_impact_summary_df() ->
 
 def _empty_reference_source_audit_case_decision_dataset_impact_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_COLUMNS)
+
+
+def _empty_reference_source_audit_case_decision_dataset_impact_case_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_CASE_COLUMNS)
 
 
 def _empty_detail_df() -> pd.DataFrame:
@@ -3133,27 +3166,106 @@ def build_pocket_benchmark_reference_source_audit_case_decision_readiness_impact
     )
 
 
-def build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact(
+def _source_dataset_impact_case_action(
+    *,
+    readiness_impact: str,
+    adjusted_priority: str,
+    claim_status: str,
+    source_tracked: bool,
+) -> tuple[str, str, bool, str, str]:
+    source_open = readiness_impact in {"decision-adjusted-open", "decision-open", "unchanged-open"}
+    source_blocker = adjusted_priority in {"P0", "P1"}
+    source_review = adjusted_priority == "P2"
+    source_cleared = readiness_impact == "cleared-by-decision"
+    source_ready = readiness_impact == "source-ready"
+    claim_ready = claim_status == "claim-ready"
+    source_gate_mismatch = bool(
+        source_tracked
+        and (
+            (source_blocker and claim_status != "blocked")
+            or (source_review and claim_ready)
+            or (source_open and claim_ready)
+        )
+    )
+
+    if source_gate_mismatch:
+        return (
+            "source-gate-mismatch",
+            "blocker",
+            True,
+            "Regenerate readiness interpretation for this case because source decision impact and claim status diverge.",
+            "Source-audit decision impact is not reflected in the case claim status.",
+        )
+    if source_blocker:
+        return (
+            "source-blocked",
+            "blocker",
+            False,
+            "Resolve adjusted P0/P1 source-readiness issues before using this case in dataset-level precision claims.",
+            "Source-audit decision outcomes still block this benchmark case.",
+        )
+    if source_review:
+        return (
+            "source-review-needed",
+            "review",
+            False,
+            "Complete source independence review for adjusted P2 cases before publication-ready dataset claims.",
+            "Source-audit decision outcomes still require reviewer sign-off for this case.",
+        )
+    if source_open:
+        return (
+            "source-open",
+            "review",
+            False,
+            "Review open source-audit decision cases before interpreting this case in dataset-level coverage.",
+            "Source-audit decision outcome remains open for this case.",
+        )
+    if source_cleared:
+        return (
+            "source-cleared",
+            "closed",
+            False,
+            "Keep the source-audit case decision and readiness impact exports with the dataset benchmark report.",
+            "Source-audit issue was cleared by decision for this case.",
+        )
+    if source_ready:
+        return (
+            "source-ready",
+            "ready",
+            False,
+            "Keep source-audit readiness impact exports with the dataset benchmark report.",
+            "Tracked source-audit case is source-ready.",
+        )
+    return (
+        "no-source-impact",
+        "none",
+        False,
+        "No source-audit decision impact is tracked for this case and Top-N level.",
+        "No source-audit decision impact is tracked for this case.",
+    )
+
+
+def build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_cases(
     case_interpretation_df: Optional[pd.DataFrame],
     readiness_impact_df: Optional[pd.DataFrame],
 ) -> pd.DataFrame:
-    """Summarize source-audit decision readiness impact at dataset Top-N levels."""
+    """Build per-case Top-N source-audit decision impact details."""
 
     if (
         case_interpretation_df is None
         or getattr(case_interpretation_df, "empty", True)
         or "top_n" not in case_interpretation_df.columns
     ):
-        return _empty_reference_source_audit_case_decision_dataset_impact_df()
+        return _empty_reference_source_audit_case_decision_dataset_impact_case_df()
 
     cases = case_interpretation_df.copy()
-    for column in ("benchmark_id", "top_n", "claim_status", "claim_ready", "coverage_ratio"):
+    for column in BENCHMARK_CASE_INTERPRETATION_COLUMNS:
         if column not in cases.columns:
             cases[column] = ""
     cases["top_n"] = pd.to_numeric(cases["top_n"], errors="coerce")
     cases = cases[cases["top_n"].notna()].copy()
     if cases.empty:
-        return _empty_reference_source_audit_case_decision_dataset_impact_df()
+        return _empty_reference_source_audit_case_decision_dataset_impact_case_df()
 
     cases["benchmark_id"] = [
         _safe_text(value) or f"case-{index}"
@@ -3164,6 +3276,8 @@ def build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact(
     cases["claim_ready"] = cases["claim_ready"].map(_claim_ready_bool)
     cases.loc[cases["claim_ready"] & cases["claim_status"].eq("readiness-unknown"), "claim_status"] = "claim-ready"
     cases["coverage_ratio"] = pd.to_numeric(cases["coverage_ratio"], errors="coerce").fillna(0.0)
+    cases["best_rank"] = pd.to_numeric(cases["best_rank"], errors="coerce").fillna(0).astype(int)
+    cases = cases.drop_duplicates(subset=["top_n", "benchmark_id"], keep="first").reset_index(drop=True)
 
     impact = (
         readiness_impact_df.copy()
@@ -3175,28 +3289,102 @@ def build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact(
             impact[column] = ""
     impact["benchmark_id"] = impact["benchmark_id"].map(_safe_text)
     impact = impact[impact["benchmark_id"].ne("")].drop_duplicates(subset=["benchmark_id"], keep="first")
-    impact = impact[
-        [
-            "benchmark_id",
-            "readiness_impact",
-            "adjusted_source_priority",
-            "adjusted_source_issue_type",
-            "readiness_note",
-        ]
-    ].copy()
     impact["source_tracked"] = True
-    impact["readiness_impact"] = impact["readiness_impact"].astype(str).str.strip().str.lower()
-    impact["adjusted_source_priority"] = impact["adjusted_source_priority"].astype(str).str.strip().str.upper()
+
+    joined = cases.merge(impact, on="benchmark_id", how="left")
+    joined["source_tracked"] = joined["source_tracked"].fillna(False).map(bool)
+    for column in (
+        "applied_status",
+        "source_decision",
+        "validation_status",
+        "original_source_priority",
+        "original_source_issue_type",
+        "adjusted_source_priority",
+        "adjusted_source_issue_type",
+        "readiness_impact",
+        "outcome_reason",
+        "readiness_note",
+    ):
+        if column not in joined.columns:
+            joined[column] = ""
+        joined[column] = joined[column].fillna("").astype(str).str.strip()
+    joined["readiness_impact"] = joined["readiness_impact"].str.lower()
+    joined["adjusted_source_priority"] = joined["adjusted_source_priority"].str.upper()
 
     rows: list[dict[str, object]] = []
-    for top_n, group in cases.groupby("top_n", sort=True, dropna=False):
-        top_n_int = int(top_n)
-        case_group = group.drop_duplicates(subset=["benchmark_id"], keep="first").copy()
-        joined = case_group.merge(impact, on="benchmark_id", how="left")
-        joined["source_tracked"] = joined["source_tracked"].fillna(False).map(bool)
-        joined["readiness_impact"] = joined["readiness_impact"].fillna("").astype(str)
-        joined["adjusted_source_priority"] = joined["adjusted_source_priority"].fillna("").astype(str)
+    for _, row in joined.iterrows():
+        source_impact_status, action_status, mismatch, action, warning = _source_dataset_impact_case_action(
+            readiness_impact=_safe_text(row.get("readiness_impact")),
+            adjusted_priority=_safe_text(row.get("adjusted_source_priority")),
+            claim_status=_safe_text(row.get("claim_status")),
+            source_tracked=bool(row.get("source_tracked")),
+        )
+        rows.append(
+            {
+                "impact_case_id": "",
+                "top_n": int(row.get("top_n") or 0),
+                "benchmark_id": _safe_text(row.get("benchmark_id")) or "current",
+                "claim_status": _safe_text(row.get("claim_status")) or "readiness-unknown",
+                "claim_ready": bool(row.get("claim_ready")),
+                "coverage_ratio": round(float(row.get("coverage_ratio") or 0.0), 3),
+                "best_rank": int(row.get("best_rank") or 0),
+                "best_pocket_id": _safe_text(row.get("best_pocket_id")),
+                "benchmark_status": _safe_text(row.get("benchmark_status")),
+                "readiness_status": _safe_text(row.get("readiness_status")),
+                "source_tracked": bool(row.get("source_tracked")),
+                "applied_status": _safe_text(row.get("applied_status")),
+                "source_decision": _safe_text(row.get("source_decision")),
+                "validation_status": _safe_text(row.get("validation_status")),
+                "original_source_priority": _safe_text(row.get("original_source_priority")),
+                "original_source_issue_type": _safe_text(row.get("original_source_issue_type")),
+                "adjusted_source_priority": _safe_text(row.get("adjusted_source_priority")),
+                "adjusted_source_issue_type": _safe_text(row.get("adjusted_source_issue_type")),
+                "readiness_impact": _safe_text(row.get("readiness_impact")),
+                "source_impact_status": source_impact_status,
+                "source_action_status": action_status,
+                "source_gate_mismatch": bool(mismatch),
+                "outcome_reason": _safe_text(row.get("outcome_reason")),
+                "readiness_note": _safe_text(row.get("readiness_note")),
+                "recommended_action": action,
+                "impact_warning": warning,
+            }
+        )
 
+    if not rows:
+        return _empty_reference_source_audit_case_decision_dataset_impact_case_df()
+
+    frame = pd.DataFrame(rows, columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_CASE_COLUMNS)
+    status_rank = {
+        "source-gate-mismatch": 0,
+        "source-blocked": 1,
+        "source-review-needed": 2,
+        "source-open": 3,
+        "source-cleared": 4,
+        "source-ready": 5,
+        "no-source-impact": 6,
+    }
+    frame["_status_rank"] = frame["source_impact_status"].map(status_rank).fillna(9)
+    frame = frame.sort_values(["top_n", "_status_rank", "benchmark_id"]).drop(columns=["_status_rank"]).reset_index(drop=True)
+    frame["impact_case_id"] = [f"BRSDIC-{index + 1:03d}" for index in range(len(frame))]
+    return frame[BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_CASE_COLUMNS]
+
+
+def build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact(
+    case_interpretation_df: Optional[pd.DataFrame],
+    readiness_impact_df: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    """Summarize source-audit decision readiness impact at dataset Top-N levels."""
+
+    impact_cases = build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_cases(
+        case_interpretation_df,
+        readiness_impact_df,
+    )
+    if impact_cases.empty:
+        return _empty_reference_source_audit_case_decision_dataset_impact_df()
+
+    rows: list[dict[str, object]] = []
+    for top_n, joined in impact_cases.groupby("top_n", sort=True, dropna=False):
+        top_n_int = int(top_n)
         source_open_mask = joined["readiness_impact"].isin(
             {"decision-adjusted-open", "decision-open", "unchanged-open"}
         )
@@ -3205,27 +3393,19 @@ def build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact(
         source_cleared_mask = joined["readiness_impact"].eq("cleared-by-decision")
         source_ready_mask = joined["readiness_impact"].eq("source-ready")
         claim_ready_mask = joined["claim_status"].eq("claim-ready")
-        source_gate_mismatch_mask = (
-            (source_blocker_mask & ~joined["claim_status"].eq("blocked"))
-            | (source_review_mask & claim_ready_mask)
-            | (source_open_mask & claim_ready_mask)
-        )
         dataset_blocked_by_source_mask = joined["claim_status"].eq("blocked") & source_blocker_mask
         dataset_review_by_source_mask = joined["claim_status"].eq("review-needed") & (
             source_review_mask | source_open_mask
         )
 
-        case_count = int(len(joined))
-        claim_ready_case_count = int(claim_ready_mask.sum())
-        source_tracked_case_count = int(joined["source_tracked"].sum())
-        source_open_case_count = int(source_open_mask.sum())
+        source_gate_mismatch_case_count = int(joined["source_gate_mismatch"].map(bool).sum())
         source_blocker_case_count = int(source_blocker_mask.sum())
         source_review_case_count = int(source_review_mask.sum())
+        source_open_case_count = int(source_open_mask.sum())
         source_cleared_case_count = int(source_cleared_mask.sum())
         source_ready_case_count = int(source_ready_mask.sum())
         dataset_blocked_by_source_cases = int(dataset_blocked_by_source_mask.sum())
         dataset_review_by_source_cases = int(dataset_review_by_source_mask.sum())
-        source_gate_mismatch_case_count = int(source_gate_mismatch_mask.sum())
         open_coverage = joined.loc[source_open_mask, "coverage_ratio"]
         cleared_coverage = joined.loc[source_cleared_mask, "coverage_ratio"]
 
@@ -3261,9 +3441,9 @@ def build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact(
         rows.append(
             {
                 "top_n": top_n_int,
-                "case_count": case_count,
-                "claim_ready_case_count": claim_ready_case_count,
-                "source_tracked_case_count": source_tracked_case_count,
+                "case_count": int(len(joined)),
+                "claim_ready_case_count": int(claim_ready_mask.sum()),
+                "source_tracked_case_count": int(joined["source_tracked"].map(bool).sum()),
                 "source_open_case_count": source_open_case_count,
                 "source_blocker_case_count": source_blocker_case_count,
                 "source_review_case_count": source_review_case_count,

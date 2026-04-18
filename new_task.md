@@ -20,7 +20,7 @@
 - [x] External-evidence route 候选口袋生成。
 - [x] Literature A/B 和 evidence-route A/B。
 - [x] Catalytic pocket benchmark：提供 reference template、external-evidence reference candidate/import summary/review queue/checklist/decision loop/accepted candidate export、reference curation quality check、PDB structure validation、case-level readiness gate 和 case/dataset-level readiness-aware interpretation，上传 curated catalytic residues，计算 Top-1 / Top-3 / Top-5 coverage、case/dataset summary、case interpretation matrix/summary/queue、dataset claim readiness queue/checklist/report、best hit rank、missed residues、整体/case/dataset/residue 四层 current vs ablation variant comparison，以及 remediation queue / summary / checklist。
-- [x] Benchmark reference source control：无 curated 文件时优先 accepted reviewed candidate，未审核 external-evidence candidate 只作为显式 provisional fallback，并在 snapshot/report/source audit/summary/case summary/case decision import/validation/outcomes/outcome summary/closure queue/readiness impact/readiness impact summary/dataset impact/closure checklist/case checklist/action queue/checklist 与 decision-adjusted readiness gate 记录 source mode 和 claim 安全状态。
+- [x] Benchmark reference source control：无 curated 文件时优先 accepted reviewed candidate，未审核 external-evidence candidate 只作为显式 provisional fallback，并在 snapshot/report/source audit/summary/case summary/case decision import/validation/outcomes/outcome summary/closure queue/readiness impact/readiness impact summary/dataset impact/dataset impact cases/closure checklist/case checklist/action queue/checklist 与 decision-adjusted readiness gate 记录 source mode 和 claim 安全状态。
 - [x] Evidence quality label / score / warning。
 - [x] Pocket core / shell / rim 分层。
 - [x] Snapshot、report、history 中记录关键口袋证据。
@@ -32,7 +32,7 @@
 - [x] Release execution template、receipt import、validation、summary、report。
 - [x] Release closure certificate、closure ledger。
 - [x] Detached closure summary、blocker queue、remediation checklist、detached manifest。
-- [x] 单元测试和全量测试覆盖，最近一次验证：`244 passed`。
+- [x] 单元测试和全量测试覆盖，最近一次验证：`245 passed`。
 
 ## 当前导出重点
 
@@ -70,6 +70,7 @@
 - 已落地 benchmark reference source audit case decision readiness impact：逐 case 对照原始 source audit issue 与 decision-adjusted readiness issue，解释哪些来源风险被 decision 清除、哪些仍然 open。
 - 已落地 benchmark reference source audit case decision readiness impact summary：汇总 cleared/open case、原始/调整后 P0/P1/P2 数和 net blocker delta，用一行判断 source decision 对 readiness gate 的净影响。
 - 已落地 benchmark reference source audit case decision dataset impact：按 Top-N 汇总 source decision 对 dataset-level claim readiness 的阻断、复核和 source-gate mismatch，避免来源闭环状态只停留在 case 级。
+- 已落地 benchmark reference source audit case decision dataset impact cases：按 Top-N/case 连接 claim status、coverage、source decision readiness impact、adjusted priority 和 mismatch，直接定位被来源闭环影响的酶/结构 case。
 - 已落地 benchmark reference source audit case decision closure checklist：把 outcome summary 和未关闭 outcomes 转成 Markdown 勾选清单，方便 reviewer 按 blocked/pending/held/unknown case 继续整改并归档。
 - 已落地 benchmark reference source audit case checklist：把 source audit case summary 和逐行来源动作组合成 case-first Markdown 清单，便于 reviewer 按酶/结构 case 逐个关闭来源风险。
 - 已落地 benchmark reference source audit checklist：把 source audit summary 和非 source-ready reference 行转成可勾选 Markdown 动作，便于人工整改和归档。

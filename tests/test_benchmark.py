@@ -32,6 +32,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_source_audit_case_decision_outcomes,
     build_pocket_benchmark_reference_source_audit_case_decision_outcome_summary,
     build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact,
+    build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_cases,
     build_pocket_benchmark_reference_source_audit_case_decision_readiness_impact,
     build_pocket_benchmark_reference_source_audit_case_decision_readiness_impact_summary,
     build_pocket_benchmark_reference_source_audit_case_decision_template,
@@ -1793,6 +1794,99 @@ def test_benchmark_reference_source_audit_case_decision_dataset_impact_counts_to
     assert float(row["mean_source_open_coverage"]) == 0.5
     assert float(row["mean_source_cleared_coverage"]) == 1.0
     assert row["dataset_source_impact_status"] == "source-blocked"
+
+
+def test_benchmark_reference_source_audit_case_decision_dataset_impact_cases_explain_each_case():
+    case_interpretation = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "enzyme-a",
+                "top_n": 1,
+                "coverage_ratio": 0.4,
+                "claim_status": "blocked",
+                "claim_ready": False,
+                "best_rank": 2,
+                "best_pocket_id": "Pocket-2",
+                "benchmark_status": "top1-partial-hit",
+                "readiness_status": "blocked",
+            },
+            {
+                "benchmark_id": "enzyme-b",
+                "top_n": 1,
+                "coverage_ratio": 0.6,
+                "claim_status": "claim-ready",
+                "claim_ready": True,
+                "best_rank": 1,
+                "best_pocket_id": "Pocket-1",
+                "benchmark_status": "top1-complete-hit",
+                "readiness_status": "ready",
+            },
+            {
+                "benchmark_id": "enzyme-c",
+                "top_n": 1,
+                "coverage_ratio": 1.0,
+                "claim_status": "claim-ready",
+                "claim_ready": True,
+                "best_rank": 1,
+                "best_pocket_id": "Pocket-3",
+                "benchmark_status": "top1-complete-hit",
+                "readiness_status": "ready",
+            },
+        ]
+    )
+    impact = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "enzyme-a",
+                "applied_status": "blocked",
+                "source_decision": "block",
+                "validation_status": "ok",
+                "original_source_priority": "P0",
+                "original_source_issue_type": "blocked-provisional-reference",
+                "adjusted_source_priority": "P0",
+                "adjusted_source_issue_type": "blocked-source-decision",
+                "readiness_impact": "decision-open",
+                "outcome_reason": "Still provisional.",
+                "readiness_note": "Resolve before claims.",
+            },
+            {
+                "benchmark_id": "enzyme-b",
+                "applied_status": "pending",
+                "source_decision": "",
+                "validation_status": "",
+                "original_source_priority": "P2",
+                "original_source_issue_type": "independence-review",
+                "adjusted_source_priority": "P2",
+                "adjusted_source_issue_type": "pending-source-decision",
+                "readiness_impact": "decision-adjusted-open",
+                "outcome_reason": "Pending reviewer.",
+                "readiness_note": "Review before claims.",
+            },
+            {
+                "benchmark_id": "enzyme-c",
+                "readiness_impact": "cleared-by-decision",
+                "adjusted_source_priority": "",
+                "adjusted_source_issue_type": "",
+            },
+        ]
+    )
+
+    detail = build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_cases(
+        case_interpretation,
+        impact,
+    )
+
+    by_case = {row["benchmark_id"]: row for _, row in detail.iterrows()}
+    assert detail["impact_case_id"].tolist() == ["BRSDIC-001", "BRSDIC-002", "BRSDIC-003"]
+    assert by_case["enzyme-a"]["source_impact_status"] == "source-blocked"
+    assert by_case["enzyme-a"]["source_action_status"] == "blocker"
+    assert bool(by_case["enzyme-a"]["source_gate_mismatch"]) is False
+    assert by_case["enzyme-b"]["source_impact_status"] == "source-gate-mismatch"
+    assert by_case["enzyme-b"]["source_action_status"] == "blocker"
+    assert bool(by_case["enzyme-b"]["source_gate_mismatch"]) is True
+    assert by_case["enzyme-c"]["source_impact_status"] == "source-cleared"
+    assert by_case["enzyme-c"]["source_action_status"] == "closed"
+    assert bool(by_case["enzyme-c"]["source_gate_mismatch"]) is False
 
 
 def test_build_pocket_benchmark_summary_reports_top1_and_top3_coverage():
