@@ -12,16 +12,30 @@ from protein_visualizer.sample_data import (
 )
 from protein_visualizer.services.energy import prepare_energy_table
 from protein_visualizer.services.logging_utils import get_logger
-from protein_visualizer.services.parsers import parse_mmpbsa_delta_total, parse_pdb_atoms
-from protein_visualizer.services.reporting import build_analysis_summary
+from protein_visualizer.services.parsers import parse_pdb_atoms
+from protein_visualizer.services.reporting import build_analysis_summary, format_energy_value
+from protein_visualizer.services.structure_energy import estimate_protein_volume, resolve_energy_table
 from protein_visualizer.services.session_state import (
     append_history_record,
+    get_uploaded_inputs_cache,
     initialize_state,
+    set_uploaded_inputs_cache,
     set_analysis_state,
+)
+from protein_visualizer.services.coloring import (
+    CLASSIFICATION_THEME_OPTIONS,
+    build_legacy_annotation_table,
+    build_legacy_legend,
 )
 from protein_visualizer.services.viewer import build_view
 from protein_visualizer.services.hotspot import identify_hotspots, summarize_hotspot_clusters
-from protein_visualizer.services.pocket import parse_pocket_table, build_pocket_summary
+from protein_visualizer.services.pocket import (
+    build_pocket_summary,
+    detect_auto_pocket_table,
+    get_pocket_detection_metadata,
+    parse_pocket_table,
+    summarize_pocket_detection_metadata,
+)
 from protein_visualizer.services.comparison import compare_hotspot_sets
 from protein_visualizer.services.explainer import explain_analysis, explain_comparison
 
@@ -29,57 +43,189 @@ from protein_visualizer.services.explainer import explain_analysis, explain_comp
 LOGGER = get_logger(__name__)
 
 
+def _decode_uploaded_entries(uploaded_files, default_name: str) -> list[dict]:
+    entries = []
+    if not uploaded_files:
+        return entries
+    for f in uploaded_files:
+        try:
+            text = f.getvalue().decode("utf-8", errors="ignore")
+            if not text:
+                continue
+            entries.append({"name": getattr(f, "name", default_name), "text": text})
+        except Exception:
+            continue
+    return entries
+
+
+def _uploader_prev_names_key(name: str) -> str:
+    return f"protein_visualizer_uploader_prev_names_{name}"
+
+
 def render_app() -> None:
     st.set_page_config(page_title=SETTINGS.page_title, layout=SETTINGS.layout)
     initialize_state()
+    resolved_pocket_text = None
 
     st.title(SETTINGS.page_title)
     st.caption("支持单/多构象 PDB 上传、MMPBSA 能量映射、口袋高亮与热点比较")
 
     with st.sidebar:
         st.header("数据输入")
-        uploaded_pdbs = st.file_uploader("上传 PDB 文件（可多选）", type=["pdb"], accept_multiple_files=True)
-        uploaded_mmpbs = st.file_uploader(
-            "上传 MMPBSA 文件（可多选，按构象顺序）", type=["txt", "dat", "out", "csv"], accept_multiple_files=True
+        uploaded_pdbs = st.file_uploader(
+            "上传 PDB 文件（可多选）",
+            type=["pdb"],
+            accept_multiple_files=True,
+            key="protein_visualizer_uploader_pdb",
         )
-        uploaded_pocket = st.file_uploader("上传 Pocket 文件（CSV）", type=["csv", "txt"], accept_multiple_files=False)
+        uploaded_mmpbs = st.file_uploader(
+            "上传 MMPBSA 文件（可多选，按构象顺序）",
+            type=["txt", "dat", "out", "csv"],
+            accept_multiple_files=True,
+            key="protein_visualizer_uploader_mmpbsa",
+        )
+        uploaded_pocket = st.file_uploader(
+            "上传 Pocket 文件（CSV）",
+            type=["csv", "txt"],
+            accept_multiple_files=False,
+            key="protein_visualizer_uploader_pocket",
+        )
+        use_examples = st.checkbox("使用示例数据", value=False)
 
-        # 准备构象与 MMPBSA 文本列表
+        cached_inputs = get_uploaded_inputs_cache()
+        pdb_cached_entries = list(cached_inputs.get("pdb_files", []))
+        mmpbsa_cached_entries = list(cached_inputs.get("mmpbsa_files", []))
+        pocket_raw = cached_inputs.get("pocket_file")
+        pocket_cached_entry = pocket_raw if isinstance(pocket_raw, dict) else None
+
+        pdb_prev_names = st.session_state.get(_uploader_prev_names_key("pdb"))
+        mmpbsa_prev_names = st.session_state.get(_uploader_prev_names_key("mmpbsa"))
+        pocket_prev_names = st.session_state.get(_uploader_prev_names_key("pocket"))
+
+        uploaded_pdb_entries = _decode_uploaded_entries(uploaded_pdbs, "uploaded.pdb")
+        uploaded_mmpbsa_entries = _decode_uploaded_entries(uploaded_mmpbs, "uploaded.csv")
+        uploaded_pocket_entries = _decode_uploaded_entries([uploaded_pocket] if uploaded_pocket else [], "uploaded_pocket.csv")
+        uploaded_pocket_entry = uploaded_pocket_entries[0] if uploaded_pocket_entries else None
+
+        if not use_examples:
+            cache_changed = False
+            if uploaded_pdb_entries:
+                pdb_cached_entries = uploaded_pdb_entries
+                cache_changed = True
+            elif isinstance(pdb_prev_names, list) and len(pdb_prev_names) > 0:
+                pdb_cached_entries = []
+                cache_changed = True
+
+            if uploaded_mmpbsa_entries:
+                mmpbsa_cached_entries = uploaded_mmpbsa_entries
+                cache_changed = True
+            elif isinstance(mmpbsa_prev_names, list) and len(mmpbsa_prev_names) > 0:
+                mmpbsa_cached_entries = []
+                cache_changed = True
+
+            if uploaded_pocket_entry is not None:
+                pocket_cached_entry = uploaded_pocket_entry
+                cache_changed = True
+            elif isinstance(pocket_prev_names, list) and len(pocket_prev_names) > 0:
+                pocket_cached_entry = None
+                cache_changed = True
+
+            if cache_changed:
+                set_uploaded_inputs_cache(
+                    pdb_files=pdb_cached_entries,
+                    mmpbsa_files=mmpbsa_cached_entries,
+                    pocket_file=pocket_cached_entry,
+                )
+
+        st.session_state[_uploader_prev_names_key("pdb")] = [
+            str(item.get("name") or "") for item in uploaded_pdb_entries
+        ]
+        st.session_state[_uploader_prev_names_key("mmpbsa")] = [
+            str(item.get("name") or "") for item in uploaded_mmpbsa_entries
+        ]
+        st.session_state[_uploader_prev_names_key("pocket")] = [
+            str(uploaded_pocket_entry.get("name") or "")
+        ] if uploaded_pocket_entry is not None else []
+
+        energy_mode = st.selectbox(
+            "能量来源模式",
+            ["auto", "mmpbsa", "estimate"],
+            index=0,
+            format_func=lambda x: {"auto": "自动", "mmpbsa": "上传 MMPBSA", "estimate": "结构估算"}[x],
+        )
+
         pdb_texts = []
         mmpbsa_texts = []
-        if uploaded_pdbs:
-            for f in uploaded_pdbs:
-                try:
-                    pdb_texts.append(f.getvalue().decode("utf-8", errors="ignore"))
-                except Exception:
-                    pdb_texts.append("")
-        else:
-            # 默认提供两个示例构象用于比较演示
+        pdb_input_source = "未提供"
+        mmpbsa_input_source = "未提供"
+        pocket_input_source = "未提供"
+
+        if use_examples:
             pdb_texts = [PDB_TEXT, PDB_TEXT_ALT]
-
-        if uploaded_mmpbs:
-            for f in uploaded_mmpbs:
-                try:
-                    mmpbsa_texts.append(f.getvalue().decode("utf-8", errors="ignore"))
-                except Exception:
-                    mmpbsa_texts.append("")
-        else:
             mmpbsa_texts = [MMPBSA_TEXT, MMPBSA_TEXT_ALT]
+            pdb_input_source = "示例数据"
+            mmpbsa_input_source = "示例数据"
+            pocket_input_source = "示例数据"
+        else:
+            for item in pdb_cached_entries:
+                text = str(item.get("text") or "")
+                if text:
+                    pdb_texts.append(text)
+            for item in mmpbsa_cached_entries:
+                text = str(item.get("text") or "")
+                if text:
+                    mmpbsa_texts.append(text)
 
-        # 将 mmpbsa_texts 填充到与 pdb_texts 相同长度
-        if len(mmpbsa_texts) < len(pdb_texts):
-            last = mmpbsa_texts[-1] if mmpbsa_texts else MMPBSA_TEXT
+            if uploaded_pocket_entry is not None:
+                resolved_pocket_text = str(uploaded_pocket_entry.get("text") or "")
+            elif pocket_cached_entry and pocket_cached_entry.get("text"):
+                resolved_pocket_text = str(pocket_cached_entry.get("text") or "")
+
+            if uploaded_pdb_entries:
+                pdb_input_source = "本次上传"
+            elif pdb_texts:
+                pdb_input_source = "缓存恢复"
+
+            if uploaded_mmpbsa_entries:
+                mmpbsa_input_source = "本次上传"
+            elif mmpbsa_texts:
+                mmpbsa_input_source = "缓存恢复"
+
+            if uploaded_pocket_entry is not None:
+                pocket_input_source = "本次上传"
+            elif resolved_pocket_text:
+                pocket_input_source = "缓存恢复"
+
+        if not mmpbsa_texts:
+            mmpbsa_texts = [None for _ in pdb_texts]
+        elif len(mmpbsa_texts) < len(pdb_texts):
+            last = mmpbsa_texts[-1]
             mmpbsa_texts = mmpbsa_texts + [last] * (len(pdb_texts) - len(mmpbsa_texts))
+
+    if not pdb_texts:
+        st.warning("请上传至少一个 PDB 文件，或在侧边栏勾选“使用示例数据”。")
+        st.stop()
 
     # 解析所有构象数据
     energy_tables = []
     atom_dfs = []
     energy_dfs = []
+    energy_sources = []
     for i, pdb_text in enumerate(pdb_texts):
+        energy_source = "无可用能量数据"
         try:
             atom_df = parse_pdb_atoms(pdb_text)
-            energy_df = parse_mmpbsa_delta_total(mmpbsa_texts[i])
-            energy_table = prepare_energy_table(atom_df, energy_df)
+            mmpbsa_text = mmpbsa_texts[i] if i < len(mmpbsa_texts) else None
+            energy_df, energy_source = resolve_energy_table(
+                pdb_text,
+                energy_mode=energy_mode,
+                mmpbsa_text=mmpbsa_text,
+            )
+            if energy_df is not None and not energy_df.empty:
+                energy_table = prepare_energy_table(atom_df, energy_df)
+                energy_table["energy_source"] = energy_source
+            else:
+                energy_table = pd.DataFrame()
         except Exception as exc:
             LOGGER.exception("解析构象失败")
             atom_df = pd.DataFrame()
@@ -88,6 +234,7 @@ def render_app() -> None:
         atom_dfs.append(atom_df)
         energy_dfs.append(energy_df)
         energy_tables.append(energy_table)
+        energy_sources.append(energy_source)
 
     # 侧边栏显示控制（基于第一构象的能量范围作为参考）
     sample_table = next((t for t in energy_tables if not t.empty), None)
@@ -98,13 +245,54 @@ def render_app() -> None:
         threshold = st.slider("MMPBSA |阈值| (绝对值)", 0.0, energy_limit, 0.0, 0.1)
         display_mode = st.radio(
             "显示模式",
-            ["ball_stick", "surface", "transparent"],
-            format_func=lambda x: {"ball_stick": "球棒", "surface": "表面", "transparent": "透明"}[x],
+            ["cartoon", "sticks", "surface"],
+            format_func=lambda x: {"cartoon": "卡通", "sticks": "球棍", "surface": "表面"}[x],
         )
-        opacity = st.slider("透明度", 0.0, 1.0, SETTINGS.default_opacity, 0.05)
-        show_backbone = st.checkbox("显示主链", value=True)
-        show_sidechain = st.checkbox("显示侧链", value=True)
-        show_surface = st.checkbox("显示表面", value=True)
+        color_mode = st.selectbox(
+            "颜色分类方式",
+            [
+                "按DELTA TOTAL 热度",
+                "按氨基酸理化性质",
+                "按电荷状态",
+                "按侧链极性",
+                "按MMPBSA等级",
+                "按热点等级",
+                "按口袋识别",
+                "按链",
+                "单色",
+            ],
+            index=0,
+        )
+        classification_theme = CLASSIFICATION_THEME_OPTIONS[0] if CLASSIFICATION_THEME_OPTIONS else None
+        st.caption("分类颜色为固定映射：同一分类在不同结构中保持同色。")
+        chain_palette = st.selectbox(
+            "链颜色方案",
+            ["经典", "柔和", "高对比"],
+            index=0,
+            disabled=color_mode != "按链",
+        )
+        mono_color = st.selectbox(
+            "单色颜色",
+            ["#d1d5db", "#ef4444", "#2563eb", "#10b981", "#f97316"],
+            index=0,
+            disabled=color_mode != "单色",
+            format_func=lambda x: {
+                "#d1d5db": "灰色",
+                "#ef4444": "红色",
+                "#2563eb": "蓝色",
+                "#10b981": "绿色",
+                "#f97316": "橙色",
+            }[x],
+        )
+        opacity = st.slider("表面透明度", 0.0, 1.0, SETTINGS.default_opacity, 0.05, disabled=display_mode != "surface")
+        show_backbone = st.checkbox("显示主链", value=True, disabled=display_mode != "cartoon")
+        surface_single_color = color_mode == "单色"
+        surface_uniform_color = mono_color if surface_single_color else SETTINGS.neutral_color
+        if display_mode == "surface":
+            if surface_single_color:
+                st.caption("当前为单色模式：表面使用统一颜色。")
+            else:
+                st.caption("当前为精准分类着色：表面直接使用当前分类颜色。")
 
         st.header("构象与比较")
         options = list(range(len(pdb_texts)))
@@ -124,50 +312,136 @@ def render_app() -> None:
     # Pocket 解析（可选）
     pocket_df = None
     pocket_summary = pd.DataFrame()
+    pocket_detection_summary: dict[str, object] = {}
     try:
-        if uploaded_pocket:
-            pocket_text = uploaded_pocket.getvalue().decode("utf-8", errors="ignore")
-            pocket_df = parse_pocket_table(pocket_text)
-        else:
+        if resolved_pocket_text:
+            pocket_df = parse_pocket_table(resolved_pocket_text)
+        elif use_examples:
             pocket_df = parse_pocket_table(POCKET_TEXT)
-        pocket_summary = build_pocket_summary(pocket_df, hotspot_df)
+        else:
+            pocket_df = pd.DataFrame()
+        if not pocket_df.empty:
+            pocket_summary = build_pocket_summary(pocket_df, hotspot_df)
+        elif not use_examples:
+            try:
+                auto_pocket_df = detect_auto_pocket_table(
+                    pdb_texts[selected_conf],
+                    hotspot_residues=[(row.chain, int(row.resid)) for row in hotspot_df.itertuples(index=False)],
+                )
+                pocket_detection_summary = summarize_pocket_detection_metadata(
+                    get_pocket_detection_metadata(auto_pocket_df)
+                )
+            except Exception:
+                auto_pocket_df = pd.DataFrame()
+                pocket_detection_summary = {}
+            if not auto_pocket_df.empty:
+                pocket_df = auto_pocket_df
+                pocket_summary = build_pocket_summary(pocket_df, hotspot_df)
+                resolved_pocket_text = "__AUTO_CONSENSUS__"
     except Exception:
         pocket_df = None
 
+    pocket_residues = []
+    if pocket_df is not None and not pocket_df.empty:
+        pocket_residues = [(row.chain, int(row.resid)) for row in pocket_df.itertuples(index=False)]
+
+    if energy_mode == "mmpbsa" and all(t.empty for t in energy_tables):
+        st.warning("当前选择为上传 MMPBSA 模式，但未提供可用的 MMPBSA 数据。")
+
+    hotspot_rank_map = {
+        (row.chain, int(row.resid)): int(row.hotspot_rank)
+        for row in hotspot_df.itertuples(index=False)
+        if getattr(row, "hotspot_rank", None) is not None
+    }
+
+    annotation_table = build_legacy_annotation_table(
+        current_table,
+        color_mode,
+        palette_name=chain_palette,
+        mono_color=mono_color,
+        hotspot_df=hotspot_df,
+        pocket_residues=pocket_residues,
+        theme_name=classification_theme,
+    )
+    classification_summary = "-"
+    if not annotation_table.empty and "classification_label" in annotation_table.columns:
+        classification_counts = (
+            annotation_table.groupby("classification_label", dropna=False)
+            .size()
+            .sort_values(ascending=False)
+        )
+        summary_parts = [f"{label}: {int(count)}" for label, count in classification_counts.head(3).items()]
+        classification_summary = "；".join(summary_parts) if summary_parts else "-"
+
     # 将当前分析写入会话状态（仅保存当前构象的结果）
     try:
-        set_analysis_state(pdb_texts[selected_conf], mmpbsa_texts[selected_conf], atom_dfs[selected_conf], energy_dfs[selected_conf], current_table)
         summary = build_analysis_summary(current_table)
+        try:
+            protein_volume = estimate_protein_volume(pdb_texts[selected_conf])
+        except Exception:
+            protein_volume = None
+        energy_source_label = summary.get("energy_source") or (energy_sources[selected_conf] if energy_sources else None) or "未知"
+        stored_mmpbsa_text = mmpbsa_texts[selected_conf] if (selected_conf < len(mmpbsa_texts) and mmpbsa_texts[selected_conf]) else "结构估算（未上传 MMPBSA 文件）"
+        stored_pocket_table = pocket_df if pocket_df is not None else pd.DataFrame()
+        top_pocket = pocket_summary.iloc[0] if not pocket_summary.empty else None
+        set_analysis_state(
+            pdb_texts[selected_conf],
+            stored_mmpbsa_text,
+            atom_dfs[selected_conf],
+            energy_dfs[selected_conf],
+            current_table,
+            annotation_table=annotation_table,
+            pocket_table=stored_pocket_table,
+            pocket_summary=pocket_summary,
+            color_mode=color_mode,
+        )
         append_history_record(
             {
                 "generated_at": summary["generated_at"],
                 "source_name": f"构象 {selected_conf+1}",
-                "energy_source_name": f"构象 {selected_conf+1} MMPBSA",
+                "energy_source_name": f"构象 {selected_conf+1} {energy_source_label}",
                 "residue_count": summary["residue_count"],
                 "min_energy": summary["min_energy"],
                 "max_energy": summary["max_energy"],
                 "mean_energy": summary["mean_energy"],
                 "lowest_residue": summary["lowest_residue"],
                 "highest_residue": summary["highest_residue"],
+                "valid_energy_count": summary["valid_energy_count"],
+                "energy_coverage": summary["energy_coverage"],
+                "protein_volume": protein_volume,
+                "display_mode": display_mode,
+                "color_mode": color_mode,
+                "hotspot_count": int(len(hotspot_df)),
+                "pocket_count": int(len(pocket_residues)),
+                "annotation_rows": int(len(annotation_table)),
+                **pocket_detection_summary,
+                "top_pocket_id": str(top_pocket.get("pocket_id")) if top_pocket is not None and pd.notna(top_pocket.get("pocket_id")) else None,
+                "top_pocket_smart_rank_label": str(top_pocket.get("smart_rank_label")) if top_pocket is not None and pd.notna(top_pocket.get("smart_rank_label")) else None,
+                "top_pocket_smart_rank_score": float(top_pocket.get("smart_rank_score")) if top_pocket is not None and pd.notna(top_pocket.get("smart_rank_score")) else None,
+                "top_pocket_hotspot_count": int(top_pocket.get("hotspot_count")) if top_pocket is not None and pd.notna(top_pocket.get("hotspot_count")) else None,
+                "top_pocket_detection_route": str(top_pocket.get("detection_route")) if top_pocket is not None and pd.notna(top_pocket.get("detection_route")) else None,
+                "top_pocket_reason": str(top_pocket.get("smart_rank_reason")) if top_pocket is not None and pd.notna(top_pocket.get("smart_rank_reason")) else None,
+                "classification_summary": classification_summary,
             }
         )
     except Exception:
         LOGGER.exception("写入会话状态失败")
 
-    col1, col2 = st.columns([2.2, 1.0])
+    col1, col2 = st.columns([2.4, 1.0])
 
     with col1:
         viewer = build_view(
             pdb_text=pdb_texts[selected_conf],
-            energy_table=current_table,
+            energy_table=annotation_table,
             threshold=threshold,
             display_mode=display_mode,
             show_backbone=show_backbone,
-            show_sidechain=show_sidechain,
-            show_surface=show_surface,
             opacity=opacity,
-            selected_chain=hotspot_df.iloc[0]["chain"] if not hotspot_df.empty else current_table.iloc[0]["chain"],
-            selected_resid=int(hotspot_df.iloc[0]["resid"]) if not hotspot_df.empty else int(current_table.iloc[0]["resid"]),
+            selected_chain=None,
+            selected_resid=None,
+            color_mode=color_mode,
+            surface_single_color=surface_single_color,
+            surface_uniform_color=surface_uniform_color,
         )
         st.components.v1.html(viewer._make_html(), height=SETTINGS.viewer_height + 20, scrolling=False)
 
@@ -175,31 +449,105 @@ def render_app() -> None:
         st.subheader("当前状态")
         highlighted_count = int((current_table["delta_total"].abs() >= threshold).sum())
         st.metric("高亮残基数", f"{highlighted_count}/{len(current_table)}")
-        st.metric("当前模式", {"ball_stick": "球棒", "surface": "表面", "transparent": "透明"}[display_mode])
-        st.metric("平均能量", f"{summary['mean_energy']:.3f}")
+        st.metric("当前模式", {"cartoon": "卡通", "sticks": "球棍", "surface": "表面"}[display_mode])
+        st.metric("颜色模式", color_mode)
+        energy_metric_label = "平均能量（估算）" if summary.get("energy_source") == "结构估算" else "平均能量"
+        st.metric(energy_metric_label, format_energy_value(summary["mean_energy"]))
+        protein_volume_text = f"{protein_volume:,.1f} A³" if protein_volume is not None else "-"
+        st.metric("蛋白质体积（估算）", protein_volume_text)
+        if summary.get("energy_source"):
+            source_note = "（不是标准 MMPBSA）" if summary.get("energy_source") == "结构估算" else ""
+            st.caption(f"能量来源：{summary.get('energy_source')}{source_note}")
+        st.caption(f"基于 {summary['valid_energy_count']}/{summary['residue_count']} 个有效能量值计算")
 
-        st.subheader("自动分析摘要")
-        st.write(explain_analysis(current_table, hotspot_df, pocket_summary))
+        legend_items, legend_note = build_legacy_legend(
+            color_mode,
+            annotation_table,
+            palette_name=chain_palette,
+            hotspot_rank_map=hotspot_rank_map,
+            theme_name=classification_theme,
+        )
+        if legend_items:
+            st.caption("图例")
+            for item in legend_items:
+                color_hex = str(item.get("color") or "#9ca3af")
+                label_text = str(item.get("label") or "")
+                count_text = item.get("count")
+                if count_text is None:
+                    count_suffix = ""
+                else:
+                    count_suffix = f" ({int(count_text)})"
+                st.markdown(
+                    f"<div style='display:flex;align-items:center;gap:8px;margin-bottom:4px;'>"
+                    f"<span style='display:inline-block;width:12px;height:12px;border-radius:2px;background:{color_hex};'></span>"
+                    f"<span style='font-size:12px;'>{label_text}{count_suffix}</span></div>",
+                    unsafe_allow_html=True,
+                )
+        if legend_note:
+            st.caption(legend_note)
 
-        st.subheader("热点残基（示例）")
-        if hotspot_df.empty:
-            st.info("未检测到满足阈值的热点残基，已展示能量最低的前几位。")
-        st.dataframe(hotspot_df[["label", "delta_total", "hotspot_rank"]].head(10), use_container_width=True)
+    st.markdown("---")
+    st.subheader("残基能量明细")
+    display_cols = ["chain", "resid", "resname", "delta_total", "classification_label", "display_color"]
+    available_cols = [c for c in display_cols if c in annotation_table.columns]
+    df_display = annotation_table[available_cols].copy() if available_cols else annotation_table.copy()
+    df_display = df_display.sort_values(["chain", "resid"]).reset_index(drop=True)
+    df_display.insert(0, "rank", np.arange(1, len(df_display) + 1))
+    st.dataframe(df_display, use_container_width=True, height=300)
 
-    st.subheader("口袋/区域摘要")
-    if not pocket_summary.empty:
-        st.dataframe(pocket_summary, use_container_width=True)
+    st.subheader("热点摘要")
+    if hotspot_df.empty:
+        st.info("在当前阈值下未识别到热点残基。")
     else:
-        st.info("未加载口袋信息或口袋文件解析失败。")
+        show_cols = [
+            c
+            for c in [
+                "chain",
+                "resid",
+                "resname",
+                "delta_total",
+                "hotspot_score",
+                "hotspot_rank",
+                "neighborhood_count",
+                "cluster_id",
+            ]
+            if c in hotspot_df.columns
+        ]
+        st.dataframe(hotspot_df[show_cols].sort_values(["hotspot_rank", "chain", "resid"]), use_container_width=True, height=220)
 
-    # 多构象比较
+    if isinstance(hotspot_clusters, dict) and hotspot_clusters:
+        st.caption("热点聚类提示")
+        cluster_count = int(hotspot_clusters.get("count", 0) or 0)
+        lowest_hotspot = str(hotspot_clusters.get("lowest_hotspot") or "-")
+        cluster_hint = str(hotspot_clusters.get("cluster_hint") or "")
+        metric_col1, metric_col2 = st.columns(2)
+        metric_col1.metric("热点数量", str(cluster_count))
+        metric_col2.metric("最低能量热点", lowest_hotspot)
+        if cluster_hint:
+            st.caption(cluster_hint)
+
+    if pocket_df is not None and not pocket_df.empty:
+        st.subheader("口袋摘要")
+        if resolved_pocket_text == "__AUTO_CONSENSUS__":
+            st.caption("未上传 Pocket 文件，已使用自动共识口袋检测。")
+        st.dataframe(pocket_summary, use_container_width=True, height=180)
+
     if compare_mode and len(energy_tables) > 1:
         st.markdown("---")
-        st.subheader("多构象比较：共同/差异热点")
-        hotspot_lists = [identify_hotspots(t, energy_threshold=-abs(threshold) if threshold > 0 else -1.0) for t in energy_tables]
-        comparison = compare_hotspot_sets(hotspot_lists)
-        st.metric("共同热点一致性得分", f"{comparison['consistency_score']:.2f}")
+        st.subheader("多构象热点比较")
+        hotspot_sets = []
+        for idx, table in enumerate(energy_tables):
+            if table.empty:
+                hotspot_sets.append(set())
+                continue
+            hs = identify_hotspots(table, energy_threshold=-abs(threshold) if threshold > 0 else -1.0)
+            hs_set = {(r.chain, int(r.resid)) for r in hs.itertuples(index=False)}
+            hotspot_sets.append(hs_set)
+        comparison = compare_hotspot_sets(hotspot_sets)
+        st.dataframe(comparison.get("summary_table", pd.DataFrame()), use_container_width=True, height=180)
         st.markdown(explain_comparison(comparison))
-        st.dataframe(comparison["per_residue_df"].head(40), use_container_width=True)
 
-    st.info("可上传多个 PDB/MMPBSA 文件进行并列比较；默认示例包含两个构象用于演示。")
+    st.markdown("---")
+    st.subheader("分析解释")
+    st.markdown(explain_analysis(current_table, hotspot_df, pocket_summary))
+    return

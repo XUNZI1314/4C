@@ -10,10 +10,11 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from protein_visualizer.services.session_state import get_history_records, initialize_state
+from protein_visualizer.services.reporting import format_energy_value
 
 st.set_page_config(page_title="分析历史", layout="wide")
 st.title("分析历史")
-st.caption("查看当前会话最近完成的蛋白质结构分析记录。")
+st.caption("查看最近已保存的蛋白质结构分析记录。")
 
 initialize_state()
 history = get_history_records()
@@ -24,31 +25,127 @@ else:
     st.success(f"当前共保存最近 {len(history)} 条分析记录。")
     latest = history[0]
     st.subheader("最近一次分析摘要")
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
     col1.metric("最近分析时间", latest.get("generated_at", "-"))
     col2.metric("最近残基数", latest.get("residue_count", "-"))
     mean_energy = latest.get("mean_energy")
-    col3.metric("最近平均能量", f"{mean_energy:.3f}" if isinstance(mean_energy, (int, float)) else "-")
+    top_pocket_id = latest.get("top_pocket_id", "-")
+    mean_label = "最近平均能量（估算）" if latest.get("energy_source_name", "").find("结构估算") != -1 else "最近平均能量"
+    col3.metric(mean_label, format_energy_value(mean_energy))
+    col4.metric("最近颜色模式", latest.get("color_mode", "-"))
+
+    col5.metric("Top1 口袋", top_pocket_id)
+
+    col6.metric("Top1 联合推荐", latest.get("top_joint_pocket_id", "-"))
+
+    volume_value = latest.get("protein_volume")
+    st.metric("最近蛋白体积（估算）", f"{volume_value:,.1f} A³" if volume_value is not None else "-")
 
     st.markdown(f"- PDB 来源：`{latest.get('source_name', '-')}`")
     st.markdown(f"- MMPBSA 来源：`{latest.get('energy_source_name', '-')}`")
+    st.markdown(f"- 显示模式：`{latest.get('display_mode', '-')}`")
+    if latest.get("valid_energy_count") is not None:
+        st.markdown(f"- 平均能量基于：`{latest.get('valid_energy_count', '-')}/{latest.get('residue_count', '-')}` 个有效能量值")
+    if latest.get("energy_source_name", "").find("结构估算") != -1:
+        st.markdown("- 说明：当前记录使用结构估算能量，不是标准 MMPBSA 文件。")
+    st.markdown(f"- 热点数：`{latest.get('hotspot_count', '-')}` 口袋残基数：`{latest.get('pocket_count', '-')}` 注释行数：`{latest.get('annotation_rows', '-')}`")
+    if latest.get("auto_detection_methods_used"):
+        st.markdown(f"- 自动口袋方法：`{latest.get('auto_detection_methods_used')}`")
+    if latest.get("auto_detection_status_summary"):
+        st.markdown(f"- 自动检测状态：`{latest.get('auto_detection_status_summary')}`")
+    if latest.get("auto_detection_p2rank_status"):
+        st.markdown(
+            f"- P2Rank：`{latest.get('auto_detection_p2rank_status')}` / "
+            f"pred `{latest.get('auto_detection_p2rank_prediction_rows', 0)}` / "
+            f"res `{latest.get('auto_detection_p2rank_residue_rows', 0)}`"
+        )
+    if latest.get("auto_detection_external_rows") is not None:
+        st.markdown(
+            f"- 外部证据：`{latest.get('auto_detection_external_rows', 0)}` 条 / "
+            f"exact `{latest.get('auto_detection_external_exact_rows', 0)}` / "
+            f"weak `{latest.get('auto_detection_external_weak_rows', 0)}`"
+        )
     st.markdown(f"- 最低能量残基：`{latest.get('lowest_residue', '-')}`")
     st.markdown(f"- 最高能量残基：`{latest.get('highest_residue', '-')}`")
+    if latest.get("top_pocket_id"):
+        st.markdown(
+            f"- 智能口袋 Top1：`{latest.get('top_pocket_id', '-')}` / "
+            f"`{latest.get('top_pocket_smart_rank_label', '-')}` / "
+            f"`{format_energy_value(latest.get('top_pocket_smart_rank_score'))}`"
+        )
+    if latest.get("top_pocket_reason"):
+        st.markdown(f"- 口袋排序理由：`{latest.get('top_pocket_reason')}`")
+    if latest.get("top_pocket_evidence_quality_label"):
+        st.markdown(
+            f"- Top1 evidence quality: `{latest.get('top_pocket_evidence_quality_label')}` / "
+            f"`{format_energy_value(latest.get('top_pocket_evidence_quality_score'))}`"
+        )
+    if latest.get("top_pocket_evidence_quality_warning"):
+        st.markdown(f"- Top1 evidence warning: `{latest.get('top_pocket_evidence_quality_warning')}`")
+    if latest.get("classification_summary"):
+        st.markdown(f"- 分类摘要：`{latest.get('classification_summary')}`")
 
     st.subheader("历史记录表")
+    if latest.get("top_joint_pocket_id"):
+        st.markdown(
+            f"- 联合推荐 Top1：`{latest.get('top_joint_pocket_id', '-')}` / "
+            f"`{latest.get('top_joint_recommendation_label', '-')}` / "
+            f"`{format_energy_value(latest.get('top_joint_recommendation_score'))}`"
+        )
+    if latest.get("top_joint_reason"):
+        st.markdown(f"- 联合推荐理由：`{latest.get('top_joint_reason')}`")
+
     history_df = pd.DataFrame(history)
     preferred_columns = [
         "generated_at",
         "source_name",
         "energy_source_name",
+        "display_mode",
+        "color_mode",
         "residue_count",
+        "valid_energy_count",
+        "energy_coverage",
+        "protein_volume",
+        "hotspot_count",
+        "pocket_count",
+        "annotation_rows",
+        "auto_detection_methods_used",
+        "auto_detection_result_pocket_count",
+        "auto_detection_result_residue_rows",
+        "auto_detection_p2rank_status",
+        "auto_detection_p2rank_prediction_rows",
+        "auto_detection_p2rank_residue_rows",
+        "auto_detection_external_rows",
+        "auto_detection_external_sources",
+        "auto_detection_status_summary",
+        "top_pocket_id",
+        "top_pocket_smart_rank_label",
+        "top_pocket_smart_rank_score",
+        "top_pocket_hotspot_count",
+        "top_pocket_detection_route",
+        "top_pocket_reason",
+        "top_pocket_evidence_quality_label",
+        "top_pocket_evidence_quality_score",
+        "top_pocket_evidence_quality_warning",
+        "top_joint_pocket_id",
+        "top_joint_recommendation_label",
+        "top_joint_recommendation_score",
+        "top_joint_reason",
         "min_energy",
         "max_energy",
         "mean_energy",
         "lowest_residue",
         "highest_residue",
+        "classification_summary",
     ]
     available_columns = [column for column in preferred_columns if column in history_df.columns]
     st.dataframe(history_df[available_columns], use_container_width=True)
 
-    st.info("当前历史记录保存在会话中，刷新页面或重启服务后会清空。后续可继续扩展为本地持久化。")
+    st.download_button(
+        "导出历史记录 CSV",
+        data=history_df[available_columns].to_csv(index=False).encode("utf-8"),
+        file_name="analysis_history.csv",
+        mime="text/csv",
+    )
+
+    st.info("历史记录会写入本地数据文件，刷新页面后仍可保留；如果删除数据文件或切换运行目录，历史会重新生成。")

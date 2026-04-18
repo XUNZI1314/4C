@@ -1,0 +1,11 @@
+{
+  "pockets": [
+    {
+      "id": 1,
+      "residues": [
+        { "chain": "A", "resid": 2, "resname": "ALA" }
+      ],
+      "description": "示例口袋"
+    }
+  ]
+}

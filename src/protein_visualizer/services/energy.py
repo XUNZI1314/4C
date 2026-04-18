@@ -27,7 +27,9 @@ def energy_to_hex_color(norm_value: float) -> str:
 def prepare_energy_table(atom_df: pd.DataFrame, energy_df: pd.DataFrame) -> pd.DataFrame:
     residue_df = atom_df[["chain", "resid", "resname"]].drop_duplicates()
     merged = residue_df.merge(energy_df, on=["chain", "resid", "resname"], how="left")
+    merged["delta_total_raw"] = merged["delta_total"]
     merged["delta_total"] = merged["delta_total"].fillna(0.0)
+    merged["has_delta_total"] = merged["delta_total_raw"].notna()
     merged["norm_energy"] = normalize_energy(merged["delta_total"])
     merged["heat_color"] = merged["norm_energy"].map(energy_to_hex_color)
     merged["label"] = merged.apply(lambda r: f"{r['resname']} {r['chain']}{int(r['resid'])}", axis=1)
