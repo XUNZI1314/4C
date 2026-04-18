@@ -313,6 +313,11 @@ BENCHMARK_INTERPRETATION_COLUMNS = [
     "interpretation_warning",
 ]
 
+BENCHMARK_CASE_INTERPRETATION_COLUMNS = [
+    "benchmark_id",
+    *BENCHMARK_INTERPRETATION_COLUMNS,
+]
+
 CHAIN_ALIASES = {"chain", "chainid", "chain_id", "authasymid", "auth_asym_id", "asymid", "asym_id"}
 RESID_ALIASES = {
     "resid",
@@ -438,6 +443,10 @@ def _empty_reference_readiness_case_summary_df() -> pd.DataFrame:
 
 def _empty_interpretation_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_INTERPRETATION_COLUMNS)
+
+
+def _empty_case_interpretation_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_CASE_INTERPRETATION_COLUMNS)
 
 
 def _simplify_column_name(value: object) -> str:
@@ -1717,6 +1726,43 @@ def build_pocket_benchmark_interpretation_summary(
         )
 
     return pd.DataFrame(rows, columns=BENCHMARK_INTERPRETATION_COLUMNS)
+
+
+def build_pocket_benchmark_case_interpretation_summary(
+    case_summary_df: Optional[pd.DataFrame],
+    readiness_case_summary_df: Optional[pd.DataFrame] = None,
+    *,
+    default_benchmark_id: str = "current",
+) -> pd.DataFrame:
+    """Attach case-level readiness to each case-level Top-N benchmark coverage row."""
+
+    if case_summary_df is None or getattr(case_summary_df, "empty", True) or "benchmark_id" not in case_summary_df.columns:
+        return _empty_case_interpretation_df()
+
+    case_summary = case_summary_df.copy()
+    fallback_id = _safe_text(default_benchmark_id) or "current"
+    case_summary["benchmark_id"] = case_summary["benchmark_id"].map(lambda value: _normalized_case_id(value, fallback_id))
+
+    readiness_by_case: dict[str, pd.DataFrame] = {}
+    if readiness_case_summary_df is not None and not getattr(readiness_case_summary_df, "empty", True) and "benchmark_id" in readiness_case_summary_df.columns:
+        readiness = readiness_case_summary_df.copy()
+        readiness["benchmark_id"] = readiness["benchmark_id"].map(lambda value: _normalized_case_id(value, fallback_id))
+        for benchmark_id, group in readiness.groupby("benchmark_id", sort=False, dropna=False):
+            readiness_by_case[_safe_text(benchmark_id)] = group.drop(columns=["benchmark_id"], errors="ignore").head(1).reset_index(drop=True)
+
+    rows: list[dict[str, object]] = []
+    for benchmark_id, group in case_summary.groupby("benchmark_id", sort=True, dropna=False):
+        benchmark_id_text = _safe_text(benchmark_id) or fallback_id
+        interpretation = build_pocket_benchmark_interpretation_summary(
+            group.drop(columns=["benchmark_id"], errors="ignore"),
+            readiness_by_case.get(benchmark_id_text),
+        )
+        for row in interpretation.to_dict(orient="records"):
+            rows.append({"benchmark_id": benchmark_id_text, **row})
+
+    if not rows:
+        return _empty_case_interpretation_df()
+    return pd.DataFrame(rows, columns=BENCHMARK_CASE_INTERPRETATION_COLUMNS)
 
 
 def build_pocket_benchmark_case_summary(

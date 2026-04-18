@@ -1,6 +1,7 @@
 import pandas as pd
 
 from protein_visualizer.services.benchmark import (
+    build_pocket_benchmark_case_interpretation_summary,
     build_pocket_benchmark_interpretation_summary,
     build_pocket_benchmark_case_summary,
     build_pocket_benchmark_dataset_summary,
@@ -215,6 +216,59 @@ def test_build_pocket_benchmark_interpretation_respects_readiness_gate():
     assert str(ready.iloc[0]["claim_status"]) == "claim-ready"
     assert bool(ready.iloc[0]["claim_ready"])
     assert "partial curated residue coverage" in str(ready.iloc[0]["interpretation_label"])
+
+
+def test_build_pocket_benchmark_case_interpretation_uses_case_readiness():
+    case_summary = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "enzyme-a",
+                "top_n": 1,
+                "reference_residue_count": 1,
+                "matched_reference_count": 1,
+                "coverage_ratio": 1.0,
+                "benchmark_status": "topn-complete-hit",
+                "best_rank": 1,
+                "best_pocket_id": "Pocket-1",
+            },
+            {
+                "benchmark_id": "enzyme-b",
+                "top_n": 1,
+                "reference_residue_count": 1,
+                "matched_reference_count": 1,
+                "coverage_ratio": 1.0,
+                "benchmark_status": "topn-complete-hit",
+                "best_rank": 1,
+                "best_pocket_id": "Pocket-1",
+            },
+        ]
+    )
+    readiness_cases = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "enzyme-a",
+                "readiness_status": "blocked",
+                "p0_p1_issue_count": 1,
+                "p2_issue_count": 0,
+                "recommended_action": "Fix enzyme-a mapping.",
+                "readiness_warning": "Mapping blocked.",
+            },
+            {
+                "benchmark_id": "enzyme-b",
+                "readiness_status": "ready",
+                "p0_p1_issue_count": 0,
+                "p2_issue_count": 0,
+                "recommended_action": "Ready.",
+                "readiness_warning": "No blockers.",
+            },
+        ]
+    )
+
+    interpretation = build_pocket_benchmark_case_interpretation_summary(case_summary, readiness_cases)
+
+    statuses = dict(zip(interpretation["benchmark_id"], interpretation["claim_status"]))
+    assert statuses["enzyme-a"] == "blocked"
+    assert statuses["enzyme-b"] == "claim-ready"
 
 
 def test_parse_benchmark_reference_table_accepts_catalytic_residue_aliases():
