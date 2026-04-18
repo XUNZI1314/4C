@@ -106,6 +106,19 @@ BENCHMARK_REFERENCE_SOURCE_AUDIT_COLUMNS = [
     "recommended_action",
 ]
 
+BENCHMARK_REFERENCE_SOURCE_AUDIT_SUMMARY_COLUMNS = [
+    "summary_id",
+    "source_mode",
+    "source_claim_status",
+    "can_support_independent_claim",
+    "reference_rows",
+    "case_count",
+    "provisional_rows",
+    "reviewed_candidate_rows",
+    "recommended_action",
+    "summary_warning",
+]
+
 BENCHMARK_DETAIL_COLUMNS = [
     *BENCHMARK_REFERENCE_COLUMNS,
     "residue_label",
@@ -563,6 +576,10 @@ def _empty_reference_candidate_review_outcome_df() -> pd.DataFrame:
 
 def _empty_reference_source_audit_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_COLUMNS)
+
+
+def _empty_reference_source_audit_summary_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_SUMMARY_COLUMNS)
 
 
 def _empty_detail_df() -> pd.DataFrame:
@@ -1833,6 +1850,82 @@ def build_pocket_benchmark_reference_source_audit(
         )
 
     return pd.DataFrame(rows, columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_COLUMNS)
+
+
+def _source_audit_summary_action(source_claim_status: str, independent_claim_status: str) -> tuple[str, str]:
+    if source_claim_status == "blocked-provisional" or independent_claim_status == "no":
+        return (
+            "Replace provisional rows with curated references or accepted review decisions before reporting precision.",
+            "These rows cannot support independent benchmark claims.",
+        )
+    if source_claim_status == "source-unknown":
+        return (
+            "Record source mode and provenance before using these rows in benchmark claims.",
+            "Unknown source provenance blocks reliable benchmark interpretation.",
+        )
+    if source_claim_status == "review-qualified" or independent_claim_status == "review-required":
+        return (
+            "Confirm reviewed candidate references are independent from detection/reranking evidence.",
+            "These rows are useful for triage, but final accuracy claims need independence review.",
+        )
+    return (
+        "Keep readiness and structure-validation outputs attached to benchmark reports.",
+        "Source provenance is ready; remaining blockers, if any, come from other readiness gates.",
+    )
+
+
+def build_pocket_benchmark_reference_source_audit_summary(
+    source_audit_df: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    """Summarize benchmark reference source provenance by claim-safety status."""
+
+    if source_audit_df is None or getattr(source_audit_df, "empty", True):
+        return _empty_reference_source_audit_summary_df()
+    working = source_audit_df.copy()
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_COLUMNS:
+        if column not in working.columns:
+            working[column] = ""
+    for column in ("source_mode", "source_claim_status", "can_support_independent_claim", "benchmark_id"):
+        working[column] = working[column].map(_safe_text)
+    working["is_provisional"] = working["is_provisional"].astype(bool)
+    working["is_reviewed_candidate"] = working["is_reviewed_candidate"].astype(bool)
+
+    rows: list[dict[str, object]] = []
+    grouped = working.groupby(["source_mode", "source_claim_status", "can_support_independent_claim"], dropna=False)
+    for (source_mode, source_claim_status, independent_claim_status), group in grouped:
+        action, warning = _source_audit_summary_action(
+            _safe_text(source_claim_status),
+            _safe_text(independent_claim_status),
+        )
+        case_count = int(group["benchmark_id"].replace("", pd.NA).dropna().nunique())
+        rows.append(
+            {
+                "summary_id": "",
+                "source_mode": _safe_text(source_mode) or "unknown",
+                "source_claim_status": _safe_text(source_claim_status) or "source-unknown",
+                "can_support_independent_claim": _safe_text(independent_claim_status) or "review-required",
+                "reference_rows": int(len(group)),
+                "case_count": case_count,
+                "provisional_rows": int(group["is_provisional"].sum()),
+                "reviewed_candidate_rows": int(group["is_reviewed_candidate"].sum()),
+                "recommended_action": action,
+                "summary_warning": warning,
+            }
+        )
+
+    if not rows:
+        return _empty_reference_source_audit_summary_df()
+    rank = {
+        "blocked-provisional": 0,
+        "source-unknown": 1,
+        "review-qualified": 2,
+        "source-ready": 3,
+    }
+    frame = pd.DataFrame(rows, columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_SUMMARY_COLUMNS)
+    frame["_rank"] = frame["source_claim_status"].map(rank).fillna(9)
+    frame = frame.sort_values(["_rank", "source_mode", "can_support_independent_claim"]).drop(columns=["_rank"]).reset_index(drop=True)
+    frame["summary_id"] = [f"BRSS-{index + 1:03d}" for index in range(len(frame))]
+    return frame[BENCHMARK_REFERENCE_SOURCE_AUDIT_SUMMARY_COLUMNS]
 
 
 def _normalize_pocket_rows(pocket_df: Optional[pd.DataFrame]) -> pd.DataFrame:

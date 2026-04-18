@@ -67,6 +67,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_from_external_evidence,
     build_pocket_benchmark_reference_import_summary,
     build_pocket_benchmark_reference_source_audit,
+    build_pocket_benchmark_reference_source_audit_summary,
     build_pocket_benchmark_reference_readiness_case_summary,
     build_pocket_benchmark_reference_readiness_checklist_markdown,
     build_pocket_benchmark_reference_readiness_queue,
@@ -922,6 +923,7 @@ benchmark_reference_is_provisional = False
 benchmark_reference_is_reviewed_candidate = False
 benchmark_reference_source_mode = ""
 benchmark_reference_source_audit_df = pd.DataFrame()
+benchmark_reference_source_audit_summary_df = pd.DataFrame()
 pocket_benchmark_reference_quality_issue_df = pd.DataFrame()
 pocket_benchmark_reference_quality_summary_df = pd.DataFrame()
 pocket_benchmark_reference_quality_checklist_markdown = ""
@@ -1387,6 +1389,9 @@ if benchmark_reference_loaded:
             source_mode=benchmark_reference_source_mode,
             is_provisional=benchmark_reference_is_provisional,
             is_reviewed_candidate=benchmark_reference_is_reviewed_candidate,
+        )
+        benchmark_reference_source_audit_summary_df = build_pocket_benchmark_reference_source_audit_summary(
+            benchmark_reference_source_audit_df
         )
         if benchmark_reference_is_provisional:
             st.sidebar.caption(
@@ -2297,6 +2302,9 @@ try:
             "pocket_benchmark_reference_is_reviewed_candidate": bool(benchmark_reference_is_reviewed_candidate),
             "pocket_benchmark_reference_source_mode": str(benchmark_reference_source_mode or ""),
             "pocket_benchmark_reference_source_audit_rows": int(len(benchmark_reference_source_audit_df)),
+            "pocket_benchmark_reference_source_audit_summary_rows": int(len(benchmark_reference_source_audit_summary_df)),
+            "pocket_benchmark_reference_source_audit_summary_status": str(benchmark_reference_source_audit_summary_df.iloc[0].get("source_claim_status") or "") if not benchmark_reference_source_audit_summary_df.empty else "",
+            "pocket_benchmark_reference_source_audit_summary_independent_claim_status": str(benchmark_reference_source_audit_summary_df.iloc[0].get("can_support_independent_claim") or "") if not benchmark_reference_source_audit_summary_df.empty else "",
             "pocket_benchmark_reference_source_claim_status": str(benchmark_reference_source_audit_df.iloc[0].get("source_claim_status") or "") if not benchmark_reference_source_audit_df.empty else "",
             "pocket_benchmark_reference_source_independent_claim_status": str(benchmark_reference_source_audit_df.iloc[0].get("can_support_independent_claim") or "") if not benchmark_reference_source_audit_df.empty else "",
             "pocket_benchmark_reference_source_provisional_rows": int(benchmark_reference_source_audit_df["is_provisional"].astype(bool).sum()) if not benchmark_reference_source_audit_df.empty and "is_provisional" in benchmark_reference_source_audit_df.columns else 0,
@@ -2582,6 +2590,10 @@ snapshot = build_analysis_snapshot(
         "pocket_benchmark_reference_source_mode": str(benchmark_reference_source_mode or ""),
         "pocket_benchmark_reference_source_audit_rows": int(len(benchmark_reference_source_audit_df)),
         "pocket_benchmark_reference_source_audit": benchmark_reference_source_audit_df.to_dict(orient="records"),
+        "pocket_benchmark_reference_source_audit_summary_rows": int(len(benchmark_reference_source_audit_summary_df)),
+        "pocket_benchmark_reference_source_audit_summary": benchmark_reference_source_audit_summary_df.to_dict(orient="records"),
+        "pocket_benchmark_reference_source_audit_summary_status": str(benchmark_reference_source_audit_summary_df.iloc[0].get("source_claim_status") or "") if not benchmark_reference_source_audit_summary_df.empty else "",
+        "pocket_benchmark_reference_source_audit_summary_independent_claim_status": str(benchmark_reference_source_audit_summary_df.iloc[0].get("can_support_independent_claim") or "") if not benchmark_reference_source_audit_summary_df.empty else "",
         "pocket_benchmark_reference_source_claim_status": str(benchmark_reference_source_audit_df.iloc[0].get("source_claim_status") or "") if not benchmark_reference_source_audit_df.empty else "",
         "pocket_benchmark_reference_source_independent_claim_status": str(benchmark_reference_source_audit_df.iloc[0].get("can_support_independent_claim") or "") if not benchmark_reference_source_audit_df.empty else "",
         "pocket_benchmark_reference_source_provisional_rows": int(benchmark_reference_source_audit_df["is_provisional"].astype(bool).sum()) if not benchmark_reference_source_audit_df.empty and "is_provisional" in benchmark_reference_source_audit_df.columns else 0,
@@ -2942,6 +2954,8 @@ if not benchmark_reference_source_audit_df.empty:
         st.caption(
             "Audits the final reference rows used for benchmark scoring, including source mode and whether they can support independent precision claims."
         )
+        if not benchmark_reference_source_audit_summary_df.empty:
+            st.dataframe(benchmark_reference_source_audit_summary_df, use_container_width=True, hide_index=True)
         st.dataframe(benchmark_reference_source_audit_df, use_container_width=True, hide_index=True)
 if not pocket_benchmark_summary_df.empty:
     with st.expander("Catalytic pocket benchmark", expanded=True):
@@ -3919,6 +3933,13 @@ with tab_export:
                 mime="text/csv",
             )
         if not benchmark_reference_source_audit_df.empty:
+            if not benchmark_reference_source_audit_summary_df.empty:
+                st.download_button(
+                    "Export benchmark reference source audit summary CSV",
+                    data=_to_csv_bytes(benchmark_reference_source_audit_summary_df),
+                    file_name="pocket_benchmark_reference_source_audit_summary.csv",
+                    mime="text/csv",
+                )
             st.download_button(
                 "Export benchmark reference source audit CSV",
                 data=_to_csv_bytes(benchmark_reference_source_audit_df),
@@ -4557,6 +4578,7 @@ with tab_export:
         f"Benchmark reference candidate: {len(benchmark_reference_candidate_df)} rows / import {benchmark_reference_import_summary_df.iloc[0].get('import_status') if not benchmark_reference_import_summary_df.empty else '-'} / provisional used {'yes' if benchmark_reference_is_provisional else 'no'}",
         f"Benchmark reference source: {benchmark_reference_source_mode or '-'} / provisional {'yes' if benchmark_reference_is_provisional else 'no'} / reviewed candidate {'yes' if benchmark_reference_is_reviewed_candidate else 'no'}",
         f"Benchmark reference source audit: {len(benchmark_reference_source_audit_df)} rows / claim status {benchmark_reference_source_audit_df.iloc[0].get('source_claim_status') if not benchmark_reference_source_audit_df.empty else '-'} / independent claim {benchmark_reference_source_audit_df.iloc[0].get('can_support_independent_claim') if not benchmark_reference_source_audit_df.empty else '-'}",
+        f"Benchmark reference source audit summary: {len(benchmark_reference_source_audit_summary_df)} rows / top status {benchmark_reference_source_audit_summary_df.iloc[0].get('source_claim_status') if not benchmark_reference_source_audit_summary_df.empty else '-'} / independent claim {benchmark_reference_source_audit_summary_df.iloc[0].get('can_support_independent_claim') if not benchmark_reference_source_audit_summary_df.empty else '-'}",
         f"Benchmark reference candidate review: {len(benchmark_reference_candidate_review_queue_df)} rows / P1 {int(benchmark_reference_candidate_review_queue_df['priority'].astype(str).eq('P1').sum()) if not benchmark_reference_candidate_review_queue_df.empty and 'priority' in benchmark_reference_candidate_review_queue_df.columns else 0} / P2 {int(benchmark_reference_candidate_review_queue_df['priority'].astype(str).eq('P2').sum()) if not benchmark_reference_candidate_review_queue_df.empty and 'priority' in benchmark_reference_candidate_review_queue_df.columns else 0} / checklist {'available' if benchmark_reference_candidate_review_checklist_markdown else 'not available'}",
         f"Benchmark reference candidate review decisions: {len(benchmark_reference_candidate_review_decision_df)} rows / validation blocked {int(benchmark_reference_candidate_review_decision_validation_df['validation_status'].astype(str).eq('blocked').sum()) if not benchmark_reference_candidate_review_decision_validation_df.empty and 'validation_status' in benchmark_reference_candidate_review_decision_validation_df.columns else 0} / accepted actions {int(benchmark_reference_candidate_review_outcome_df['applied_status'].astype(str).eq('accepted').sum()) if not benchmark_reference_candidate_review_outcome_df.empty and 'applied_status' in benchmark_reference_candidate_review_outcome_df.columns else 0} / accepted references {len(benchmark_reference_candidate_accepted_df)}",
         f"Catalytic pocket benchmark: references {len(benchmark_reference_df)} / Top-1 {top1_benchmark.get('coverage_ratio') if top1_benchmark is not None else '-'} / Top-3 {top3_benchmark.get('coverage_ratio') if top3_benchmark is not None else '-'} / best rank {top3_benchmark.get('best_rank') if top3_benchmark is not None else '-'}",
