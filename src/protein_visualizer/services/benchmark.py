@@ -2088,6 +2088,126 @@ def build_pocket_benchmark_dataset_interpretation_checklist_markdown(
     return "\n".join(lines).strip() + "\n"
 
 
+def build_pocket_benchmark_dataset_interpretation_report_markdown(
+    dataset_interpretation_df: Optional[pd.DataFrame],
+    dataset_interpretation_queue_df: Optional[pd.DataFrame] = None,
+    *,
+    checklist_available: bool = False,
+    title: str = "Benchmark dataset interpretation report",
+    max_queue_actions: int = 20,
+) -> str:
+    """Render a compact report for dataset-level benchmark claim readiness."""
+
+    has_interpretation = dataset_interpretation_df is not None and not getattr(dataset_interpretation_df, "empty", True)
+    has_queue = dataset_interpretation_queue_df is not None and not getattr(dataset_interpretation_queue_df, "empty", True)
+    if not has_interpretation and not has_queue:
+        return ""
+
+    interpretation = dataset_interpretation_df.copy() if has_interpretation else _empty_dataset_interpretation_df()
+    for column in BENCHMARK_DATASET_INTERPRETATION_COLUMNS:
+        if column not in interpretation.columns:
+            interpretation[column] = ""
+    if not interpretation.empty:
+        interpretation["top_n"] = pd.to_numeric(interpretation["top_n"], errors="coerce").fillna(0).astype(int)
+        for column in (
+            "case_count",
+            "claim_ready_case_count",
+            "blocked_case_count",
+            "review_case_count",
+            "unknown_case_count",
+        ):
+            interpretation[column] = pd.to_numeric(interpretation[column], errors="coerce").fillna(0).astype(int)
+        for column in ("mean_claim_ready_coverage", "mean_all_case_coverage", "claim_ready_rate"):
+            interpretation[column] = pd.to_numeric(interpretation[column], errors="coerce").fillna(0.0)
+        interpretation = interpretation.sort_values("top_n")
+
+    queue = dataset_interpretation_queue_df.copy() if has_queue else _empty_dataset_interpretation_queue_df()
+    for column in BENCHMARK_DATASET_INTERPRETATION_QUEUE_COLUMNS:
+        if column not in queue.columns:
+            queue[column] = ""
+    if not queue.empty:
+        queue["top_n"] = pd.to_numeric(queue["top_n"], errors="coerce").fillna(0).astype(int)
+        queue["coverage_ratio"] = pd.to_numeric(queue["coverage_ratio"], errors="coerce").fillna(0.0)
+        queue["best_rank"] = pd.to_numeric(queue["best_rank"], errors="coerce").fillna(0).astype(int)
+        priority_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+        queue["_priority_rank"] = queue["priority"].map(priority_rank).fillna(99)
+        queue = queue.sort_values(["top_n", "_priority_rank", "benchmark_id", "issue_type"]).drop(columns=["_priority_rank"])
+
+    blocked_rows = int(interpretation["dataset_claim_status"].astype(str).eq("blocked").sum()) if not interpretation.empty else 0
+    review_rows = int(interpretation["dataset_claim_status"].astype(str).eq("review-needed").sum()) if not interpretation.empty else 0
+    claim_ready_rows = int(interpretation["dataset_claim_status"].astype(str).eq("claim-ready").sum()) if not interpretation.empty else 0
+    report_status = "blocked" if blocked_rows else "review-needed" if review_rows else "claim-ready" if claim_ready_rows else "no-dataset-interpretation"
+    next_action = (
+        "Fix P0 blocker cases before reporting dataset-level coverage."
+        if blocked_rows
+        else "Complete reviewer sign-off before publishing dataset-level coverage."
+        if review_rows
+        else "Report dataset coverage with case counts and Top-N status."
+        if claim_ready_rows
+        else "Generate dataset interpretation before reporting benchmark accuracy."
+    )
+
+    lines = [
+        f"# {title}",
+        "",
+        "Generated from `pocket_benchmark_dataset_interpretation.csv` and `pocket_benchmark_dataset_interpretation_queue.csv`.",
+        "",
+        "## Gate",
+        "",
+        f"- Dataset claim status: `{report_status}`.",
+        f"- Dataset interpretation rows: {int(len(interpretation))}.",
+        f"- Queued case actions: {int(len(queue))}.",
+        f"- Checklist: {'available' if checklist_available else 'not available'}.",
+        f"- Recommended action: {next_action}",
+        "",
+        "## Top-N Interpretation",
+        "",
+    ]
+    if interpretation.empty:
+        lines.append("No dataset interpretation rows are available.")
+    else:
+        lines.append("| Top-N | Status | Cases | Claim-ready | Blocked | Review | Unknown | Mean claim-ready coverage | Mean all-case coverage |")
+        lines.append("| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
+        for _, row in interpretation.iterrows():
+            lines.append(
+                "| {top_n} | {status} | {cases} | {ready} | {blocked} | {review} | {unknown} | {ready_cov:.3f} | {all_cov:.3f} |".format(
+                    top_n=int(row.get("top_n") or 0),
+                    status=_safe_text(row.get("dataset_claim_status")) or "-",
+                    cases=int(row.get("case_count") or 0),
+                    ready=int(row.get("claim_ready_case_count") or 0),
+                    blocked=int(row.get("blocked_case_count") or 0),
+                    review=int(row.get("review_case_count") or 0),
+                    unknown=int(row.get("unknown_case_count") or 0),
+                    ready_cov=float(row.get("mean_claim_ready_coverage") or 0.0),
+                    all_cov=float(row.get("mean_all_case_coverage") or 0.0),
+                )
+            )
+
+    lines.extend(["", "## Queued Actions", ""])
+    if queue.empty:
+        lines.append("No non-claim-ready benchmark cases are queued.")
+    else:
+        lines.append("| Priority | Top-N | Case | Issue | Coverage | Best rank | Action |")
+        lines.append("| --- | ---: | --- | --- | ---: | ---: | --- |")
+        for _, row in queue.head(max_queue_actions).iterrows():
+            lines.append(
+                "| {priority} | {top_n} | {case} | {issue} | {coverage:.3f} | {best_rank} | {action} |".format(
+                    priority=_safe_text(row.get("priority")) or "-",
+                    top_n=int(row.get("top_n") or 0),
+                    case=_safe_text(row.get("benchmark_id")) or "current",
+                    issue=_safe_text(row.get("issue_type")) or "-",
+                    coverage=float(row.get("coverage_ratio") or 0.0),
+                    best_rank=int(row.get("best_rank") or 0),
+                    action=_safe_text(row.get("suggested_action")) or "Review this benchmark case.",
+                )
+            )
+        remaining = int(len(queue) - max_queue_actions)
+        if remaining > 0:
+            lines.append(f"\n{remaining} additional queued actions are available in the CSV export.")
+
+    return "\n".join(lines).strip() + "\n"
+
+
 def build_pocket_benchmark_case_summary(
     reference_df: Optional[pd.DataFrame],
     pocket_df: Optional[pd.DataFrame],

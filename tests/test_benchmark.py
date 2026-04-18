@@ -3,6 +3,7 @@ import pandas as pd
 from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_case_interpretation_summary,
     build_pocket_benchmark_dataset_interpretation_checklist_markdown,
+    build_pocket_benchmark_dataset_interpretation_report_markdown,
     build_pocket_benchmark_dataset_interpretation,
     build_pocket_benchmark_dataset_interpretation_queue,
     build_pocket_benchmark_interpretation_summary,
@@ -427,6 +428,68 @@ def test_build_pocket_benchmark_dataset_interpretation_checklist_markdown():
     assert "| P0 | blocker | blocked-case | 1 | 1 |" in checklist
     assert "| P2 | review | review-needed-case | 1 | 1 |" in checklist
     assert "`P0` Top-1 `blocked-case` case `enzyme-b` coverage `0.5` best rank `2` pocket `Pocket-2`: Fix numbering." in checklist
+
+
+def test_build_pocket_benchmark_dataset_interpretation_report_markdown():
+    interpretation = pd.DataFrame(
+        [
+            {
+                "top_n": 1,
+                "case_count": 2,
+                "claim_ready_case_count": 1,
+                "blocked_case_count": 1,
+                "review_case_count": 0,
+                "unknown_case_count": 0,
+                "mean_claim_ready_coverage": 1.0,
+                "mean_all_case_coverage": 0.75,
+                "claim_ready_rate": 0.5,
+                "dataset_claim_status": "blocked",
+                "recommended_action": "Fix blocked cases.",
+            },
+            {
+                "top_n": 3,
+                "case_count": 2,
+                "claim_ready_case_count": 2,
+                "blocked_case_count": 0,
+                "review_case_count": 0,
+                "unknown_case_count": 0,
+                "mean_claim_ready_coverage": 0.9,
+                "mean_all_case_coverage": 0.9,
+                "claim_ready_rate": 1.0,
+                "dataset_claim_status": "claim-ready",
+                "recommended_action": "Report coverage.",
+            },
+        ]
+    )
+    queue = pd.DataFrame(
+        [
+            {
+                "action_id": "BDSI-001",
+                "priority": "P0",
+                "action_status": "blocker",
+                "top_n": 1,
+                "benchmark_id": "enzyme-b",
+                "claim_status": "blocked",
+                "coverage_ratio": 0.5,
+                "best_rank": 2,
+                "best_pocket_id": "Pocket-2",
+                "issue_type": "blocked-case",
+                "suggested_action": "Fix numbering.",
+            }
+        ]
+    )
+
+    report = build_pocket_benchmark_dataset_interpretation_report_markdown(
+        interpretation,
+        queue,
+        checklist_available=True,
+    )
+
+    assert report.startswith("# Benchmark dataset interpretation report")
+    assert "- Dataset claim status: `blocked`." in report
+    assert "| 1 | blocked | 2 | 1 | 1 | 0 | 0 | 1.000 | 0.750 |" in report
+    assert "| P0 | 1 | enzyme-b | blocked-case | 0.500 | 2 | Fix numbering. |" in report
+    assert "- Checklist: available." in report
 
 
 def test_parse_benchmark_reference_table_accepts_catalytic_residue_aliases():

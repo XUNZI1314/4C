@@ -198,7 +198,7 @@ ProteinInsight 不追求找出所有可能 druggable pocket，而是优先定位
 
 ### 1. 缺真实 benchmark
 
-目前已经有 catalytic pocket benchmark 框架，可以上传 curated catalytic residues 并输出 Top-1 / Top-3 / Top-5 coverage、case/dataset summary、case/dataset-level readiness-aware interpretation、dataset claim readiness queue/checklist、best hit rank、missed residues、P2Rank on/off 对照和 current vs ablation variant comparison。variant comparison 已支持整体、case、dataset 和 residue 四层视图，并能生成 lost/current-missed residue remediation queue、summary 和 checklist。但还缺少批量真实数据集，尚未证明不同算法组合在大样本上的命中率提升。
+目前已经有 catalytic pocket benchmark 框架，可以上传 curated catalytic residues 并输出 Top-1 / Top-3 / Top-5 coverage、case/dataset summary、case/dataset-level readiness-aware interpretation、dataset claim readiness queue/checklist/report、best hit rank、missed residues、P2Rank on/off 对照和 current vs ablation variant comparison。variant comparison 已支持整体、case、dataset 和 residue 四层视图，并能生成 lost/current-missed residue remediation queue、summary 和 checklist。但还缺少批量真实数据集，尚未证明不同算法组合在大样本上的命中率提升。
 
 建议指标：
 
@@ -229,6 +229,7 @@ ProteinInsight 不追求找出所有可能 druggable pocket，而是优先定位
 - `pocket_benchmark_dataset_interpretation.csv`
 - `pocket_benchmark_dataset_interpretation_queue.csv`
 - `pocket_benchmark_dataset_interpretation_checklist.md`
+- `pocket_benchmark_dataset_interpretation_report.md`
 - `pocket_benchmark_summary.csv`
 - `pocket_benchmark_case_summary.csv`
 - `pocket_benchmark_dataset_summary.csv`
