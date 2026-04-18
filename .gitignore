@@ -1,0 +1,40 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+.tmp_pytest/
+.history_test_tmp/
+tmp_history_test/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Packaging and build outputs
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Editor and OS cruft
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Generated logs and local artifacts
+gh_logs_*/
+PAT.env
+.env
+.env.*
+!.env.example
+openai.txt
+*.log
+/data/
+/image/
+protein_insight/data/examples/pymol_smoke_test.png
