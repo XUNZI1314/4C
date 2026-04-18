@@ -27,6 +27,58 @@ from protein_visualizer.services.snapshot import build_analysis_snapshot, build_
 from protein_visualizer.services.hotspot import identify_hotspots
 from protein_visualizer.services.structure_energy import estimate_protein_volume
 
+
+DISPLAY_COLUMN_LABELS = {
+    "residue_label": "残基",
+    "classification_label": "分类",
+    "classification_color": "分类颜色",
+    "classification_description": "分类说明",
+    "energy": "能量",
+    "delta_total": "总能量变化",
+    "delta_total_raw": "原始总能量变化",
+    "hotspot_rank": "热点排名",
+    "is_hotspot": "是否热点",
+    "is_pocket": "是否口袋",
+    "count": "数量",
+    "mean_energy": "平均能量",
+    "hotspots": "热点数",
+    "pocket": "口袋命中数",
+    "pocket_id": "口袋 ID",
+    "smart_rank_label": "智能排名标签",
+    "smart_rank_score": "智能排名得分",
+    "hotspot_count": "热点数",
+    "residue_count": "残基数",
+    "detection_route": "识别路径",
+    "consensus_methods": "共识方法",
+    "method_vote_count": "方法投票数",
+    "consensus_score": "共识得分",
+    "volume": "体积",
+    "score": "得分",
+    "smart_rank_reason": "智能排名理由",
+    "recommendation_rank": "推荐排名",
+    "recommendation_label": "推荐等级",
+    "recommendation_score": "推荐得分",
+    "recommendation_action": "推荐动作",
+    "evidence_quality_label": "证据质量",
+    "evidence_anchor_support": "证据锚点支持",
+    "evidence_anchor_risk": "证据锚点风险",
+    "recommendation_reason": "推荐理由",
+    "hotspot_overlap_count": "热点重叠数",
+    "interface_overlap_count": "界面重叠数",
+    "triple_overlap_count": "三重交集数",
+}
+
+
+def localize_display_table(table: pd.DataFrame) -> pd.DataFrame:
+    if table is None or table.empty:
+        return table
+    display = table.copy()
+    for column in display.columns:
+        if pd.api.types.is_bool_dtype(display[column]):
+            display[column] = display[column].map(lambda value: "是" if bool(value) else "否")
+    return display.rename(columns={column: DISPLAY_COLUMN_LABELS.get(column, column) for column in display.columns})
+
+
 st.set_page_config(page_title="结果与导出", layout="wide")
 st.title("结果与导出")
 st.markdown(
@@ -73,9 +125,9 @@ if joint_candidate_table is None:
     joint_candidate_table = pd.DataFrame()
 
 if annotation_table is not None and not annotation_table.empty:
-    display_table = annotation_table
+    result_table = annotation_table
 else:
-    display_table = energy_table
+    result_table = energy_table
     if annotation_table is not None:
         st.caption("当前注释表为空，已回退展示原始能量表。")
 display_columns = [
@@ -90,8 +142,8 @@ display_columns = [
     "is_hotspot",
     "is_pocket",
 ]
-display_columns = [column for column in display_columns if display_table is not None and column in display_table.columns]
-st.dataframe(display_table[display_columns] if display_columns else display_table, use_container_width=True)
+display_columns = [column for column in display_columns if result_table is not None and column in result_table.columns]
+st.dataframe(localize_display_table(result_table[display_columns] if display_columns else result_table), use_container_width=True)
 
 if annotation_table is not None and not annotation_table.empty:
     classification_summary = (
@@ -107,7 +159,7 @@ if annotation_table is not None and not annotation_table.empty:
     )
 
     st.subheader("分类统计")
-    st.dataframe(classification_summary, use_container_width=True)
+    st.dataframe(localize_display_table(classification_summary), use_container_width=True)
 
     annotated_csv = annotation_table.to_csv(index=False).encode("utf-8")
     st.download_button(
@@ -118,12 +170,12 @@ if annotation_table is not None and not annotation_table.empty:
     )
 
 if not pocket_summary.empty:
-    st.subheader("鏅鸿兘鍙ｈ鎽樿")
+    st.subheader("智能口袋摘要")
     top_pocket = pocket_summary.iloc[0]
     top_pocket_id = str(top_pocket.get("pocket_id") or "-")
     top_rank_label = str(top_pocket.get("smart_rank_label") or "-")
     top_reason = str(top_pocket.get("smart_rank_reason") or top_pocket.get("detection_route") or "-")
-    st.caption(f"Top1 鍙ｈ锛?{top_pocket_id} / {top_rank_label} / {top_reason}")
+    st.caption(f"Top1 口袋：{top_pocket_id} / {top_rank_label} / {top_reason}")
 
     pocket_columns = [
         "pocket_id",
@@ -140,11 +192,11 @@ if not pocket_summary.empty:
         "smart_rank_reason",
     ]
     pocket_columns = [column for column in pocket_columns if column in pocket_summary.columns]
-    st.dataframe(pocket_summary[pocket_columns] if pocket_columns else pocket_summary, use_container_width=True)
+    st.dataframe(localize_display_table(pocket_summary[pocket_columns] if pocket_columns else pocket_summary), use_container_width=True)
 
     pocket_summary_csv = pocket_summary.to_csv(index=False).encode("utf-8")
     st.download_button(
-        label="瀵煎嚭鏅鸿兘鍙ｈ鎽樿 CSV",
+        label="导出智能口袋摘要 CSV",
         data=pocket_summary_csv,
         file_name="smart_pocket_summary.csv",
         mime="text/csv",
@@ -153,7 +205,7 @@ if not pocket_summary.empty:
     if not pocket_table.empty:
         pocket_detail_csv = pocket_table.to_csv(index=False).encode("utf-8")
         st.download_button(
-            label="瀵煎嚭鍙ｈ鏄庣粏 CSV",
+            label="导出口袋明细 CSV",
             data=pocket_detail_csv,
             file_name="smart_pocket_detail.csv",
             mime="text/csv",
@@ -188,7 +240,7 @@ if not joint_candidate_table.empty:
     ]
     joint_columns = [column for column in joint_columns if column in joint_candidate_table.columns]
     st.dataframe(
-        joint_candidate_table[joint_columns] if joint_columns else joint_candidate_table,
+        localize_display_table(joint_candidate_table[joint_columns] if joint_columns else joint_candidate_table),
         use_container_width=True,
     )
 

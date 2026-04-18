@@ -3,10 +3,15 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 POCKET_PAGE = ROOT_DIR / "pages" / "6_口袋与界面.py"
+RESULTS_PAGE = ROOT_DIR / "pages" / "4_结果与导出.py"
 
 
 def _page_source() -> str:
     return POCKET_PAGE.read_text(encoding="utf-8")
+
+
+def _results_page_source() -> str:
+    return RESULTS_PAGE.read_text(encoding="utf-8")
 
 
 def _visible_streamlit_lines(source: str) -> str:
@@ -66,5 +71,32 @@ def test_pocket_page_keeps_display_localization_hooks_enabled():
         "基准案例",
     ]
 
+    for snippet in required_snippets:
+        assert snippet in source
+
+
+def test_results_page_keeps_pocket_export_labels_readable():
+    source = _results_page_source()
+
+    forbidden_mojibake_snippets = [
+        "鏅鸿兘",
+        "鍙ｈ",
+        "鎽樿",
+        "瀵煎嚭",
+        "鏄庣粏",
+        "锛?",
+    ]
+    required_snippets = [
+        'st.subheader("智能口袋摘要")',
+        'st.caption(f"Top1 口袋：',
+        'label="导出智能口袋摘要 CSV"',
+        'label="导出口袋明细 CSV"',
+        "def localize_display_table",
+        '"pocket_id": "口袋 ID"',
+        '"recommendation_reason": "推荐理由"',
+    ]
+
+    for snippet in forbidden_mojibake_snippets:
+        assert snippet not in source
     for snippet in required_snippets:
         assert snippet in source
