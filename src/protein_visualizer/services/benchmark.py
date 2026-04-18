@@ -133,6 +133,20 @@ BENCHMARK_REFERENCE_SOURCE_AUDIT_ACTION_QUEUE_COLUMNS = [
     "action_warning",
 ]
 
+BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_SUMMARY_COLUMNS = [
+    "benchmark_id",
+    "reference_rows",
+    "action_rows",
+    "blocker_rows",
+    "review_rows",
+    "top_priority",
+    "top_issue_type",
+    "source_claim_statuses",
+    "source_modes",
+    "recommended_action",
+    "case_warning",
+]
+
 BENCHMARK_DETAIL_COLUMNS = [
     *BENCHMARK_REFERENCE_COLUMNS,
     "residue_label",
@@ -598,6 +612,10 @@ def _empty_reference_source_audit_summary_df() -> pd.DataFrame:
 
 def _empty_reference_source_audit_action_queue_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_ACTION_QUEUE_COLUMNS)
+
+
+def _empty_reference_source_audit_case_summary_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_SUMMARY_COLUMNS)
 
 
 def _empty_detail_df() -> pd.DataFrame:
@@ -2057,6 +2075,109 @@ def build_pocket_benchmark_reference_source_audit_action_queue(
     ).drop(columns=["_priority_rank"]).reset_index(drop=True)
     frame["action_id"] = [f"BRSA-{index + 1:03d}" for index in range(len(frame))]
     return frame[BENCHMARK_REFERENCE_SOURCE_AUDIT_ACTION_QUEUE_COLUMNS]
+
+
+def _ordered_source_values(values: Sequence[object], rank: dict[str, int] | None = None) -> str:
+    unique_values = list(dict.fromkeys(_safe_text(value) for value in values if _safe_text(value)))
+    if rank:
+        unique_values = sorted(unique_values, key=lambda value: (rank.get(value, 99), value))
+    return "; ".join(unique_values)
+
+
+def build_pocket_benchmark_reference_source_audit_case_summary(
+    source_audit_df: Optional[pd.DataFrame],
+    action_queue_df: Optional[pd.DataFrame] = None,
+    *,
+    default_benchmark_id: str = "current",
+) -> pd.DataFrame:
+    """Summarize source-audit remediation status by benchmark case."""
+
+    if source_audit_df is None or getattr(source_audit_df, "empty", True):
+        return _empty_reference_source_audit_case_summary_df()
+
+    fallback_id = _safe_text(default_benchmark_id) or "current"
+    audit = source_audit_df.copy()
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_COLUMNS:
+        if column not in audit.columns:
+            audit[column] = ""
+    audit["benchmark_id"] = audit["benchmark_id"].map(lambda value: _safe_text(value) or fallback_id)
+
+    if action_queue_df is None or getattr(action_queue_df, "empty", True):
+        queue = build_pocket_benchmark_reference_source_audit_action_queue(audit)
+    else:
+        queue = action_queue_df.copy()
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_ACTION_QUEUE_COLUMNS:
+        if column not in queue.columns:
+            queue[column] = ""
+    if not queue.empty:
+        queue["benchmark_id"] = queue["benchmark_id"].map(lambda value: _safe_text(value) or fallback_id)
+
+    case_ids = sorted(
+        set(audit["benchmark_id"].map(_safe_text).replace("", pd.NA).dropna().tolist())
+        | set(queue["benchmark_id"].map(_safe_text).replace("", pd.NA).dropna().tolist())
+    )
+    if not case_ids:
+        return _empty_reference_source_audit_case_summary_df()
+
+    priority_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    claim_rank = {
+        "blocked-provisional": 0,
+        "source-unknown": 1,
+        "review-qualified": 2,
+        "source-ready": 3,
+    }
+    rows: list[dict[str, object]] = []
+    for benchmark_id in case_ids:
+        case_audit = audit[audit["benchmark_id"].astype(str).eq(benchmark_id)]
+        case_queue = queue[queue["benchmark_id"].astype(str).eq(benchmark_id)] if not queue.empty else queue
+        action_rows = int(len(case_queue))
+        blocker_rows = int(case_queue["action_status"].map(_safe_text).eq("blocker").sum()) if action_rows else 0
+        review_rows = int(case_queue["action_status"].map(_safe_text).eq("review").sum()) if action_rows else 0
+        top_priority = ""
+        top_issue_type = ""
+        if action_rows:
+            ranked_queue = case_queue.copy()
+            ranked_queue["_priority_rank"] = ranked_queue["priority"].map(_safe_text).map(priority_rank).fillna(99)
+            ranked_queue = ranked_queue.sort_values(["_priority_rank", "issue_type", "chain", "resid"]).reset_index(drop=True)
+            top_priority = _safe_text(ranked_queue.iloc[0].get("priority"))
+            top_issue_type = _safe_text(ranked_queue.iloc[0].get("issue_type"))
+
+        if blocker_rows:
+            recommended_action = "Resolve source-audit blockers for this case before using its benchmark coverage in precision claims."
+            case_warning = "This case has benchmark references that cannot support independent precision claims yet."
+        elif review_rows:
+            recommended_action = "Confirm source independence for this case before treating benchmark coverage as publication-ready."
+            case_warning = "This case is useful for triage, but final accuracy claims still need source-independence review."
+        else:
+            recommended_action = "Keep source audit with this case's benchmark report."
+            case_warning = "Source provenance is ready; remaining risks, if any, are outside the source audit."
+
+        rows.append(
+            {
+                "benchmark_id": benchmark_id,
+                "reference_rows": int(len(case_audit)),
+                "action_rows": action_rows,
+                "blocker_rows": blocker_rows,
+                "review_rows": review_rows,
+                "top_priority": top_priority,
+                "top_issue_type": top_issue_type,
+                "source_claim_statuses": _ordered_source_values(case_audit["source_claim_status"].tolist(), claim_rank),
+                "source_modes": _ordered_source_values(case_audit["source_mode"].tolist()),
+                "recommended_action": recommended_action,
+                "case_warning": case_warning,
+            }
+        )
+
+    frame = pd.DataFrame(rows, columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_SUMMARY_COLUMNS)
+    frame["_risk_rank"] = frame.apply(
+        lambda row: 0 if int(row["blocker_rows"]) > 0 else 1 if int(row["review_rows"]) > 0 else 2,
+        axis=1,
+    )
+    frame["_priority_rank"] = frame["top_priority"].map(priority_rank).fillna(99)
+    frame = frame.sort_values(["_risk_rank", "_priority_rank", "benchmark_id"]).drop(
+        columns=["_risk_rank", "_priority_rank"]
+    ).reset_index(drop=True)
+    return frame[BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_SUMMARY_COLUMNS]
 
 
 def _normalize_pocket_rows(pocket_df: Optional[pd.DataFrame]) -> pd.DataFrame:
