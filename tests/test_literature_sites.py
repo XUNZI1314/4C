@@ -30,6 +30,11 @@ def test_extract_literature_residue_evidence_finds_catalytic_triad():
     assert evidence_df["evidence_type"].eq("Catalytic residue").all()
     assert evidence_df["evidence_score"].astype(float).ge(0.8).all()
     assert evidence_df["mapping_level"].eq("weak").all()
+    assert evidence_df["pmid"].eq("1").all()
+    assert evidence_df["article_title"].eq("Catalytic residues").all()
+    assert evidence_df["evidence_snippet"].astype(str).str.contains("catalytic triad").all()
+    assert evidence_df["extraction_pattern"].eq("three-letter-residue").all()
+    assert not evidence_df["requires_manual_review"].astype(bool).any()
 
 
 def test_extract_literature_residue_evidence_requires_functional_context():
@@ -43,6 +48,8 @@ def test_extract_literature_residue_evidence_requires_functional_context():
     assert not strong_df.empty
     assert 123 in set(strong_df["resid"].astype(int).tolist())
     assert strong_df["evidence_type"].isin({"Catalytic residue", "Activity-loss mutagenesis"}).any()
+    assert strong_df["requires_manual_review"].astype(bool).all()
+    assert strong_df["evidence_snippet"].astype(str).str.contains("abolished activity").any()
 
 
 def test_merge_literature_evidence_tables_boosts_cross_article_support():
@@ -81,10 +88,18 @@ def test_fetch_pubmed_literature_evidence_extracts_from_mocked_abstract(monkeypa
           <PMID>123456</PMID>
           <Article>
             <ArticleTitle>Enzyme catalytic residues</ArticleTitle>
+            <ELocationID EIdType="doi">10.1000/example</ELocationID>
             <Abstract>
               <AbstractText>The active site residue Glu35 acts as a general acid.</AbstractText>
             </Abstract>
           </Article>
+          <PubmedData>
+            <ArticleIdList>
+              <ArticleId IdType="pubmed">123456</ArticleId>
+              <ArticleId IdType="doi">10.1000/example</ArticleId>
+              <ArticleId IdType="pmc">PMC123456</ArticleId>
+            </ArticleIdList>
+          </PubmedData>
         </MedlineCitation>
       </PubmedArticle>
     </PubmedArticleSet>
@@ -104,6 +119,10 @@ def test_fetch_pubmed_literature_evidence_extracts_from_mocked_abstract(monkeypa
     assert not evidence_df.empty
     assert int(evidence_df.iloc[0]["resid"]) == 35
     assert "PMID:123456" in str(evidence_df.iloc[0]["evidence_note"])
+    assert str(evidence_df.iloc[0]["pmid"]) == "123456"
+    assert str(evidence_df.iloc[0]["pmcid"]) == "PMC123456"
+    assert str(evidence_df.iloc[0]["doi"]) == "10.1000/example"
+    assert "general acid" in str(evidence_df.iloc[0]["evidence_snippet"])
 
 
 def test_fetch_europepmc_literature_evidence_extracts_abstract_and_open_fulltext(monkeypatch):
@@ -114,6 +133,8 @@ def test_fetch_europepmc_literature_evidence_extracts_abstract_and_open_fulltext
                     "id": "123456",
                     "source": "MED",
                     "pmid": "123456",
+                    "pmcid": "PMC123456",
+                    "doi": "10.1000/europepmc",
                     "title": "Open enzyme article",
                     "abstractText": "The active site residue Glu35 acts as a general acid.",
                     "fullTextIdList": {"fullTextId": ["PMC123456"]},
@@ -145,6 +166,9 @@ def test_fetch_europepmc_literature_evidence_extracts_abstract_and_open_fulltext
     assert metadata["fulltext_count"] == "1"
     assert {35, 52}.issubset(set(evidence_df["resid"].astype(int).tolist()))
     assert evidence_df["evidence_source"].astype(str).str.contains("EuropePMC").any()
+    assert evidence_df["pmid"].eq("123456").any()
+    assert evidence_df["pmcid"].eq("PMC123456").any()
+    assert evidence_df["doi"].eq("10.1000/europepmc").any()
 
 
 def test_fetch_literature_residue_evidence_for_structure_maps_when_alignment_available(monkeypatch):

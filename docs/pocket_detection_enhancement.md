@@ -169,6 +169,23 @@ Rows are retained only when nearby text contains functional terms such as:
 
 Low-signal contexts such as generic sequence alignment are filtered out.
 
+### Source Detail Fields
+
+Literature and AI-assisted evidence now preserve citation and snippet metadata as first-class evidence columns:
+
+- `article_title`
+- `pmid`
+- `pmcid`
+- `doi`
+- `evidence_snippet`
+- `sentence_index`
+- `extraction_pattern`
+- `requires_manual_review`
+
+These fields are part of the shared external evidence schema, so UniProt, M-CSA and conservation rows remain compatible with empty defaults while literature rows carry source details through merge, SIFTS mapping, pocket detection, page preview and CSV export.
+
+`requires_manual_review` is set when the source lacks stable identifiers, when the evidence is manually supplied, when the context score is weak, or when the extracted row is only a generic literature residue rather than a strong catalytic/binding/mutagenesis signal.
+
 ### Mapping Policy
 
 Literature numbering is risky, so rows are tiered:

@@ -12,7 +12,7 @@ from urllib.parse import quote_plus
 
 import pandas as pd
 
-from protein_visualizer.services.external_sites import EVIDENCE_COLUMNS, _extract_structure_residue_map
+from protein_visualizer.services.external_sites import EVIDENCE_COLUMNS, _extract_structure_residue_map, ensure_evidence_columns
 
 
 AA3_TO_1 = {
@@ -471,7 +471,7 @@ def _verify_ai_structure_numbering(
         for entry in chain_entries
     }
     if not observed:
-        return working[EVIDENCE_COLUMNS], {
+        return ensure_evidence_columns(working), {
             "identity_checked_rows": "0",
             "identity_matched_rows": "0",
             "identity_mismatched_rows": "0",
@@ -510,7 +510,7 @@ def _verify_ai_structure_numbering(
         if expected:
             working.at[index, "evidence_note"] = f"{row.get('evidence_note')} | structure_residue_match={observed_resname}"
 
-    return working.drop(columns=["_ai_resname"], errors="ignore")[EVIDENCE_COLUMNS], {
+    return ensure_evidence_columns(working.drop(columns=["_ai_resname"], errors="ignore")), {
         "identity_checked_rows": str(checked),
         "identity_matched_rows": str(matched),
         "identity_mismatched_rows": str(mismatched),
@@ -582,6 +582,14 @@ def parse_ai_residue_evidence_payload(
                 "mapping_level": "weak",
                 "mapping_confidence": mapping_confidence,
                 "mapping_method": "ai-literature-extraction-review" if manual_review else "ai-literature-extraction",
+                "article_title": _safe_text(record.get("source_title") or record.get("title")),
+                "pmid": _safe_text(record.get("pmid")),
+                "pmcid": _safe_text(record.get("pmcid") or record.get("pmc_id")),
+                "doi": _safe_text(record.get("doi")),
+                "evidence_snippet": snippet,
+                "sentence_index": _safe_text(record.get("sentence_index")),
+                "extraction_pattern": _safe_text(record.get("extraction_pattern"), "ai-json"),
+                "requires_manual_review": bool(manual_review),
                 "_ai_resname": resname,
             }
         )
@@ -612,10 +620,10 @@ def parse_ai_residue_evidence_payload(
             pdb_text=pdb_text,
         )
     else:
-        evidence_df = evidence_df.drop(columns=["_ai_resname"], errors="ignore")[EVIDENCE_COLUMNS]
+        evidence_df = ensure_evidence_columns(evidence_df.drop(columns=["_ai_resname"], errors="ignore"))
 
     exact_rows = int(evidence_df["mapping_level"].astype(str).str.lower().eq("exact").sum()) if not evidence_df.empty else 0
-    return evidence_df[EVIDENCE_COLUMNS], {
+    return ensure_evidence_columns(evidence_df), {
         "status": "ok",
         "source": source_label,
         "parsed_records": str(len(records)),
@@ -2419,6 +2427,7 @@ def _normalize_consensus_evidence(table: Optional[pd.DataFrame], *, source_scope
     working["evidence_score"] = pd.to_numeric(working["evidence_score"], errors="coerce").fillna(0.55).clip(0.0, 1.0)
     working["mapping_confidence"] = pd.to_numeric(working["mapping_confidence"], errors="coerce").fillna(0.3).clip(0.0, 1.0)
     working["uniprot_resid"] = pd.to_numeric(working["uniprot_resid"], errors="coerce").fillna(working["resid"]).astype(int)
+    working = ensure_evidence_columns(working)
     working["_source_scope"] = source_scope
     return working[[*EVIDENCE_COLUMNS, "_source_scope"]].copy()
 
@@ -2922,7 +2931,7 @@ def filter_ai_evidence_for_ranking(
         ],
         errors="ignore",
     )
-    return result[EVIDENCE_COLUMNS].reset_index(drop=True), {
+    return ensure_evidence_columns(result).reset_index(drop=True), {
         "status": "ok",
         "input_rows": str(len(ai_evidence_df)),
         "accepted_rows": str(len(result)),

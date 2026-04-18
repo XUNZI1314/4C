@@ -14,6 +14,7 @@ from protein_visualizer.services.external_sites import (
     EVIDENCE_COLUMNS,
     _extract_structure_residue_map,
     _map_uniprot_sites_to_structure,
+    ensure_evidence_columns,
     merge_external_evidence_tables,
 )
 
@@ -132,6 +133,24 @@ def _empty_literature_evidence_df() -> pd.DataFrame:
 
 
 def _literature_article_key(row: pd.Series) -> str:
+    pmid = str(row.get("pmid", "") or "").strip()
+    if pmid:
+        return f"pmid:{pmid}"
+
+    pmcid = str(row.get("pmcid", "") or "").strip()
+    if pmcid:
+        return f"pmcid:{pmcid.lower()}"
+
+    doi = str(row.get("doi", "") or "").strip().lower()
+    if doi:
+        return f"doi:{doi}"
+
+    structured_title = str(row.get("article_title", "") or "").strip()
+    if structured_title:
+        normalized_structured_title = re.sub(r"\W+", " ", structured_title.lower()).strip()
+        if normalized_structured_title:
+            return f"title:{normalized_structured_title[:140]}"
+
     note_parts = [part.strip() for part in str(row.get("evidence_note", "") or "").split("|")]
     article_id = note_parts[0] if note_parts else ""
     article_title = note_parts[1] if len(note_parts) > 1 else ""
@@ -197,7 +216,7 @@ def _boost_replicated_literature_support(table: pd.DataFrame) -> tuple[pd.DataFr
         "max_article_support": str(max_article_support),
         "max_source_support": str(max_source_support),
     }
-    return working.drop(columns=["_support_position", "_article_key", "_source_key"])[EVIDENCE_COLUMNS].reset_index(drop=True), metadata
+    return ensure_evidence_columns(working.drop(columns=["_support_position", "_article_key", "_source_key"])).reset_index(drop=True), metadata
 
 
 def merge_literature_evidence_tables(*tables: Optional[pd.DataFrame]) -> pd.DataFrame:
@@ -250,7 +269,7 @@ def _verify_assumed_structure_numbering(
     }
 
     if not observed_resnames:
-        return working[EVIDENCE_COLUMNS], {
+        return ensure_evidence_columns(working), {
             "identity_checked_rows": "0",
             "identity_matched_rows": "0",
             "identity_mismatched_rows": "0",
@@ -304,7 +323,7 @@ def _verify_assumed_structure_numbering(
             f"structure_residue_mismatch={expected_aa}!={observed_aa}",
         )
 
-    return working[EVIDENCE_COLUMNS], {
+    return ensure_evidence_columns(working), {
         "identity_checked_rows": str(checked_rows),
         "identity_matched_rows": str(matched_rows),
         "identity_mismatched_rows": str(mismatched_rows),
@@ -356,6 +375,61 @@ def _clean_snippet(text: str, *, max_len: int = 280) -> str:
     return snippet[: int(max_len) - 3].rstrip() + "..."
 
 
+def _parse_literature_identifiers(
+    article_id: str,
+    *,
+    pmid: str = "",
+    pmcid: str = "",
+    doi: str = "",
+) -> dict[str, str]:
+    text = str(article_id or "").strip()
+    parsed = {
+        "pmid": str(pmid or "").strip(),
+        "pmcid": str(pmcid or "").strip(),
+        "doi": str(doi or "").strip(),
+    }
+
+    if not parsed["pmid"]:
+        matched = re.search(r"\b(?:PMID|MED)[:\s]*(\d+)\b", text, flags=re.IGNORECASE)
+        if matched:
+            parsed["pmid"] = matched.group(1)
+    if not parsed["pmcid"]:
+        matched = re.search(r"\b(PMC\d+)\b", text, flags=re.IGNORECASE)
+        if matched:
+            parsed["pmcid"] = matched.group(1).upper()
+    if not parsed["doi"]:
+        matched = re.search(r"\b10\.\d{4,9}/[^\s|;]+", text, flags=re.IGNORECASE)
+        if matched:
+            parsed["doi"] = matched.group(0).rstrip(".,)")
+
+    return parsed
+
+
+def _sentence_index_for_offset(text: str, offset: int) -> str:
+    prefix = str(text or "")[: max(0, int(offset))]
+    return str(len(re.findall(r"[.!?]\s+", prefix)))
+
+
+def _requires_manual_review(
+    *,
+    evidence_score: float,
+    evidence_type: str,
+    source_label: str,
+    identifiers: dict[str, str],
+) -> bool:
+    has_stable_source = any(str(identifiers.get(key) or "").strip() for key in ("pmid", "pmcid", "doi"))
+    source_text = str(source_label or "").lower()
+    if not has_stable_source:
+        return True
+    if "manual" in source_text:
+        return True
+    if float(evidence_score) < 0.72:
+        return True
+    if str(evidence_type or "").strip().lower() == "literature residue":
+        return True
+    return False
+
+
 def _score_literature_context(context: str, *, mutation_pattern: bool) -> tuple[float, str]:
     lowered = str(context or "").lower()
     catalytic = _contains_any(lowered, CATALYTIC_KEYWORDS)
@@ -404,6 +478,11 @@ def _add_literature_row(
     article_id: str,
     article_title: str,
     mutation_pattern: bool,
+    pmid: str = "",
+    pmcid: str = "",
+    doi: str = "",
+    sentence_index: str = "",
+    extraction_pattern: str = "",
 ) -> None:
     evidence_score, evidence_type = _score_literature_context(context, mutation_pattern=mutation_pattern)
     min_score = 0.66 if mutation_pattern else 0.58
@@ -411,12 +490,24 @@ def _add_literature_row(
         return
 
     cleaned_chain = str(chain_hint or "").strip()
+    identifiers = _parse_literature_identifiers(article_id, pmid=pmid, pmcid=pmcid, doi=doi)
+    snippet = _clean_snippet(context)
+    requires_review = _requires_manual_review(
+        evidence_score=evidence_score,
+        evidence_type=evidence_type,
+        source_label=source_label,
+        identifiers=identifiers,
+    )
     note_parts = [
         str(article_id or "").strip(),
         str(article_title or "").strip(),
+        f"pmid={identifiers['pmid']}" if identifiers["pmid"] else "",
+        f"pmcid={identifiers['pmcid']}" if identifiers["pmcid"] else "",
+        f"doi={identifiers['doi']}" if identifiers["doi"] else "",
         f"match={matched_text}",
         f"aa={aa3}",
-        _clean_snippet(context),
+        f"snippet={snippet}",
+        f"manual_review={str(bool(requires_review)).lower()}",
     ]
     rows.append(
         {
@@ -430,6 +521,14 @@ def _add_literature_row(
             "mapping_level": "weak",
             "mapping_confidence": 0.46 if cleaned_chain else 0.34,
             "mapping_method": "literature-text-mining",
+            "article_title": str(article_title or "").strip(),
+            "pmid": identifiers["pmid"],
+            "pmcid": identifiers["pmcid"],
+            "doi": identifiers["doi"],
+            "evidence_snippet": snippet,
+            "sentence_index": str(sentence_index or ""),
+            "extraction_pattern": str(extraction_pattern or ""),
+            "requires_manual_review": bool(requires_review),
         }
     )
 
@@ -441,6 +540,9 @@ def extract_literature_residue_evidence(
     source_label: str = "Literature",
     article_id: str = "",
     article_title: str = "",
+    pmid: str = "",
+    pmcid: str = "",
+    doi: str = "",
 ) -> tuple[pd.DataFrame, Dict[str, object]]:
     cleaned_text = str(text or "")
     if not cleaned_text.strip():
@@ -467,6 +569,11 @@ def extract_literature_residue_evidence(
             article_id=article_id,
             article_title=article_title,
             mutation_pattern=mutation_pattern,
+            pmid=pmid,
+            pmcid=pmcid,
+            doi=doi,
+            sentence_index=_sentence_index_for_offset(cleaned_text, match.start()),
+            extraction_pattern="three-letter-residue",
         )
         consumed_spans.append((match.start(), match.end()))
 
@@ -489,6 +596,11 @@ def extract_literature_residue_evidence(
             article_id=article_id,
             article_title=article_title,
             mutation_pattern=True,
+            pmid=pmid,
+            pmcid=pmcid,
+            doi=doi,
+            sentence_index=_sentence_index_for_offset(cleaned_text, match.start()),
+            extraction_pattern="one-letter-mutation",
         )
 
     if not rows:
@@ -506,12 +618,15 @@ def extract_literature_residue_evidence(
         subset=["chain", "resid", "evidence_type", "uniprot_resid"],
         keep="first",
     ).reset_index(drop=True)
-    evidence_df = evidence_df[EVIDENCE_COLUMNS]
+    evidence_df = ensure_evidence_columns(evidence_df)
     return evidence_df, {
         "status": "ok",
         "evidence_rows": str(len(evidence_df)),
         "source": source_label,
         "article_id": article_id,
+        "pmid": str(pmid or "").strip(),
+        "pmcid": str(pmcid or "").strip(),
+        "doi": str(doi or "").strip(),
     }
 
 
@@ -527,6 +642,15 @@ def _article_text_from_pubmed_xml(xml_text: str) -> list[dict[str, str]]:
     for article in root.findall(".//PubmedArticle"):
         pmid = "".join(article.findtext(".//PMID") or "").strip()
         title = "".join(article.findtext(".//ArticleTitle") or "").strip()
+        doi = ""
+        pmcid = ""
+        for article_id_node in article.findall(".//ArticleIdList/ArticleId"):
+            id_type = str(article_id_node.attrib.get("IdType") or "").strip().lower()
+            value = "".join(article_id_node.itertext()).strip()
+            if id_type == "doi" and value:
+                doi = value
+            elif id_type in {"pmc", "pmcid"} and value:
+                pmcid = value
         abstract_parts: list[str] = []
         for abstract_node in article.findall(".//Abstract/AbstractText"):
             label = str(abstract_node.attrib.get("Label") or "").strip()
@@ -538,6 +662,8 @@ def _article_text_from_pubmed_xml(xml_text: str) -> list[dict[str, str]]:
             articles.append(
                 {
                     "pmid": pmid,
+                    "pmcid": pmcid,
+                    "doi": doi,
                     "title": html.unescape(title),
                     "text": html.unescape(text),
                 }
@@ -597,12 +723,16 @@ def _europepmc_article_records(payload: dict) -> list[dict[str, object]]:
         source = str(result.get("source") or "").strip()
         article_id = str(result.get("id") or result.get("pmid") or result.get("doi") or "").strip()
         pmid = str(result.get("pmid") or "").strip()
+        pmcid = str(result.get("pmcid") or result.get("pmcId") or "").strip()
+        doi = str(result.get("doi") or "").strip()
         text = " ".join(part for part in [title, abstract] if part)
         records.append(
             {
                 "source": source,
                 "id": article_id,
                 "pmid": pmid,
+                "pmcid": pmcid,
+                "doi": doi,
                 "title": title,
                 "text": text,
                 "full_text_ids": _europepmc_fulltext_ids(result),
@@ -702,6 +832,9 @@ def fetch_pubmed_literature_evidence(
             source_label="Literature-PubMed",
             article_id=f"PMID:{article.get('pmid', '')}",
             article_title=article.get("title", ""),
+            pmid=article.get("pmid", ""),
+            pmcid=article.get("pmcid", ""),
+            doi=article.get("doi", ""),
         )
         if not table.empty:
             evidence_tables.append(table)
@@ -766,6 +899,9 @@ def fetch_europepmc_literature_evidence(
             source_label="Literature-EuropePMC",
             article_id=f"{source}:{article_id}" if article_id else "EuropePMC",
             article_title=str(record.get("title") or ""),
+            pmid=str(record.get("pmid") or ""),
+            pmcid=str(record.get("pmcid") or ""),
+            doi=str(record.get("doi") or ""),
         )
         if not table.empty:
             evidence_tables.append(table)
@@ -790,6 +926,9 @@ def fetch_europepmc_literature_evidence(
                 source_label="Literature-EuropePMC-OA",
                 article_id=str(full_text_id),
                 article_title=str(record.get("title") or ""),
+                pmid=str(record.get("pmid") or ""),
+                pmcid=str(full_text_id if str(full_text_id).upper().startswith("PMC") else record.get("pmcid") or ""),
+                doi=str(record.get("doi") or ""),
             )
             if not full_table.empty:
                 evidence_tables.append(full_table)
@@ -842,7 +981,7 @@ def map_literature_evidence_to_structure(
         )
         exact_rows = int(direct["mapping_level"].astype(str).str.lower().eq("exact").sum())
         weak_rows = int(len(direct) - exact_rows)
-        return direct[EVIDENCE_COLUMNS], {
+        return ensure_evidence_columns(direct), {
             "mapping_status": "assumed-structure-numbering",
             "mapped_rows": str(len(direct)),
             "exact_rows": str(exact_rows),
@@ -856,7 +995,7 @@ def map_literature_evidence_to_structure(
             fallback["evidence_source"].astype(str).str.len().gt(0),
             "Literature",
         )
-        return fallback[EVIDENCE_COLUMNS], {
+        return ensure_evidence_columns(fallback), {
             "mapping_status": "direct-weak",
             "mapped_rows": str(len(fallback)),
             "exact_rows": "0",
@@ -879,7 +1018,7 @@ def map_literature_evidence_to_structure(
     mapped_df["mapping_method"] = mapped_df["mapping_method"].astype(str).map(
         lambda value: value if value.startswith("literature-") else f"literature-{value}"
     )
-    return mapped_df[EVIDENCE_COLUMNS], mapping_meta
+    return ensure_evidence_columns(mapped_df), mapping_meta
 
 
 def fetch_literature_residue_evidence_for_structure(

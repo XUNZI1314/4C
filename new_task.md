@@ -12,6 +12,7 @@
 - [x] 口袋 / 界面 / 热点联合推荐：`candidate_fusion.py`
 - [x] UniProt / M-CSA / SIFTS 外部证据接入。
 - [x] 文献残基抽取：PubMed、Europe PMC、手动文本。
+- [x] 文献证据片段级字段：`article_title`、`pmid`、`pmcid`、`doi`、`evidence_snippet`、`sentence_index`、`extraction_pattern`、`requires_manual_review`。
 - [x] 结构辅助 UniProt/PDB 映射质量校验。
 - [x] P2Rank 本地可选接入。
 - [x] Conservation rerank-only 信号和 A/B 对比。
@@ -55,11 +56,11 @@
 - 增加 Top-1 / Top-3 catalytic coverage 评估。
 - 评估 evidence route、literature route、P2Rank 和 conservation 的独立贡献。
 
-### P1：增强文献证据片段
+### P1：继续增强文献证据片段
 
-- 增加 `evidence_snippet`、`article_title`、`pmid`、`pmcid`、`doi`。
-- 增加 `requires_manual_review`。
-- 处理跨句 triad、表格和补充材料。
+- 已落地结构化 citation/snippet/manual-review 字段，并在口袋页提供外部证据明细预览和 CSV 导出。
+- 下一步处理跨句 triad、表格、补充材料和非标准突变描述。
+- 下一步把 snippet 级别证据纳入 benchmark 误差分析，区分真实 catalytic support 和弱上下文命中。
 
 ### P1：增强残基编号映射
 

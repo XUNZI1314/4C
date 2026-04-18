@@ -2657,6 +2657,41 @@ with tab_auto:
                     f"weak {int(auto_detection_summary.get('auto_detection_external_weak_rows', 0) or 0)} "
                     f"({external_text})"
                 )
+            if not external_site_df.empty:
+                source_detail_columns = [
+                    column
+                    for column in [
+                        "chain",
+                        "resid",
+                        "evidence_source",
+                        "evidence_type",
+                        "evidence_score",
+                        "mapping_level",
+                        "mapping_confidence",
+                        "article_title",
+                        "pmid",
+                        "pmcid",
+                        "doi",
+                        "evidence_snippet",
+                        "sentence_index",
+                        "extraction_pattern",
+                        "requires_manual_review",
+                    ]
+                    if column in external_site_df.columns
+                ]
+                if source_detail_columns:
+                    st.caption("External evidence source details: structured citations, snippets and manual-review flags used by the pocket rerank.")
+                    st.dataframe(
+                        external_site_df[source_detail_columns].head(80),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                st.download_button(
+                    "导出外部证据明细 CSV",
+                    data=_to_csv_bytes(external_site_df),
+                    file_name="external_residue_evidence_details.csv",
+                    mime="text/csv",
+                )
             route_status_text = str(auto_detection_summary.get("auto_detection_external_route_status") or "").strip()
             if route_status_text:
                 st.caption(

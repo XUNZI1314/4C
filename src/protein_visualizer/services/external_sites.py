@@ -42,11 +42,91 @@ EVIDENCE_COLUMNS = [
     "mapping_level",
     "mapping_confidence",
     "mapping_method",
+    "article_title",
+    "pmid",
+    "pmcid",
+    "doi",
+    "evidence_snippet",
+    "sentence_index",
+    "extraction_pattern",
+    "requires_manual_review",
 ]
+
+EVIDENCE_SOURCE_DETAIL_COLUMNS = [
+    "article_title",
+    "pmid",
+    "pmcid",
+    "doi",
+    "evidence_snippet",
+    "sentence_index",
+    "extraction_pattern",
+    "requires_manual_review",
+]
+
+EVIDENCE_COLUMN_DEFAULTS: Dict[str, object] = {
+    "chain": "",
+    "resid": 0,
+    "evidence_source": "external",
+    "evidence_type": "Functional site",
+    "evidence_score": 0.75,
+    "evidence_note": "",
+    "uniprot_resid": 0,
+    "mapping_level": "weak",
+    "mapping_confidence": 0.3,
+    "mapping_method": "unknown",
+    "article_title": "",
+    "pmid": "",
+    "pmcid": "",
+    "doi": "",
+    "evidence_snippet": "",
+    "sentence_index": "",
+    "extraction_pattern": "",
+    "requires_manual_review": False,
+}
 
 
 def _empty_evidence_df() -> pd.DataFrame:
     return pd.DataFrame(columns=EVIDENCE_COLUMNS)
+
+
+def _coerce_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = str(value or "").strip().lower()
+    return text in {"1", "true", "yes", "y", "review", "needs-review", "manual-review"}
+
+
+def ensure_evidence_columns(table: Optional[pd.DataFrame]) -> pd.DataFrame:
+    """Return a copy with the full residue-evidence schema.
+
+    Several evidence sources are intentionally sparse. Keeping the schema
+    compatible here prevents newer source-detail fields from breaking older
+    UniProt, M-CSA, conservation or manually supplied evidence tables.
+    """
+
+    if table is None or getattr(table, "empty", True):
+        return _empty_evidence_df()
+
+    working = table.copy()
+    for column in EVIDENCE_COLUMNS:
+        if column in working.columns:
+            continue
+        if column == "uniprot_resid" and "resid" in working.columns:
+            working[column] = working["resid"]
+        else:
+            working[column] = EVIDENCE_COLUMN_DEFAULTS.get(column, "")
+
+    working["requires_manual_review"] = working["requires_manual_review"].map(_coerce_bool)
+    for column in ["article_title", "pmid", "pmcid", "doi", "evidence_snippet", "sentence_index", "extraction_pattern"]:
+        working[column] = working[column].fillna("").astype(str).str.strip()
+    return working[EVIDENCE_COLUMNS].copy()
+
+
+def _source_detail_from_row(row: object) -> dict[str, object]:
+    return {
+        column: getattr(row, column, EVIDENCE_COLUMN_DEFAULTS.get(column, ""))
+        for column in EVIDENCE_SOURCE_DETAIL_COLUMNS
+    }
 
 
 def _as_int(value: object) -> Optional[int]:
@@ -257,7 +337,7 @@ def merge_external_evidence_tables(*tables: Optional[pd.DataFrame]) -> pd.DataFr
             working["uniprot_resid"] = working["resid"]
         if "mapping_method" not in working.columns:
             working["mapping_method"] = "unknown"
-        normalized_tables.append(working[EVIDENCE_COLUMNS].copy())
+        normalized_tables.append(ensure_evidence_columns(working))
 
     if not normalized_tables:
         return _empty_evidence_df()
@@ -271,7 +351,7 @@ def merge_external_evidence_tables(*tables: Optional[pd.DataFrame]) -> pd.DataFr
         subset=["chain", "resid", "evidence_source", "evidence_type", "mapping_level", "uniprot_resid", "evidence_note"],
         keep="first",
     )
-    return combined.drop(columns="_mapping_rank").reset_index(drop=True)[EVIDENCE_COLUMNS]
+    return ensure_evidence_columns(combined.drop(columns="_mapping_rank").reset_index(drop=True))
 
 
 def _fetch_pdbe_uniprot_mappings(
@@ -404,7 +484,7 @@ def _map_uniprot_sites_to_structure(
         fallback["evidence_source"] = "UniProt"
         if cleaned_chain_hint:
             fallback["chain"] = cleaned_chain_hint
-        return fallback[EVIDENCE_COLUMNS], {
+        return ensure_evidence_columns(fallback), {
             "pdb_id": str(pdb_id or "").upper(),
             "mapping_status": "unavailable",
             "mapped_rows": "0",
@@ -491,6 +571,7 @@ def _map_uniprot_sites_to_structure(
                     "mapping_level": "weak",
                     "mapping_confidence": 0.28,
                     "mapping_method": "sifts-unmapped-fallback",
+                    **_source_detail_from_row(row),
                 }
             )
             continue
@@ -517,6 +598,7 @@ def _map_uniprot_sites_to_structure(
                 "mapping_level": mapping_level,
                 "mapping_confidence": round(float(best_confidence), 3),
                 "mapping_method": best_mapping_method,
+                **_source_detail_from_row(row),
             }
         )
 
@@ -536,7 +618,7 @@ def _map_uniprot_sites_to_structure(
         ["mapping_level", "mapping_confidence", "resid", "evidence_score", "evidence_type"],
         ascending=[True, False, True, False, True],
     ).reset_index(drop=True)
-    mapped_df = mapped_df[EVIDENCE_COLUMNS]
+    mapped_df = ensure_evidence_columns(mapped_df)
 
     metadata = {
         "pdb_id": str(pdb_id or "").upper(),
@@ -702,7 +784,7 @@ def fetch_mcsa_catalytic_sites(
         ["resid", "evidence_score", "mapping_confidence"],
         ascending=[True, False, False],
     ).reset_index(drop=True)
-    evidence_df = evidence_df[EVIDENCE_COLUMNS]
+    evidence_df = ensure_evidence_columns(evidence_df)
     return evidence_df, {
         "accession": cleaned_accession,
         "ec_number": cleaned_ec,
@@ -901,7 +983,7 @@ def fetch_uniprot_functional_sites(
         ["resid", "evidence_score", "evidence_type"],
         ascending=[True, False, True],
     ).reset_index(drop=True)
-    evidence_df = evidence_df[EVIDENCE_COLUMNS]
+    evidence_df = ensure_evidence_columns(evidence_df)
 
     metadata = {
         "accession": cleaned,

@@ -10,7 +10,7 @@ ProteinInsight 是一个面向酶蛋白的结构可视化、口袋定位、关�
 - 自动口袋识别：优先 `pyKVFinder`，可选本地 `P2Rank`，并保留 ligand proximity、geometry clustering 和 external-evidence route。
 - 外部证据融合：UniProt、PDBe/SIFTS、M-CSA、PubMed、Europe PMC、手动文献文本、保守性表格、热点和界面信息。
 - 强化 UniProt/PDB 残基对齐：优先结构中真实存在的链和残基，降低缺失、gap、弱映射和 residue identity mismatch 的置信度。
-- 文献残基抽取：支持 catalytic、active site、mutagenesis、activity-loss 等上下文过滤，并做跨文章支持统计。
+- 文献残基抽取：支持 catalytic、active site、mutagenesis、activity-loss 等上下文过滤，保留 `PMID/PMCID/DOI`、标题、证据片段、抽取模式和人工复核标记，并做跨文章支持统计。
 - 证据驱动口袋排序：输出 evidence quality、direct anchor、route anchor、mapping risk、A/B rank delta 和 practical recommendation。
 - 口袋分层：将口袋残基标注为 `core`、`shell`、`rim`，便于区分关键位点和边界残基。
 - Consensus rerank 审计链：从建议、预览、policy gate、action queue、scorecard、guardrail 到 release approval、apply plan、execution receipt 和 closure。

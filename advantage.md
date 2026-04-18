@@ -211,9 +211,9 @@ ProteinInsight 不追求找出所有可能 druggable pocket，而是优先定位
 
 ### 2. 文献抽取仍偏规则驱动
 
-当前抽取适合 MVP，但仍会漏掉跨句 catalytic triad、表格、补充材料、非标准突变描述和成熟酶 offset。
+当前抽取已经保留 `PMID/PMCID/DOI`、标题、证据片段、句子序号、抽取模式和 `requires_manual_review`，便于用户回看证据来源。但规则驱动方案仍会漏掉跨句 catalytic triad、表格、补充材料、非标准突变描述和成熟酶 offset。
 
-下一步可引入 LLM/NLP 辅助，但必须保留 source、snippet、PMID/PMCID/DOI、manual review flag。
+下一步可引入 LLM/NLP 辅助，但必须继续保留 source、snippet、PMID/PMCID/DOI、manual review flag，并且不能让无片段或无稳定 citation 的结果直接升级为高置信口袋 anchor。
 
 ### 3. UniProt/PDB 对齐还可增强
 
@@ -253,9 +253,9 @@ ProteinInsight 不追求找出所有可能 druggable pocket，而是优先定位
 - 带天然底物、辅因子或抑制剂的 holo PDB。
 - 文献明确报道 catalytic triad/dyad 的酶。
 
-### P1：证据片段级文献抽取
+### P1：继续增强证据片段级文献抽取
 
-新增字段建议：
+已落地字段：
 
 - `article_title`
 - `pmid`
@@ -265,6 +265,13 @@ ProteinInsight 不追求找出所有可能 druggable pocket，而是优先定位
 - `sentence_index`
 - `extraction_pattern`
 - `requires_manual_review`
+
+下一步重点：
+
+- 跨句 catalytic triad / dyad 合并。
+- 表格和补充材料抽取。
+- mature chain / isoform offset 解释。
+- snippet 级 false positive 统计。
 
 ### P1：增强结构编号校验
 

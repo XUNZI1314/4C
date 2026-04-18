@@ -6,7 +6,7 @@ from typing import Optional, Tuple
 
 import pandas as pd
 
-from protein_visualizer.services.external_sites import EVIDENCE_COLUMNS
+from protein_visualizer.services.external_sites import EVIDENCE_COLUMNS, ensure_evidence_columns
 
 
 GRADE_SCORE_ALIASES = {
@@ -298,4 +298,4 @@ def parse_conservation_evidence_table(
         "score_mean": f"{float(pd.to_numeric(evidence_df['evidence_score'], errors='coerce').fillna(0.0).mean()):.3f}",
         "score_max": f"{float(pd.to_numeric(evidence_df['evidence_score'], errors='coerce').fillna(0.0).max()):.3f}",
     }
-    return evidence_df[EVIDENCE_COLUMNS], metadata
+    return ensure_evidence_columns(evidence_df), metadata
