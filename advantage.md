@@ -200,7 +200,7 @@ ProteinInsight 不追求找出所有可能 druggable pocket，而是优先定位
 
 目前已经有 catalytic pocket benchmark 框架，可以从已加载的 UniProt / M-CSA / 文献 / AI 外部证据生成 benchmark reference candidate、import summary、review queue、checklist、decision loop 和 accepted candidate export，也可以上传 curated catalytic residues 并输出 Top-1 / Top-3 / Top-5 coverage、case/dataset summary、case interpretation matrix/summary/queue、case/dataset-level readiness-aware interpretation、dataset claim readiness queue/checklist/report、best hit rank、missed residues、P2Rank on/off 对照和 current vs ablation variant comparison。variant comparison 已支持整体、case、dataset 和 residue 四层视图，并能生成 lost/current-missed residue remediation queue、summary 和 checklist。但还缺少批量真实数据集，尚未证明不同算法组合在大样本上的命中率提升。
 
-当前 reference source 已加安全边界：如果没有上传 curated benchmark 文件，系统会优先使用 reviewer 接受后的 accepted candidate；未审核的 external-evidence candidate 只作为显式开启的 provisional fallback，并在 snapshot/report/source audit/summary 中记录 source mode、provisional、reviewed-candidate 和 claim 安全状态。source audit 已接入 readiness gate，provisional reference 会成为 P0 blocker，review-qualified candidate 会成为 P2 independence review item。
+当前 reference source 已加安全边界：如果没有上传 curated benchmark 文件，系统会优先使用 reviewer 接受后的 accepted candidate；未审核的 external-evidence candidate 只作为显式开启的 provisional fallback，并在 snapshot/report/source audit/summary/checklist 中记录 source mode、provisional、reviewed-candidate 和 claim 安全状态。source audit 已接入 readiness gate，provisional reference 会成为 P0 blocker，review-qualified candidate 会成为 P2 independence review item。
 
 建议指标：
 
@@ -224,6 +224,7 @@ ProteinInsight 不追求找出所有可能 druggable pocket，而是优先定位
 - `pocket_benchmark_reference_candidate_review_outcomes.csv`
 - `pocket_benchmark_reference_candidate_accepted.csv`
 - `pocket_benchmark_reference_source_audit_summary.csv`
+- `pocket_benchmark_reference_source_audit_checklist.md`
 - `pocket_benchmark_reference_source_audit.csv`
 - `pocket_benchmark_reference_template.csv`
 - `pocket_benchmark_reference_template.md`

@@ -25,6 +25,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_from_external_evidence,
     build_pocket_benchmark_reference_import_summary,
     build_pocket_benchmark_reference_source_audit,
+    build_pocket_benchmark_reference_source_audit_checklist_markdown,
     build_pocket_benchmark_reference_source_audit_summary,
     build_pocket_benchmark_reference_readiness_case_summary,
     build_pocket_benchmark_reference_readiness_checklist_markdown,
@@ -1067,6 +1068,38 @@ def test_benchmark_reference_source_audit_summary_prioritizes_blocked_sources():
     assert summary.iloc[0]["can_support_independent_claim"] == "no"
     assert int(summary.iloc[0]["provisional_rows"]) == 1
     assert int(summary.iloc[1]["reviewed_candidate_rows"]) == 1
+
+
+def test_benchmark_reference_source_audit_checklist_marks_risky_rows():
+    reference_df = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "enzyme-a",
+                "chain": "A",
+                "resid": 195,
+                "resname": "SER",
+                "reference_type": "Catalytic residue",
+                "reference_source": "M-CSA",
+                "reference_note": "",
+                "expected_pocket_id": "",
+            }
+        ]
+    )
+    source_audit = build_pocket_benchmark_reference_source_audit(
+        reference_df,
+        source_mode="provisional-external-evidence",
+        is_provisional=True,
+    )
+    summary = build_pocket_benchmark_reference_source_audit_summary(source_audit)
+
+    checklist = build_pocket_benchmark_reference_source_audit_checklist_markdown(summary, source_audit)
+
+    assert "Benchmark reference source audit checklist" in checklist
+    assert "Source Status Summary" in checklist
+    assert "`blocked-provisional`" in checklist
+    assert "Reference Row Actions" in checklist
+    assert "BRS-001" in checklist
+    assert "Curate or accept review decisions" in checklist
 
 
 def test_benchmark_reference_readiness_uses_source_audit_as_gate():

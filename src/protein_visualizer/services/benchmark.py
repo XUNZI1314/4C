@@ -1928,6 +1928,69 @@ def build_pocket_benchmark_reference_source_audit_summary(
     return frame[BENCHMARK_REFERENCE_SOURCE_AUDIT_SUMMARY_COLUMNS]
 
 
+def build_pocket_benchmark_reference_source_audit_checklist_markdown(
+    source_audit_summary_df: Optional[pd.DataFrame],
+    source_audit_df: Optional[pd.DataFrame],
+) -> str:
+    """Render source-audit risks as a manual review checklist."""
+
+    summary = (
+        source_audit_summary_df.copy()
+        if source_audit_summary_df is not None and not getattr(source_audit_summary_df, "empty", True)
+        else _empty_reference_source_audit_summary_df()
+    )
+    audit = (
+        source_audit_df.copy()
+        if source_audit_df is not None and not getattr(source_audit_df, "empty", True)
+        else _empty_reference_source_audit_df()
+    )
+    if summary.empty and audit.empty:
+        return ""
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_SUMMARY_COLUMNS:
+        if column not in summary.columns:
+            summary[column] = ""
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_COLUMNS:
+        if column not in audit.columns:
+            audit[column] = ""
+
+    lines = [
+        "# Benchmark reference source audit checklist",
+        "",
+        "Use this checklist before treating catalytic pocket benchmark coverage as an independent precision claim.",
+        "",
+    ]
+    if not summary.empty:
+        lines.extend(["## Source Status Summary", ""])
+        for row in summary.itertuples(index=False):
+            lines.append(
+                f"- [ ] {row.summary_id} `{row.source_claim_status}` / `{row.source_mode}`: "
+                f"{int(row.reference_rows)} references, {int(row.case_count)} cases. {row.recommended_action}"
+            )
+        lines.append("")
+
+    risk_rows = audit[audit["source_claim_status"].map(_safe_text).ne("source-ready")].copy()
+    if not risk_rows.empty:
+        lines.extend(["## Reference Row Actions", ""])
+        for row in risk_rows.itertuples(index=False):
+            case_text = f"case `{row.benchmark_id}`" if _safe_text(row.benchmark_id) else "unnamed case"
+            residue_text = _residue_label(_safe_text(row.chain), int(row.resid), _safe_text(row.resname)) if _safe_text(row.resid) else "-"
+            lines.append(
+                f"- [ ] {row.audit_id} `{row.source_claim_status}` for {case_text}, residue `{residue_text}`: {row.recommended_action}"
+            )
+        lines.append("")
+    elif not audit.empty:
+        lines.extend(
+            [
+                "## Reference Row Actions",
+                "",
+                "- [ ] All reference rows are source-ready; keep source audit, readiness, and structure-validation exports with the report.",
+                "",
+            ]
+        )
+
+    return "\n".join(lines).strip() + "\n"
+
+
 def _normalize_pocket_rows(pocket_df: Optional[pd.DataFrame]) -> pd.DataFrame:
     if pocket_df is None or getattr(pocket_df, "empty", True) or "pocket_id" not in pocket_df.columns or "resid" not in pocket_df.columns:
         return pd.DataFrame(columns=["benchmark_id", "pocket_id", "chain", "resid", "resname"])
