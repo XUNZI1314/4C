@@ -33,6 +33,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_source_audit_case_decision_outcome_summary,
     build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact,
     build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue,
+    build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_summary,
     build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_checklist_markdown,
     build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_cases,
     build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_report_markdown,
@@ -2031,6 +2032,70 @@ def test_benchmark_reference_source_audit_case_decision_dataset_impact_action_qu
     ]
     assert bool(queue.iloc[1]["source_gate_mismatch"]) is True
     assert queue.iloc[2]["recommended_action"] == "Complete source review."
+
+
+def test_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_summary_groups_actions():
+    action_queue = pd.DataFrame(
+        [
+            {
+                "action_id": "BRSDIA-001",
+                "priority": "P0",
+                "action_status": "blocker",
+                "top_n": 1,
+                "benchmark_id": "enzyme-a",
+                "source_impact_status": "source-blocked",
+                "source_gate_mismatch": False,
+                "coverage_ratio": 0.4,
+            },
+            {
+                "action_id": "BRSDIA-002",
+                "priority": "P0",
+                "action_status": "blocker",
+                "top_n": 1,
+                "benchmark_id": "enzyme-b",
+                "source_impact_status": "source-gate-mismatch",
+                "source_gate_mismatch": True,
+                "coverage_ratio": 0.6,
+            },
+            {
+                "action_id": "BRSDIA-003",
+                "priority": "P2",
+                "action_status": "review",
+                "top_n": 3,
+                "benchmark_id": "enzyme-c",
+                "source_impact_status": "source-review-needed",
+                "source_gate_mismatch": False,
+                "coverage_ratio": 0.8,
+            },
+            {
+                "action_id": "BRSDIA-004",
+                "priority": "P2",
+                "action_status": "review",
+                "top_n": 5,
+                "benchmark_id": "enzyme-c",
+                "source_impact_status": "source-review-needed",
+                "source_gate_mismatch": False,
+                "coverage_ratio": 1.0,
+            },
+        ]
+    )
+
+    summary = build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_summary(
+        action_queue
+    )
+
+    assert summary["summary_id"].tolist() == ["BRSDIAS-001", "BRSDIAS-002", "BRSDIAS-003"]
+    assert summary["priority"].tolist() == ["P0", "P0", "P2"]
+    assert summary["source_impact_status"].tolist() == [
+        "source-gate-mismatch",
+        "source-blocked",
+        "source-review-needed",
+    ]
+    assert summary["action_count"].tolist() == [1, 1, 2]
+    assert summary["affected_case_count"].tolist() == [1, 1, 1]
+    assert int(summary.iloc[0]["mismatch_count"]) == 1
+    assert summary.iloc[2]["top_n_values"] == "3,5"
+    assert float(summary.iloc[2]["mean_coverage_ratio"]) == 0.9
 
 
 def test_benchmark_reference_source_audit_case_decision_dataset_impact_report_summarizes_gate():

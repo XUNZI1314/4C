@@ -587,6 +587,28 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         lines.append(
             f"Benchmark source-audit decision dataset impact action queue: {source_dataset_impact_action_queue_rows} rows / blockers {blocker_rows} / review {review_rows} / mismatch {mismatch_rows}"
         )
+    source_dataset_impact_action_summary_rows = int(
+        extra.get("pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_summary_rows") or 0
+    )
+    if source_dataset_impact_action_summary_rows > 0:
+        action_count = int(
+            extra.get("pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_summary_action_count") or 0
+        )
+        p0_rows = int(
+            extra.get("pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_summary_p0_rows") or 0
+        )
+        mismatch_count = int(
+            extra.get("pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_summary_mismatch_count") or 0
+        )
+        top_priority = str(
+            extra.get("pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_summary_top_priority") or "-"
+        ).strip()
+        top_source_impact = str(
+            extra.get("pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_summary_top_source_impact") or "-"
+        ).strip()
+        lines.append(
+            f"Benchmark source-audit decision dataset impact action summary: {source_dataset_impact_action_summary_rows} rows / actions {action_count} / P0 groups {p0_rows} / mismatches {mismatch_count} / top {top_priority or '-'} {top_source_impact or '-'}"
+        )
     benchmark_dataset_interpretation_queue_rows = int(extra.get("pocket_benchmark_dataset_interpretation_queue_rows") or 0)
     if benchmark_dataset_interpretation_queue_rows > 0:
         blocker_rows = int(extra.get("pocket_benchmark_dataset_interpretation_queue_blocker_rows") or 0)

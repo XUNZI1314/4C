@@ -342,6 +342,22 @@ BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_ACTION_QUEUE_COLUM
     "impact_warning",
 ]
 
+BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_ACTION_QUEUE_SUMMARY_COLUMNS = [
+    "summary_id",
+    "priority",
+    "action_status",
+    "source_impact_status",
+    "action_count",
+    "affected_case_count",
+    "top_n_values",
+    "mismatch_count",
+    "mean_coverage_ratio",
+    "top_action_id",
+    "top_benchmark_id",
+    "recommended_action",
+    "summary_warning",
+]
+
 BENCHMARK_DETAIL_COLUMNS = [
     *BENCHMARK_REFERENCE_COLUMNS,
     "residue_label",
@@ -851,6 +867,12 @@ def _empty_reference_source_audit_case_decision_dataset_impact_case_df() -> pd.D
 
 def _empty_reference_source_audit_case_decision_dataset_impact_action_queue_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_ACTION_QUEUE_COLUMNS)
+
+
+def _empty_reference_source_audit_case_decision_dataset_impact_action_queue_summary_df() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_ACTION_QUEUE_SUMMARY_COLUMNS
+    )
 
 
 def _empty_detail_df() -> pd.DataFrame:
@@ -3659,6 +3681,86 @@ def build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_a
     ).reset_index(drop=True)
     frame["action_id"] = [f"BRSDIA-{index + 1:03d}" for index in range(len(frame))]
     return frame[BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_ACTION_QUEUE_COLUMNS]
+
+
+def build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_summary(
+    action_queue_df: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    """Summarize source-audit dataset impact actions by priority and impact status."""
+
+    if action_queue_df is None or getattr(action_queue_df, "empty", True):
+        return _empty_reference_source_audit_case_decision_dataset_impact_action_queue_summary_df()
+
+    working = action_queue_df.copy()
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_ACTION_QUEUE_COLUMNS:
+        if column not in working.columns:
+            working[column] = ""
+    for column in ("priority", "action_status", "source_impact_status", "benchmark_id", "action_id"):
+        working[column] = working[column].map(_safe_text)
+    working["top_n"] = pd.to_numeric(working["top_n"], errors="coerce").fillna(0).astype(int)
+    working["coverage_ratio"] = pd.to_numeric(working["coverage_ratio"], errors="coerce").fillna(0.0)
+    working["source_gate_mismatch"] = working["source_gate_mismatch"].map(_claim_ready_bool)
+    working = working[working["priority"].ne("") | working["action_status"].ne("") | working["source_impact_status"].ne("")]
+    if working.empty:
+        return _empty_reference_source_audit_case_decision_dataset_impact_action_queue_summary_df()
+
+    rows: list[dict[str, object]] = []
+    for (priority, action_status, source_impact_status), group in working.groupby(
+        ["priority", "action_status", "source_impact_status"],
+        sort=False,
+        dropna=False,
+    ):
+        sorted_group = group.sort_values(["top_n", "benchmark_id", "action_id"]).reset_index(drop=True)
+        top_row = sorted_group.iloc[0]
+        mismatch_count = int(sorted_group["source_gate_mismatch"].map(bool).sum())
+        top_n_values = sorted({int(value) for value in sorted_group["top_n"].tolist() if int(value) > 0})
+        if mismatch_count > 0:
+            recommended_action = (
+                "Regenerate readiness interpretation for source-gate mismatches before dataset-level claims."
+            )
+            warning = "Source gate mismatch remains in this action group."
+        elif str(priority).upper() in {"P0", "P1"} or action_status == "blocker":
+            recommended_action = "Resolve source blockers before using affected Top-N coverage as a precision claim."
+            warning = "Source blockers remain in this action group."
+        elif str(priority).upper() == "P2" or action_status == "review":
+            recommended_action = "Complete source review before treating affected cases as publication-ready."
+            warning = "Source review remains open in this action group."
+        else:
+            recommended_action = "Review source-impact actions before reporting benchmark claims."
+            warning = "Source-impact action group needs reviewer confirmation."
+        rows.append(
+            {
+                "summary_id": "",
+                "priority": str(priority).upper(),
+                "action_status": action_status,
+                "source_impact_status": source_impact_status,
+                "action_count": int(len(sorted_group)),
+                "affected_case_count": int(sorted_group["benchmark_id"].replace("", pd.NA).dropna().nunique()),
+                "top_n_values": ",".join(str(value) for value in top_n_values),
+                "mismatch_count": mismatch_count,
+                "mean_coverage_ratio": round(float(sorted_group["coverage_ratio"].mean()), 3),
+                "top_action_id": _safe_text(top_row.get("action_id")),
+                "top_benchmark_id": _safe_text(top_row.get("benchmark_id")),
+                "recommended_action": recommended_action,
+                "summary_warning": warning,
+            }
+        )
+
+    frame = pd.DataFrame(
+        rows,
+        columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_ACTION_QUEUE_SUMMARY_COLUMNS,
+    )
+    priority_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    status_rank = {"blocker": 0, "review": 1}
+    impact_rank = {"source-gate-mismatch": 0, "source-blocked": 1, "source-review-needed": 2, "source-open": 3}
+    frame["_priority_rank"] = frame["priority"].map(priority_rank).fillna(9)
+    frame["_status_rank"] = frame["action_status"].map(status_rank).fillna(9)
+    frame["_impact_rank"] = frame["source_impact_status"].map(impact_rank).fillna(9)
+    frame = frame.sort_values(
+        ["_priority_rank", "_status_rank", "_impact_rank", "source_impact_status"]
+    ).drop(columns=["_priority_rank", "_status_rank", "_impact_rank"]).reset_index(drop=True)
+    frame["summary_id"] = [f"BRSDIAS-{index + 1:03d}" for index in range(len(frame))]
+    return frame[BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_ACTION_QUEUE_SUMMARY_COLUMNS]
 
 
 def build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_report_markdown(
