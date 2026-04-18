@@ -26,7 +26,7 @@ if __name__ == "__main__":
     st.markdown(
         """
         <style>
-        html, body { background: #f6f9fc; color:#0f1724; font-family: Inter, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; }
+        html, body { background: #f6f9fc; color:#0f1724; font-family: 'Noto Sans SC', 'Source Han Sans SC', 'Microsoft YaHei', 'PingFang SC', sans-serif; }
         .header-card { background: linear-gradient(90deg,#2b6cb0,#805ad5); color: #fff; padding: 14px; border-radius: 12px; box-shadow: 0 6px 18px rgba(11,38,77,0.08); margin-bottom: 12px; }
         .hero-shell { background: linear-gradient(135deg, rgba(43,108,176,0.10), rgba(128,90,213,0.10)); border: 1px solid rgba(43,108,176,0.16); border-radius: 18px; padding: 18px; margin: 14px 0 18px 0; }
         .hero-grid { display: grid; grid-template-columns: 1.3fr 0.9fr; gap: 14px; align-items: start; }

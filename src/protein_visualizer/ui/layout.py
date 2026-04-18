@@ -43,6 +43,219 @@ from protein_visualizer.services.explainer import explain_analysis, explain_comp
 LOGGER = get_logger(__name__)
 
 
+DISPLAY_COLUMN_LABELS = {
+    "rank": "序号",
+    "chain": "链",
+    "resid": "残基编号",
+    "resname": "残基名",
+    "label": "标签",
+    "residue_label": "残基",
+    "delta_total": "总能量变化",
+    "delta_total_raw": "原始总能量变化",
+    "energy": "能量",
+    "energy_source": "能量来源",
+    "classification_label": "分类",
+    "classification_color": "分类颜色",
+    "classification_description": "分类说明",
+    "display_color": "显示颜色",
+    "hotspot_score": "热点得分",
+    "hotspot_rank": "热点排名",
+    "neighborhood_count": "邻近残基数",
+    "cluster_id": "聚类 ID",
+    "is_hotspot": "是否热点",
+    "is_pocket": "是否口袋",
+    "pocket_id": "口袋 ID",
+    "volume": "体积",
+    "score": "得分",
+    "residue_count": "残基数",
+    "hotspot_count": "热点数",
+    "detection_route": "识别路径",
+    "consensus_methods": "共识方法",
+    "method_vote_count": "方法投票数",
+    "consensus_score": "共识得分",
+    "consensus_overlap_ratio": "共识重叠率",
+    "smart_rank_score": "智能排名得分",
+    "smart_rank_order": "智能排名顺序",
+    "smart_rank_label": "智能排名标签",
+    "smart_rank_reason": "智能排名理由",
+    "evidence_quality_label": "证据质量",
+    "evidence_quality_score": "证据质量得分",
+    "evidence_quality_warning": "证据质量提醒",
+    "smart_external_support": "智能外部证据支持",
+    "smart_external_exact_ratio": "智能外部证据精确匹配率",
+    "smart_external_verified_ratio": "智能外部结构验证率",
+    "smart_external_mapping_quality": "智能外部证据映射质量",
+    "smart_evidence_anchor_support": "智能证据锚点支持",
+    "smart_evidence_anchor_risk": "智能证据锚点风险",
+    "smart_conservation_support": "智能保守性支持",
+    "smart_burial_support": "智能埋藏支持",
+    "smart_exposure_penalty": "智能暴露惩罚",
+    "external_supported_residue_count": "外部证据支持残基数",
+    "external_evidence_total": "外部证据总数",
+    "external_exact_match_count": "外部精确匹配数",
+    "external_exact_match_ratio": "外部精确匹配率",
+    "external_structure_verified_count": "外部结构验证数",
+    "external_support_mean": "外部支持均值",
+    "external_confidence_mean": "外部置信度均值",
+    "external_mapping_quality_mean": "外部映射质量均值",
+    "external_direct_anchor_count": "外部直接锚点数",
+    "evidence_route_anchor_count": "证据路径锚点数",
+    "evidence_anchor_min_distance": "证据锚点最小距离",
+    "evidence_anchor_max_proximity": "证据锚点最大接近度",
+    "evidence_anchor_residues": "证据锚点残基",
+    "external_direct_sources": "外部直接来源",
+    "external_evidence_types": "外部证据类型",
+    "external_evidence_notes": "外部证据备注",
+    "conservation_supported_residue_count": "保守性支持残基数",
+    "conservation_evidence_total": "保守性证据总数",
+    "conservation_support_mean": "保守性支持均值",
+    "conservation_confidence_mean": "保守性置信度均值",
+    "conservation_sources": "保守性来源",
+    "external_sources": "外部来源",
+    "residue_labels": "残基列表",
+    "count": "出现次数",
+    "frequency": "出现频率",
+    "is_common": "是否共同热点",
+}
+
+
+DISPLAY_COLUMN_TOKEN_LABELS = {
+    "ai": "AI",
+    "anchor": "锚点",
+    "burial": "埋藏",
+    "chain": "链",
+    "classification": "分类",
+    "cluster": "聚类",
+    "color": "颜色",
+    "confidence": "置信度",
+    "conservation": "保守性",
+    "consensus": "共识",
+    "count": "数量",
+    "delta": "变化",
+    "description": "说明",
+    "detection": "识别",
+    "display": "显示",
+    "distance": "距离",
+    "energy": "能量",
+    "evidence": "证据",
+    "exact": "精确",
+    "external": "外部",
+    "frequency": "频率",
+    "hotspot": "热点",
+    "id": "ID",
+    "is": "是否",
+    "label": "标签",
+    "mapping": "映射",
+    "max": "最大",
+    "mean": "均值",
+    "method": "方法",
+    "methods": "方法",
+    "min": "最小",
+    "neighborhood": "邻近",
+    "notes": "备注",
+    "order": "顺序",
+    "overlap": "重叠",
+    "pocket": "口袋",
+    "proximity": "接近度",
+    "quality": "质量",
+    "rank": "排名",
+    "reason": "理由",
+    "residue": "残基",
+    "resid": "残基编号",
+    "resname": "残基名",
+    "route": "路径",
+    "score": "得分",
+    "source": "来源",
+    "sources": "来源",
+    "support": "支持",
+    "supported": "支持",
+    "total": "总计",
+    "types": "类型",
+    "verified": "验证",
+    "volume": "体积",
+    "vote": "投票",
+    "warning": "提醒",
+}
+
+
+DISPLAY_VALUE_REPLACEMENTS = {
+    "precision-consensus": "精度共识",
+    "precision-external-evidence": "精度外部证据",
+    "precision-fpocket": "精度 fpocket",
+    "precision-kvfinder": "精度 KVFinder",
+    "precision-kvfinder-multiscale": "精度 KVFinder 多尺度",
+    "precision-p2rank": "精度 P2Rank",
+    "precision-geometry": "精度几何",
+    "fallback-": "回退-",
+    "consensus": "共识",
+    "external-evidence": "外部证据",
+    "high": "高",
+    "medium": "中",
+    "low": "低",
+    "excellent": "优秀",
+    "good": "良好",
+    "review": "需复核",
+    "weak": "弱",
+}
+
+
+def localize_column_name(column: object) -> object:
+    if not isinstance(column, str):
+        return column
+    if column in DISPLAY_COLUMN_LABELS:
+        return DISPLAY_COLUMN_LABELS[column]
+    if "_" not in column:
+        return DISPLAY_COLUMN_TOKEN_LABELS.get(column.lower(), column)
+    parts = column.split("_")
+    localized_parts = [DISPLAY_COLUMN_TOKEN_LABELS.get(part.lower(), part) for part in parts]
+    if localized_parts != parts:
+        return " ".join(localized_parts)
+    return column
+
+
+def localize_display_value(value: object) -> object:
+    if value is None:
+        return value
+    if isinstance(value, (bool, np.bool_)):
+        return "是" if bool(value) else "否"
+    try:
+        if pd.isna(value):
+            return value
+    except (TypeError, ValueError):
+        pass
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if not text:
+        return value
+    if text in DISPLAY_VALUE_REPLACEMENTS:
+        return DISPLAY_VALUE_REPLACEMENTS[text]
+    parts = [part.strip() for part in text.split(",") if part.strip()]
+    if len(parts) > 1:
+        localized_parts = [DISPLAY_VALUE_REPLACEMENTS.get(part, part) for part in parts]
+        if localized_parts != parts:
+            return "，".join(localized_parts)
+    for prefix, target_prefix in {
+        "precision-": "精度-",
+        "fallback-": "回退-",
+    }.items():
+        if text.startswith(prefix):
+            return text.replace(prefix, target_prefix, 1)
+    return text
+
+
+def localize_display_table(table: pd.DataFrame) -> pd.DataFrame:
+    if table is None:
+        return table
+    display = table.copy()
+    for column in display.columns:
+        if pd.api.types.is_bool_dtype(display[column]):
+            display[column] = display[column].map(lambda value: "是" if bool(value) else "否")
+        elif pd.api.types.is_object_dtype(display[column]) or pd.api.types.is_string_dtype(display[column]):
+            display[column] = display[column].map(localize_display_value)
+    return display.rename(columns={column: localize_column_name(column) for column in display.columns})
+
+
 def _decode_uploaded_entries(uploaded_files, default_name: str) -> list[dict]:
     entries = []
     if not uploaded_files:
@@ -493,7 +706,7 @@ def render_app() -> None:
     df_display = annotation_table[available_cols].copy() if available_cols else annotation_table.copy()
     df_display = df_display.sort_values(["chain", "resid"]).reset_index(drop=True)
     df_display.insert(0, "rank", np.arange(1, len(df_display) + 1))
-    st.dataframe(df_display, use_container_width=True, height=300)
+    st.dataframe(localize_display_table(df_display), use_container_width=True, height=300)
 
     st.subheader("热点摘要")
     if hotspot_df.empty:
@@ -513,7 +726,8 @@ def render_app() -> None:
             ]
             if c in hotspot_df.columns
         ]
-        st.dataframe(hotspot_df[show_cols].sort_values(["hotspot_rank", "chain", "resid"]), use_container_width=True, height=220)
+        hotspot_display = hotspot_df[show_cols].sort_values(["hotspot_rank", "chain", "resid"])
+        st.dataframe(localize_display_table(hotspot_display), use_container_width=True, height=220)
 
     if isinstance(hotspot_clusters, dict) and hotspot_clusters:
         st.caption("热点聚类提示")
@@ -530,21 +744,21 @@ def render_app() -> None:
         st.subheader("口袋摘要")
         if resolved_pocket_text == "__AUTO_CONSENSUS__":
             st.caption("未上传 Pocket 文件，已使用自动共识口袋检测。")
-        st.dataframe(pocket_summary, use_container_width=True, height=180)
+        st.dataframe(localize_display_table(pocket_summary), use_container_width=True, height=180)
 
     if compare_mode and len(energy_tables) > 1:
         st.markdown("---")
         st.subheader("多构象热点比较")
-        hotspot_sets = []
+        hotspot_tables = []
         for idx, table in enumerate(energy_tables):
             if table.empty:
-                hotspot_sets.append(set())
+                hotspot_tables.append(pd.DataFrame())
                 continue
             hs = identify_hotspots(table, energy_threshold=-abs(threshold) if threshold > 0 else -1.0)
-            hs_set = {(r.chain, int(r.resid)) for r in hs.itertuples(index=False)}
-            hotspot_sets.append(hs_set)
-        comparison = compare_hotspot_sets(hotspot_sets)
-        st.dataframe(comparison.get("summary_table", pd.DataFrame()), use_container_width=True, height=180)
+            hotspot_tables.append(hs)
+        comparison = compare_hotspot_sets(hotspot_tables)
+        comparison_table = comparison.get("per_residue_df", pd.DataFrame())
+        st.dataframe(localize_display_table(comparison_table), use_container_width=True, height=180)
         st.markdown(explain_comparison(comparison))
 
     st.markdown("---")

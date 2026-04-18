@@ -2,10 +2,20 @@ from pathlib import Path
 
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
+APP_PAGE = ROOT_DIR / "app.py"
+STRUCTURE_LAYOUT = ROOT_DIR / "src" / "protein_visualizer" / "ui" / "layout.py"
 POCKET_PAGE = ROOT_DIR / "pages" / "6_口袋与界面.py"
 RESULTS_PAGE = ROOT_DIR / "pages" / "4_结果与导出.py"
 MULTI_CONFORMATION_PAGE = ROOT_DIR / "pages" / "4_多构象比较.py"
 HISTORY_PAGE = ROOT_DIR / "pages" / "5_分析历史.py"
+
+
+def _app_source() -> str:
+    return APP_PAGE.read_text(encoding="utf-8")
+
+
+def _structure_layout_source() -> str:
+    return STRUCTURE_LAYOUT.read_text(encoding="utf-8")
 
 
 def _page_source() -> str:
@@ -158,3 +168,38 @@ def test_history_page_keeps_evidence_labels_localized():
         assert snippet not in source
     for snippet in required_snippets:
         assert snippet in source
+
+
+def test_structure_page_localizes_display_tables():
+    source = _structure_layout_source()
+
+    forbidden_snippets = [
+        'st.dataframe(df_display, use_container_width=True',
+        'st.dataframe(pocket_summary, use_container_width=True',
+        'comparison.get("summary_table"',
+        "hotspot_sets.append(set())",
+    ]
+    required_snippets = [
+        "def localize_display_table",
+        "def localize_column_name",
+        '"delta_total": "总能量变化"',
+        '"pocket_id": "口袋 ID"',
+        '"is_common": "是否共同热点"',
+        "localize_display_table(df_display)",
+        "localize_display_table(hotspot_display)",
+        "localize_display_table(pocket_summary)",
+        'comparison.get("per_residue_df", pd.DataFrame())',
+        "hotspot_tables.append(hs)",
+    ]
+
+    for snippet in forbidden_snippets:
+        assert snippet not in source
+    for snippet in required_snippets:
+        assert snippet in source
+
+
+def test_app_uses_chinese_first_font_stack():
+    source = _app_source()
+
+    assert "font-family: Inter, -apple-system" not in source
+    assert "'Noto Sans SC', 'Source Han Sans SC', 'Microsoft YaHei', 'PingFang SC'" in source
