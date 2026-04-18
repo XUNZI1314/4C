@@ -4,6 +4,8 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 POCKET_PAGE = ROOT_DIR / "pages" / "6_口袋与界面.py"
 RESULTS_PAGE = ROOT_DIR / "pages" / "4_结果与导出.py"
+MULTI_CONFORMATION_PAGE = ROOT_DIR / "pages" / "4_多构象比较.py"
+HISTORY_PAGE = ROOT_DIR / "pages" / "5_分析历史.py"
 
 
 def _page_source() -> str:
@@ -12,6 +14,14 @@ def _page_source() -> str:
 
 def _results_page_source() -> str:
     return RESULTS_PAGE.read_text(encoding="utf-8")
+
+
+def _multi_conformation_page_source() -> str:
+    return MULTI_CONFORMATION_PAGE.read_text(encoding="utf-8")
+
+
+def _history_page_source() -> str:
+    return HISTORY_PAGE.read_text(encoding="utf-8")
 
 
 def _visible_streamlit_lines(source: str) -> str:
@@ -100,6 +110,51 @@ def test_results_page_keeps_pocket_export_labels_readable():
     ]
 
     for snippet in forbidden_mojibake_snippets:
+        assert snippet not in source
+    for snippet in required_snippets:
+        assert snippet in source
+
+
+def test_multi_conformation_page_localizes_display_tables():
+    source = _multi_conformation_page_source()
+
+    required_snippets = [
+        "def localize_display_table",
+        '"conformation": "构象"',
+        '"mean_energy_delta_vs_reference": "相对参考平均能量差"',
+        '"reference_overlap_ratio": "参考重叠率"',
+        "localize_display_table(per_conformation_df)",
+        "localize_display_table(reference_comparison_df)",
+        "localize_display_table(stable_hotspots_df",
+        "fallback_chart = chart_frame.rename",
+    ]
+
+    for snippet in required_snippets:
+        assert snippet in source
+
+
+def test_history_page_keeps_evidence_labels_localized():
+    source = _history_page_source()
+
+    forbidden_snippets = [
+        "Top1 evidence quality",
+        "Top1 evidence warning",
+        "pred `",
+        "res `",
+        "exact `",
+        "weak `",
+    ]
+    required_snippets = [
+        "def localize_history_table",
+        '"top_pocket_evidence_quality_label": "Top1 证据质量"',
+        "Top1 证据质量",
+        "Top1 证据提醒",
+        "预测行",
+        "弱匹配",
+        "localize_history_table(history_df[available_columns])",
+    ]
+
+    for snippet in forbidden_snippets:
         assert snippet not in source
     for snippet in required_snippets:
         assert snippet in source

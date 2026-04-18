@@ -26,6 +26,87 @@ from protein_visualizer.services.snapshot import build_analysis_snapshot, build_
 from protein_visualizer.services.structure_energy import estimate_protein_volume, resolve_energy_table
 
 
+DISPLAY_COLUMN_LABELS = {
+    "conformation": "构象",
+    "energy_source": "能量来源",
+    "residue_count": "残基数",
+    "valid_energy_count": "有效能量数",
+    "mean_energy": "平均能量",
+    "min_energy": "最低能量",
+    "max_energy": "最高能量",
+    "protein_volume": "蛋白体积",
+    "energy_coverage": "能量覆盖率",
+    "hotspot_count": "热点数",
+    "is_reference": "是否参考",
+    "mean_energy_delta_vs_reference": "相对参考平均能量差",
+    "hotspot_count_delta_vs_reference": "相对参考热点数差",
+    "reference_overlap_count": "参考重叠数",
+    "reference_overlap_ratio": "参考重叠率",
+    "unique_hotspot_count": "新增热点数",
+    "chain": "链",
+    "resid": "残基编号",
+    "resname": "残基名",
+    "count": "出现次数",
+    "frequency": "出现频率",
+    "label": "残基",
+    "is_common": "是否共同热点",
+}
+
+
+DISPLAY_COLUMN_TOKEN_LABELS = {
+    "conformation": "构象",
+    "energy": "能量",
+    "source": "来源",
+    "residue": "残基",
+    "count": "数量",
+    "valid": "有效",
+    "mean": "平均",
+    "min": "最低",
+    "max": "最高",
+    "protein": "蛋白",
+    "volume": "体积",
+    "coverage": "覆盖率",
+    "hotspot": "热点",
+    "is": "是否",
+    "reference": "参考",
+    "delta": "差值",
+    "vs": "相对",
+    "overlap": "重叠",
+    "ratio": "比例",
+    "unique": "新增",
+    "chain": "链",
+    "resid": "残基编号",
+    "resname": "残基名",
+    "frequency": "频率",
+    "label": "标签",
+    "common": "共同",
+}
+
+
+def localize_column_name(column: object) -> object:
+    if not isinstance(column, str):
+        return column
+    if column in DISPLAY_COLUMN_LABELS:
+        return DISPLAY_COLUMN_LABELS[column]
+    if "_" not in column:
+        return DISPLAY_COLUMN_TOKEN_LABELS.get(column.lower(), column)
+    parts = column.split("_")
+    localized_parts = [DISPLAY_COLUMN_TOKEN_LABELS.get(part.lower(), part) for part in parts]
+    if localized_parts != parts:
+        return " ".join(localized_parts)
+    return column
+
+
+def localize_display_table(table: pd.DataFrame) -> pd.DataFrame:
+    if table is None or table.empty:
+        return table
+    display = table.copy()
+    for column in display.columns:
+        if pd.api.types.is_bool_dtype(display[column]):
+            display[column] = display[column].map(lambda value: "是" if bool(value) else "否")
+    return display.rename(columns={column: localize_column_name(column) for column in display.columns})
+
+
 st.set_page_config(page_title="多构象比较", layout="wide")
 st.title("多构象比较")
 st.caption("用于比较多个构象的热点稳定性、能量来源和结构尺度，并支持自动 / MMPBSA / 结构估算三种能量来源模式。")
@@ -216,8 +297,9 @@ def _render_combo_chart(
         )
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.bar_chart(chart_frame.set_index(x_col)[[bar_col]])
-        st.line_chart(chart_frame.set_index(x_col)[[line_col]])
+        fallback_chart = chart_frame.rename(columns={x_col: "构象", bar_col: bar_name, line_col: line_name})
+        st.bar_chart(fallback_chart.set_index("构象")[[bar_name]])
+        st.line_chart(fallback_chart.set_index("构象")[[line_name]])
 
 st.success(f"已加载 {len(energy_tables)} 个构象。")
 
@@ -260,7 +342,7 @@ tab_overview, tab_trend, tab_reference, tab_matrix, tab_hotspots, tab_export = s
 
 with tab_overview:
     st.subheader("构象摘要")
-    st.dataframe(per_conformation_df, use_container_width=True, hide_index=True)
+    st.dataframe(localize_display_table(per_conformation_df), use_container_width=True, hide_index=True)
     st.markdown(f"**比较说明**：{comparison['consistency_score']:.2f} 的一致性得分反映了热点在不同构象中的稳定程度。")
     if comparison.get("common_hotspots"):
         st.write("共同热点示例：", ", ".join(comparison["common_hotspots"][:8]))
@@ -359,7 +441,7 @@ with tab_trend:
             if stable_hotspots_df.empty:
                 st.info("没有稳定热点。")
             else:
-                st.dataframe(stable_hotspots_df.head(10), use_container_width=True, hide_index=True)
+                st.dataframe(localize_display_table(stable_hotspots_df.head(10)), use_container_width=True, hide_index=True)
                 st.download_button(
                     "导出稳定热点 CSV",
                     data=stable_hotspots_df.to_csv(index=False).encode("utf-8"),
@@ -371,7 +453,7 @@ with tab_trend:
             if variable_hotspots_df.empty:
                 st.info("没有可变热点。")
             else:
-                st.dataframe(variable_hotspots_df.head(10), use_container_width=True, hide_index=True)
+                st.dataframe(localize_display_table(variable_hotspots_df.head(10)), use_container_width=True, hide_index=True)
                 st.download_button(
                     "导出可变热点 CSV",
                     data=variable_hotspots_df.to_csv(index=False).encode("utf-8"),
@@ -394,7 +476,7 @@ with tab_reference:
     if reference_comparison_df.empty:
         st.info("没有足够的数据生成参考对比表。")
     else:
-        st.dataframe(reference_comparison_df, use_container_width=True, hide_index=True)
+        st.dataframe(localize_display_table(reference_comparison_df), use_container_width=True, hide_index=True)
         st.caption("正值的能量差表示相对参考构象更高，热点数差表示相对参考构象增减的热点数量。")
 
 with tab_matrix:
@@ -402,7 +484,7 @@ with tab_matrix:
     if pairwise_matrix.empty:
         st.info("没有足够的数据生成相似度矩阵。")
     else:
-        st.dataframe(pairwise_matrix, use_container_width=True, hide_index=True)
+        st.dataframe(localize_display_table(pairwise_matrix), use_container_width=True, hide_index=True)
 
 with tab_hotspots:
     st.subheader("热点明细")
@@ -412,19 +494,19 @@ with tab_hotspots:
         if stable_hotspots_df.empty:
             st.info("没有稳定热点。")
         else:
-            st.dataframe(stable_hotspots_df, use_container_width=True, hide_index=True)
+            st.dataframe(localize_display_table(stable_hotspots_df), use_container_width=True, hide_index=True)
     with detail_right:
         st.caption("可变热点：仅在部分构象中出现的残基。")
         if variable_hotspots_df.empty:
             st.info("没有可变热点。")
         else:
-            st.dataframe(variable_hotspots_df, use_container_width=True, hide_index=True)
+            st.dataframe(localize_display_table(variable_hotspots_df), use_container_width=True, hide_index=True)
 
     st.subheader("共同热点")
     if common_hotspots_df.empty:
         st.info("没有共同热点统计可展示。")
     else:
-        st.dataframe(common_hotspots_df, use_container_width=True, hide_index=True)
+        st.dataframe(localize_display_table(common_hotspots_df), use_container_width=True, hide_index=True)
 
 with tab_export:
     st.subheader("导出比较结果")
