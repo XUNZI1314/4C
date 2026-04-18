@@ -161,6 +161,28 @@ def _reliability_status_counts(extra: dict[str, Any]) -> dict[str, int]:
     return counts
 
 
+SNAPSHOT_VALUE_LABELS = {
+    "ok": "正常",
+    "blocked": "阻断",
+    "promoted": "提升",
+    "removed": "移除",
+    "review": "复核",
+    "supported": "已支持",
+    "verified": "已校验",
+    "available": "可用",
+    "none": "无",
+    "top-pocket-supported": "Top 口袋受支持",
+    "missing-citation-or-snippet": "缺少引用或证据片段",
+}
+
+
+def _snapshot_value_label(value: Any, *, default: str = "-") -> str:
+    text = str(value or "").strip()
+    if not text:
+        return default
+    return SNAPSHOT_VALUE_LABELS.get(text, text)
+
+
 def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
     summary = snapshot.get("summary") or {}
     extra = snapshot.get("extra") or {}
@@ -213,68 +235,70 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
     ai_rows = int(extra.get("ai_evidence_rows") or 0)
     ai_status = str(extra.get("ai_evidence_status") or "").strip()
     if ai_rows > 0 or ai_status:
-        lines.append(f"AI evidence: {ai_rows} rows / status {ai_status or '-'}")
+        lines.append(f"AI 证据: {ai_rows} 行 / 状态 {_snapshot_value_label(ai_status)}")
     ai_ranked = int(extra.get("ai_evidence_ranked_rows") or 0)
     if ai_rows > 0 or ai_ranked > 0:
-        lines.append(f"AI evidence used for ranking: {ai_ranked} rows")
+        lines.append(f"AI 排名可用证据: {ai_ranked} 行")
     ai_review_decisions = int(extra.get("ai_review_decision_rows") or 0)
     if ai_review_decisions > 0:
         ai_review_status = str(extra.get("ai_review_decision_status") or "-").strip()
         ai_review_applied = int(extra.get("ai_review_decision_applied_rows") or ai_review_decisions)
-        lines.append(f"AI review decisions: {ai_review_decisions} rows / applied {ai_review_applied} / status {ai_review_status or '-'}")
+        lines.append(
+            f"AI 复核决策: {ai_review_decisions} 行 / 已应用 {ai_review_applied} / 状态 {_snapshot_value_label(ai_review_status)}"
+        )
     ai_review_validation_rows = int(extra.get("ai_review_decision_validation_rows") or 0)
     if ai_review_validation_rows > 0:
         blocked_rows = int(extra.get("ai_review_decision_validation_blocked_rows") or 0)
-        lines.append(f"AI review decision validation: {ai_review_validation_rows} rows / blocked {blocked_rows}")
+        lines.append(f"AI 复核决策校验: {ai_review_validation_rows} 行 / 阻断 {blocked_rows}")
     ai_review_round_status = str(extra.get("ai_review_round_status") or "").strip()
     if ai_review_round_status:
         rankable_rows = int(extra.get("ai_review_round_rankable_rows") or 0)
-        lines.append(f"AI review round: {ai_review_round_status} / rankable {rankable_rows}")
+        lines.append(f"AI 复核轮次: {_snapshot_value_label(ai_review_round_status)} / 可排名 {rankable_rows}")
     ai_review_effect = str(extra.get("ai_review_ranking_effect_status") or "").strip()
     if ai_review_effect:
         promoted_rows = int(extra.get("ai_review_ranking_promoted_rows") or 0)
         removed_rows = int(extra.get("ai_review_ranking_removed_rows") or 0)
-        lines.append(f"AI review ranking delta: {ai_review_effect} / promoted {promoted_rows}, removed {removed_rows}")
+        lines.append(f"AI 复核排名变化: {_snapshot_value_label(ai_review_effect)} / 提升 {promoted_rows}, 移除 {removed_rows}")
     ai_review_manifest_rows = int(extra.get("ai_review_artifact_manifest_rows") or 0)
     if ai_review_manifest_rows > 0:
-        lines.append(f"AI review artifact manifest: {ai_review_manifest_rows} files")
+        lines.append(f"AI 复核产物清单: {ai_review_manifest_rows} 个文件")
     if bool(extra.get("ai_review_bundle_readme_available")):
-        lines.append("AI review bundle README: available")
+        lines.append("AI 复核包 README: 可用")
     if bool(extra.get("ai_review_artifact_bundle_available")):
-        lines.append("AI review artifact bundle: available")
+        lines.append("AI 复核产物包: 可用")
     ai_review_bundle_verification_rows = int(extra.get("ai_review_bundle_verification_rows") or 0)
     if ai_review_bundle_verification_rows > 0:
         failed_rows = int(extra.get("ai_review_bundle_verification_failed_rows") or 0)
-        lines.append(f"AI review bundle verification: {ai_review_bundle_verification_rows} files / failed {failed_rows}")
+        lines.append(f"AI 复核包校验: {ai_review_bundle_verification_rows} 个文件 / 失败 {failed_rows}")
         verification_status = str(extra.get("ai_review_bundle_verification_status") or "").strip()
         if verification_status:
-            lines.append(f"AI review bundle verification summary: {verification_status}")
+            lines.append(f"AI 复核包校验汇总: {_snapshot_value_label(verification_status)}")
     if bool(extra.get("ai_review_bundle_certificate_available")):
-        lines.append("AI review bundle certificate: available")
+        lines.append("AI 复核包证书: 可用")
     ai_review_outcomes = int(extra.get("ai_review_decision_outcome_rows") or 0)
     if ai_review_outcomes > 0:
-        lines.append(f"AI review decision outcomes: {ai_review_outcomes} rows")
+        lines.append(f"AI 复核决策结果: {ai_review_outcomes} 行")
     ai_review_template_rows = int(extra.get("ai_review_decision_template_rows") or 0)
     if ai_review_template_rows > 0:
-        lines.append(f"AI review decision template rows: {ai_review_template_rows}")
+        lines.append(f"AI 复核决策模板行数: {ai_review_template_rows}")
     ai_influence = str(extra.get("ai_influence_level") or "").strip()
     if ai_influence:
         top_ai_residues = str(extra.get("top_pocket_ai_residues") or "none").strip()
-        lines.append(f"AI ranking influence: {ai_influence} / Top pocket AI residues {top_ai_residues or 'none'}")
+        lines.append(f"AI 排名影响: {_snapshot_value_label(ai_influence)} / Top 口袋 AI 残基 {top_ai_residues or '无'}")
     ai_supported = int(extra.get("ai_evidence_audit_supported_count") or 0)
     ai_review = int(extra.get("ai_evidence_audit_review_count") or 0)
     if ai_supported > 0 or ai_review > 0:
-        lines.append(f"AI evidence audit: supported {ai_supported}, review {ai_review}")
+        lines.append(f"AI 证据审计: 已支持 {ai_supported}, 复核 {ai_review}")
     ai_review_queue_rows = int(extra.get("ai_evidence_review_queue_rows") or 0)
     if ai_review_queue_rows > 0:
         top_fix = str(extra.get("top_ai_review_fix_type") or "-").strip()
-        lines.append(f"AI evidence review queue: {ai_review_queue_rows} rows / top fix {top_fix or '-'}")
+        lines.append(f"AI 证据复核队列: {ai_review_queue_rows} 行 / Top 修复项 {_snapshot_value_label(top_fix)}")
     ai_followup_rows = int(extra.get("ai_followup_plan_rows") or 0)
     if ai_followup_rows > 0:
-        lines.append(f"AI follow-up plan rows: {ai_followup_rows}")
+        lines.append(f"AI 后续取证计划: {ai_followup_rows} 行")
         top_query = str(extra.get("top_ai_followup_query") or "").strip()
         if top_query:
-            lines.append(f"Top AI follow-up query: {top_query}")
+            lines.append(f"Top AI 后续检索词: {top_query}")
     residue_consensus_rows = int(extra.get("residue_evidence_consensus_rows") or 0)
     if residue_consensus_rows > 0:
         top_anchor = str(extra.get("top_residue_consensus_anchor") or "-").strip()
