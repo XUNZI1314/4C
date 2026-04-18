@@ -27,6 +27,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_source_audit,
     build_pocket_benchmark_reference_source_audit_action_queue,
     build_pocket_benchmark_reference_source_audit_case_checklist_markdown,
+    build_pocket_benchmark_reference_source_audit_case_decision_closure_checklist_markdown,
     build_pocket_benchmark_reference_source_audit_case_decision_outcomes,
     build_pocket_benchmark_reference_source_audit_case_decision_outcome_summary,
     build_pocket_benchmark_reference_source_audit_case_decision_template,
@@ -1407,6 +1408,41 @@ def test_benchmark_reference_source_audit_case_decision_outcome_summary_flags_op
     assert row["closed_actionable_case_count"] == 1
     assert row["open_actionable_case_count"] == 1
     assert row["pending_cases"] == 1
+
+
+def test_benchmark_reference_source_audit_case_decision_closure_checklist_markdown():
+    outcomes = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "enzyme-a",
+                "source_decision": "accept",
+                "validation_status": "ok",
+                "applied_status": "cleared",
+                "outcome_reason": "Reviewer accepted the source decision.",
+                "next_action": "Keep the validated case decision.",
+            },
+            {
+                "benchmark_id": "enzyme-b",
+                "source_decision": "review",
+                "validation_status": "review",
+                "applied_status": "pending",
+                "outcome_reason": "No source-audit case decision has been uploaded.",
+                "next_action": "Fill and upload the source-audit case decision template.",
+            },
+        ]
+    )
+    summary = build_pocket_benchmark_reference_source_audit_case_decision_outcome_summary(outcomes)
+
+    checklist = build_pocket_benchmark_reference_source_audit_case_decision_closure_checklist_markdown(
+        summary,
+        outcomes,
+    )
+
+    assert "Benchmark reference source audit decision closure checklist" in checklist
+    assert "Status `pending` with 1 open actionable cases" in checklist
+    assert "BRSDC-001 case `enzyme-b` `pending`" in checklist
+    assert "Fill and upload the source-audit case decision template." in checklist
+    assert "case `enzyme-a`" not in checklist
 
 
 def test_benchmark_reference_readiness_uses_source_audit_as_gate():

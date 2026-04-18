@@ -365,6 +365,8 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         lines.append(
             f"Benchmark reference source audit case decision outcome summary: {source_audit_case_decision_outcome_summary_rows} rows / status {outcome_summary_status} / open {outcome_summary_open_cases}"
         )
+    if bool(extra.get("pocket_benchmark_reference_source_audit_case_decision_closure_checklist_available")):
+        lines.append("Benchmark reference source audit case decision closure checklist: available")
     source_audit_case_decision_outcome_rows = int(
         extra.get("pocket_benchmark_reference_source_audit_case_decision_outcome_rows") or 0
     )

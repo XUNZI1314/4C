@@ -2741,6 +2741,84 @@ def build_pocket_benchmark_reference_source_audit_case_decision_outcome_summary(
     )
 
 
+def build_pocket_benchmark_reference_source_audit_case_decision_closure_checklist_markdown(
+    outcome_summary_df: Optional[pd.DataFrame],
+    outcome_df: Optional[pd.DataFrame],
+) -> str:
+    """Render source-audit decision outcomes as a closure checklist."""
+
+    summary = (
+        outcome_summary_df.copy()
+        if outcome_summary_df is not None and not getattr(outcome_summary_df, "empty", True)
+        else _empty_reference_source_audit_case_decision_outcome_summary_df()
+    )
+    outcomes = (
+        outcome_df.copy()
+        if outcome_df is not None and not getattr(outcome_df, "empty", True)
+        else _empty_reference_source_audit_case_decision_outcome_df()
+    )
+    if summary.empty and outcomes.empty:
+        return ""
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_OUTCOME_SUMMARY_COLUMNS:
+        if column not in summary.columns:
+            summary[column] = ""
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_OUTCOME_COLUMNS:
+        if column not in outcomes.columns:
+            outcomes[column] = ""
+
+    lines = [
+        "# Benchmark reference source audit decision closure checklist",
+        "",
+        "Use this checklist after uploading source-audit case decisions and before treating benchmark coverage as a precision claim.",
+        "",
+    ]
+    if not summary.empty:
+        row = summary.iloc[0]
+        lines.extend(
+            [
+                "## Closure Gate",
+                "",
+                f"- [ ] Status `{_safe_text(row.get('closure_status')) or '-'}` with {int(row.get('open_actionable_case_count') or 0)} open actionable cases.",
+                f"- [ ] Closed/actionable cases: {int(row.get('closed_actionable_case_count') or 0)} / {int(row.get('actionable_case_count') or 0)}.",
+                f"- [ ] Recommended action: {_safe_text(row.get('recommended_action')) or '-'}",
+                f"- [ ] Warning: {_safe_text(row.get('summary_warning')) or '-'}",
+                "",
+            ]
+        )
+
+    closed_statuses = {"cleared", "replaced", "source-ready"}
+    status = outcomes["applied_status"].astype(str).str.strip().str.lower()
+    open_rows = outcomes[~status.isin(closed_statuses)].copy()
+    if not open_rows.empty:
+        status_rank = {"blocked": 0, "pending": 1, "held": 2}
+        open_rows["_status_rank"] = open_rows["applied_status"].map(_safe_text).map(status_rank).fillna(9)
+        open_rows = open_rows.sort_values(["_status_rank", "benchmark_id"]).drop(columns=["_status_rank"])
+        lines.extend(["## Open Case Actions", ""])
+        for index, row in enumerate(open_rows.itertuples(index=False), start=1):
+            case_id = _safe_text(row.benchmark_id) or "unnamed"
+            applied_status = _safe_text(row.applied_status) or "unknown"
+            decision = _safe_text(row.source_decision) or "review"
+            validation = _safe_text(row.validation_status) or "review"
+            next_action = _safe_text(row.next_action) or "Complete source-audit decision review."
+            reason = _safe_text(row.outcome_reason) or "Source-audit case is not closed yet."
+            lines.append(
+                f"- [ ] BRSDC-{index:03d} case `{case_id}` `{applied_status}` "
+                f"(decision `{decision}`, validation `{validation}`): {next_action} Reason: {reason}"
+            )
+        lines.append("")
+    elif not outcomes.empty:
+        lines.extend(
+            [
+                "## Open Case Actions",
+                "",
+                "- [ ] No open source-audit decision cases remain; keep decisions, validation, outcomes, and outcome summary exports with the benchmark report.",
+                "",
+            ]
+        )
+
+    return "\n".join(lines).strip() + "\n"
+
+
 def _normalize_pocket_rows(pocket_df: Optional[pd.DataFrame]) -> pd.DataFrame:
     if pocket_df is None or getattr(pocket_df, "empty", True) or "pocket_id" not in pocket_df.columns or "resid" not in pocket_df.columns:
         return pd.DataFrame(columns=["benchmark_id", "pocket_id", "chain", "resid", "resname"])
