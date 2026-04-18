@@ -62,6 +62,10 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
             "pocket_benchmark_reference_candidate_review_p1_rows": 2,
             "pocket_benchmark_reference_candidate_review_p2_rows": 2,
             "pocket_benchmark_reference_candidate_review_checklist_available": True,
+            "pocket_benchmark_reference_candidate_review_decision_rows": 4,
+            "pocket_benchmark_reference_candidate_review_decision_validation_blocked_rows": 1,
+            "pocket_benchmark_reference_candidate_review_outcome_accepted_rows": 3,
+            "pocket_benchmark_reference_candidate_accepted_rows": 1,
             "pocket_benchmark_reference_is_provisional": True,
             "pocket_benchmark_reference_rows": 3,
             "pocket_benchmark_reference_template_rows": 3,
@@ -137,6 +141,7 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
     assert any("P2Rank A/B: enabled / rows 1" in line for line in summary_lines)
     assert any("Benchmark reference candidate: 2 rows / import review-needed / provisional used yes" in line for line in summary_lines)
     assert any("Benchmark reference candidate review: 4 rows / P1 2 / P2 2 / checklist available" in line for line in summary_lines)
+    assert any("Benchmark reference candidate review decisions: 4 rows / validation blocked 1 / accepted actions 3 / accepted references 1" in line for line in summary_lines)
     assert any("Catalytic pocket benchmark: references 3 / Top-1 0.667" in line for line in summary_lines)
     assert any("Benchmark reference template: 3 rows / notes available" in line for line in summary_lines)
     assert any("Benchmark reference curation quality: 2 issues / summary 1 rows / checklist available" in line for line in summary_lines)

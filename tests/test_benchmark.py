@@ -16,7 +16,11 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_quality_checklist_markdown,
     build_pocket_benchmark_reference_quality_issues,
     build_pocket_benchmark_reference_quality_summary,
+    build_pocket_benchmark_reference_candidate_accepted_reference,
     build_pocket_benchmark_reference_candidate_review_checklist_markdown,
+    build_pocket_benchmark_reference_candidate_review_decision_template,
+    build_pocket_benchmark_reference_candidate_review_decision_validation,
+    build_pocket_benchmark_reference_candidate_review_outcomes,
     build_pocket_benchmark_reference_candidate_review_queue,
     build_pocket_benchmark_reference_from_external_evidence,
     build_pocket_benchmark_reference_import_summary,
@@ -38,6 +42,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_variant_remediation_queue,
     build_pocket_benchmark_variant_remediation_summary,
     parse_benchmark_reference_table,
+    parse_pocket_benchmark_reference_candidate_review_decision_table,
 )
 
 
@@ -774,6 +779,83 @@ def test_build_pocket_benchmark_reference_candidate_review_queue_lists_candidate
     assert queue["residue_label"].eq("57").all()
     assert "Benchmark reference candidate review checklist" in checklist
     assert "`weak-mapping`" in checklist
+
+
+def test_reference_candidate_review_decisions_promote_only_fully_accepted_residues():
+    reference_df = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "1ABC",
+                "chain": "A",
+                "resid": 195,
+                "resname": "SER",
+                "reference_type": "Catalytic residue",
+                "reference_source": "M-CSA",
+                "reference_note": "mapping_level=exact; mapping_confidence=0.98; mapping_method=sifts",
+                "expected_pocket_id": "",
+            },
+            {
+                "benchmark_id": "1ABC",
+                "chain": "",
+                "resid": 57,
+                "resname": "",
+                "reference_type": "Catalytic residue",
+                "reference_source": "AI-Literature",
+                "reference_note": "requires_manual_review=true | mapping_level=weak; mapping_confidence=0.4; mapping_method=assumed-structure-numbering",
+                "expected_pocket_id": "",
+            },
+        ]
+    )
+    queue = build_pocket_benchmark_reference_candidate_review_queue(reference_df)
+    template = build_pocket_benchmark_reference_candidate_review_decision_template(queue)
+    decision_text = """action_id,review_decision,reviewer,verified_source,verified_mapping,review_note
+REFC-001,accept,Alice,PMID:1,SIFTS exact,manual review accepted
+REFC-002,accept,Alice,PMID:1,SIFTS exact,weak mapping resolved
+REFC-003,accept,Alice,PMID:1,SIFTS exact,resname verified
+REFC-004,accept,Alice,PMID:1,SIFTS exact,chain wildcard accepted
+"""
+
+    decisions, metadata = parse_pocket_benchmark_reference_candidate_review_decision_table(decision_text)
+    validation = build_pocket_benchmark_reference_candidate_review_decision_validation(decisions, queue)
+    outcomes = build_pocket_benchmark_reference_candidate_review_outcomes(queue, decisions, validation)
+    accepted_reference = build_pocket_benchmark_reference_candidate_accepted_reference(reference_df, queue, outcomes)
+
+    assert len(template) == len(queue)
+    assert metadata["accept_rows"] == "4"
+    assert validation["validation_status"].eq("ok").all()
+    assert outcomes["applied_status"].eq("accepted").all()
+    assert accepted_reference["resid"].astype(int).tolist() == [195, 57]
+
+
+def test_reference_candidate_review_validation_blocks_missing_acceptance_evidence():
+    reference_df = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "1ABC",
+                "chain": "",
+                "resid": 57,
+                "resname": "",
+                "reference_type": "Catalytic residue",
+                "reference_source": "AI-Literature",
+                "reference_note": "requires_manual_review=true | mapping_level=weak",
+                "expected_pocket_id": "",
+            },
+        ]
+    )
+    queue = build_pocket_benchmark_reference_candidate_review_queue(reference_df)
+    decision_text = """action_id,review_decision,reviewer,verified_source,verified_mapping,review_note
+REFC-001,accept,Alice,,,
+"""
+
+    decisions, _metadata = parse_pocket_benchmark_reference_candidate_review_decision_table(decision_text)
+    validation = build_pocket_benchmark_reference_candidate_review_decision_validation(decisions, queue)
+    outcomes = build_pocket_benchmark_reference_candidate_review_outcomes(queue, decisions, validation)
+    accepted_reference = build_pocket_benchmark_reference_candidate_accepted_reference(reference_df, queue, outcomes)
+
+    assert str(validation.iloc[0]["validation_status"]) == "blocked"
+    assert "missing-acceptance-evidence" in str(validation.iloc[0]["issue_flags"])
+    assert str(outcomes.iloc[0]["applied_status"]) == "blocked"
+    assert accepted_reference.empty
 
 
 def test_build_pocket_benchmark_summary_reports_top1_and_top3_coverage():

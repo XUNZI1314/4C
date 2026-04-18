@@ -60,6 +60,39 @@ BENCHMARK_REFERENCE_CANDIDATE_REVIEW_QUEUE_COLUMNS = [
     "review_warning",
 ]
 
+BENCHMARK_REFERENCE_CANDIDATE_REVIEW_DECISION_TEMPLATE_COLUMNS = [
+    *BENCHMARK_REFERENCE_CANDIDATE_REVIEW_QUEUE_COLUMNS,
+    "review_decision",
+    "reviewer",
+    "verified_source",
+    "verified_mapping",
+    "review_note",
+]
+
+BENCHMARK_REFERENCE_CANDIDATE_REVIEW_DECISION_VALIDATION_COLUMNS = [
+    "row_index",
+    "action_id",
+    "review_decision",
+    "validation_status",
+    "issue_flags",
+    "required_fix",
+]
+
+BENCHMARK_REFERENCE_CANDIDATE_REVIEW_OUTCOME_COLUMNS = [
+    "action_id",
+    "priority",
+    "benchmark_id",
+    "chain",
+    "resid",
+    "resname",
+    "residue_label",
+    "issue_type",
+    "review_decision",
+    "applied_status",
+    "outcome_reason",
+    "next_action",
+]
+
 BENCHMARK_DETAIL_COLUMNS = [
     *BENCHMARK_REFERENCE_COLUMNS,
     "residue_label",
@@ -500,6 +533,18 @@ def _empty_reference_import_summary_df() -> pd.DataFrame:
 
 def _empty_reference_candidate_review_queue_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_REFERENCE_CANDIDATE_REVIEW_QUEUE_COLUMNS)
+
+
+def _empty_reference_candidate_review_decision_template_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_CANDIDATE_REVIEW_DECISION_TEMPLATE_COLUMNS)
+
+
+def _empty_reference_candidate_review_decision_validation_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_CANDIDATE_REVIEW_DECISION_VALIDATION_COLUMNS)
+
+
+def _empty_reference_candidate_review_outcome_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_CANDIDATE_REVIEW_OUTCOME_COLUMNS)
 
 
 def _empty_detail_df() -> pd.DataFrame:
@@ -1315,6 +1360,304 @@ def build_pocket_benchmark_reference_candidate_review_checklist_markdown(
             f"- [ ] {row.priority} `{row.issue_type}` for {case_text}, residue `{row.residue_label}`: {row.suggested_action}"
         )
     return "\n".join(lines).strip() + "\n"
+
+
+def build_pocket_benchmark_reference_candidate_review_decision_template(
+    review_queue_df: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    """Build an editable decision template for candidate reference review actions."""
+
+    if review_queue_df is None or getattr(review_queue_df, "empty", True):
+        return _empty_reference_candidate_review_decision_template_df()
+    queue = review_queue_df.copy()
+    for column in BENCHMARK_REFERENCE_CANDIDATE_REVIEW_QUEUE_COLUMNS:
+        if column not in queue.columns:
+            queue[column] = ""
+    template = queue[BENCHMARK_REFERENCE_CANDIDATE_REVIEW_QUEUE_COLUMNS].copy()
+    template["review_decision"] = "review"
+    template["reviewer"] = ""
+    template["verified_source"] = ""
+    template["verified_mapping"] = ""
+    template["review_note"] = ""
+    return template[BENCHMARK_REFERENCE_CANDIDATE_REVIEW_DECISION_TEMPLATE_COLUMNS]
+
+
+def _normalize_candidate_review_decision(value: object) -> str:
+    text = _safe_text(value).lower()
+    if text in {"accept", "accepted", "approve", "approved", "yes", "pass"}:
+        return "accept"
+    if text in {"reject", "rejected", "deny", "denied", "no", "fail"}:
+        return "reject"
+    if text in {"hold", "defer", "deferred", "blocked", "block"}:
+        return "hold"
+    if text in {"", "review", "needs-review", "pending"}:
+        return "review"
+    return "unknown"
+
+
+def parse_pocket_benchmark_reference_candidate_review_decision_table(
+    decision_text: str | bytes | None,
+) -> tuple[pd.DataFrame, dict[str, str]]:
+    """Parse reviewer decisions for benchmark reference candidate review actions."""
+
+    if decision_text is None:
+        return _empty_reference_candidate_review_decision_template_df(), {
+            "status": "empty",
+            "decision_rows": "0",
+            "reason": "No decision table was provided.",
+        }
+    if isinstance(decision_text, bytes):
+        decision_text = decision_text.decode("utf-8", errors="ignore")
+    frame = _read_delimited_table(str(decision_text or ""))
+    if frame.empty:
+        return _empty_reference_candidate_review_decision_template_df(), {
+            "status": "empty",
+            "decision_rows": "0",
+            "reason": "No decision rows could be parsed.",
+        }
+
+    column_aliases: dict[str, Sequence[str]] = {
+        "action_id": ("action_id", "actionid", "id", "review_action_id"),
+        "review_decision": ("review_decision", "decision", "review", "status", "approval"),
+        "reviewer": ("reviewer", "reviewer_name", "curator", "user"),
+        "verified_source": ("verified_source", "source", "verified_sources", "evidence_source"),
+        "verified_mapping": ("verified_mapping", "mapping", "verified_mapping_note", "mapping_note"),
+        "review_note": ("review_note", "note", "notes", "comment", "comments"),
+    }
+    selected = {column: _find_column_in_order(frame, aliases) for column, aliases in column_aliases.items()}
+    if not selected["action_id"] or not selected["review_decision"]:
+        return _empty_reference_candidate_review_decision_template_df(), {
+            "status": "invalid",
+            "decision_rows": "0",
+            "reason": "action_id and review_decision columns are required.",
+        }
+
+    rows: list[dict[str, object]] = []
+    for _, row in frame.iterrows():
+        row_dict = row.to_dict()
+        action_id = _safe_text(row_dict.get(selected["action_id"]))
+        if not action_id:
+            continue
+        rows.append(
+            {
+                "action_id": action_id,
+                "review_decision": _normalize_candidate_review_decision(row_dict.get(selected["review_decision"])),
+                "reviewer": _safe_text(row_dict.get(selected["reviewer"])) if selected["reviewer"] else "",
+                "verified_source": _safe_text(row_dict.get(selected["verified_source"])) if selected["verified_source"] else "",
+                "verified_mapping": _safe_text(row_dict.get(selected["verified_mapping"])) if selected["verified_mapping"] else "",
+                "review_note": _safe_text(row_dict.get(selected["review_note"])) if selected["review_note"] else "",
+            }
+        )
+
+    if not rows:
+        return _empty_reference_candidate_review_decision_template_df(), {
+            "status": "empty",
+            "decision_rows": "0",
+            "reason": "No valid action_id rows were found.",
+        }
+
+    decisions = pd.DataFrame(rows)
+    for column in BENCHMARK_REFERENCE_CANDIDATE_REVIEW_DECISION_TEMPLATE_COLUMNS:
+        if column not in decisions.columns:
+            decisions[column] = ""
+    decision_counts = decisions["review_decision"].astype(str).value_counts().to_dict()
+    return decisions[BENCHMARK_REFERENCE_CANDIDATE_REVIEW_DECISION_TEMPLATE_COLUMNS], {
+        "status": "ok",
+        "decision_rows": str(len(decisions)),
+        "accept_rows": str(int(decision_counts.get("accept", 0))),
+        "reject_rows": str(int(decision_counts.get("reject", 0))),
+        "hold_rows": str(int(decision_counts.get("hold", 0))),
+        "review_rows": str(int(decision_counts.get("review", 0))),
+        "unknown_rows": str(int(decision_counts.get("unknown", 0))),
+    }
+
+
+def build_pocket_benchmark_reference_candidate_review_decision_validation(
+    decision_df: Optional[pd.DataFrame],
+    review_queue_df: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    """Validate uploaded candidate-reference review decisions before applying them."""
+
+    if decision_df is None or getattr(decision_df, "empty", True):
+        return _empty_reference_candidate_review_decision_validation_df()
+    decisions = decision_df.copy()
+    for column in BENCHMARK_REFERENCE_CANDIDATE_REVIEW_DECISION_TEMPLATE_COLUMNS:
+        if column not in decisions.columns:
+            decisions[column] = ""
+    queue = review_queue_df.copy() if review_queue_df is not None and not getattr(review_queue_df, "empty", True) else _empty_reference_candidate_review_queue_df()
+    valid_action_ids = set(queue["action_id"].map(_safe_text).tolist()) if "action_id" in queue.columns else set()
+    duplicate_decisions: dict[str, set[str]] = {}
+    for _, row in decisions.iterrows():
+        action_id = _safe_text(row.get("action_id"))
+        if action_id:
+            duplicate_decisions.setdefault(action_id, set()).add(_safe_text(row.get("review_decision")))
+
+    rows: list[dict[str, object]] = []
+    for index, decision in decisions.reset_index(drop=True).iterrows():
+        action_id = _safe_text(decision.get("action_id"))
+        review_decision = _normalize_candidate_review_decision(decision.get("review_decision"))
+        reviewer = _safe_text(decision.get("reviewer"))
+        verified_source = _safe_text(decision.get("verified_source"))
+        verified_mapping = _safe_text(decision.get("verified_mapping"))
+        review_note = _safe_text(decision.get("review_note"))
+        issues: list[str] = []
+        fixes: list[str] = []
+
+        if not action_id:
+            issues.append("missing-action-id")
+            fixes.append("Fill action_id from the exported review queue.")
+        elif action_id not in valid_action_ids:
+            issues.append("unknown-action-id")
+            fixes.append("Use action_id values from the current review queue.")
+        if len(duplicate_decisions.get(action_id, set())) > 1:
+            issues.append("conflicting-duplicate")
+            fixes.append("Keep only one decision per action_id.")
+        if review_decision == "unknown":
+            issues.append("unknown-decision")
+            fixes.append("Use accept, reject, hold, or review.")
+        if review_decision in {"accept", "reject", "hold"} and not reviewer:
+            issues.append("missing-reviewer")
+            fixes.append("Fill reviewer for every non-review decision.")
+        if review_decision == "accept" and not (verified_source or verified_mapping or review_note):
+            issues.append("missing-acceptance-evidence")
+            fixes.append("Fill verified_source, verified_mapping, or review_note before accepting a candidate action.")
+
+        validation_status = "blocked" if issues else ("review" if review_decision == "review" else "ok")
+        rows.append(
+            {
+                "row_index": int(index + 1),
+                "action_id": action_id,
+                "review_decision": review_decision,
+                "validation_status": validation_status,
+                "issue_flags": ";".join(dict.fromkeys(issues)),
+                "required_fix": " ".join(dict.fromkeys(fixes)),
+            }
+        )
+
+    return pd.DataFrame(rows, columns=BENCHMARK_REFERENCE_CANDIDATE_REVIEW_DECISION_VALIDATION_COLUMNS)
+
+
+def build_pocket_benchmark_reference_candidate_review_outcomes(
+    review_queue_df: Optional[pd.DataFrame],
+    decision_df: Optional[pd.DataFrame],
+    validation_df: Optional[pd.DataFrame] = None,
+) -> pd.DataFrame:
+    """Apply validated reviewer decisions to each candidate-reference review action."""
+
+    if review_queue_df is None or getattr(review_queue_df, "empty", True):
+        return _empty_reference_candidate_review_outcome_df()
+    queue = review_queue_df.copy()
+    for column in BENCHMARK_REFERENCE_CANDIDATE_REVIEW_QUEUE_COLUMNS:
+        if column not in queue.columns:
+            queue[column] = ""
+    decisions = decision_df.copy() if decision_df is not None and not getattr(decision_df, "empty", True) else pd.DataFrame()
+    for column in BENCHMARK_REFERENCE_CANDIDATE_REVIEW_DECISION_TEMPLATE_COLUMNS:
+        if column not in decisions.columns:
+            decisions[column] = ""
+    validation = validation_df.copy() if validation_df is not None and not getattr(validation_df, "empty", True) else pd.DataFrame()
+    if validation.empty and not decisions.empty:
+        validation = build_pocket_benchmark_reference_candidate_review_decision_validation(decisions, queue)
+
+    decision_by_action = {
+        _safe_text(row.get("action_id")): row
+        for _, row in decisions.iterrows()
+        if _safe_text(row.get("action_id"))
+    }
+    validation_by_action = {
+        _safe_text(row.get("action_id")): row
+        for _, row in validation.iterrows()
+        if _safe_text(row.get("action_id"))
+    }
+
+    rows: list[dict[str, object]] = []
+    for _, action in queue.iterrows():
+        action_id = _safe_text(action.get("action_id"))
+        decision = decision_by_action.get(action_id)
+        validation_row = validation_by_action.get(action_id)
+        review_decision = _normalize_candidate_review_decision(decision.get("review_decision")) if decision is not None else "review"
+        validation_status = _safe_text(validation_row.get("validation_status")) if validation_row is not None else ""
+        if decision is None:
+            applied_status = "pending"
+            reason = "No reviewer decision uploaded for this action."
+            next_action = "Fill the candidate review decision template."
+        elif validation_status == "blocked":
+            applied_status = "blocked"
+            reason = _safe_text(validation_row.get("issue_flags"))
+            next_action = _safe_text(validation_row.get("required_fix")) or "Fix validation issues and re-upload decisions."
+        elif review_decision == "accept":
+            applied_status = "accepted"
+            reason = "Reviewer accepted this candidate-review action."
+            next_action = "No action needed for this issue."
+        elif review_decision == "reject":
+            applied_status = "rejected"
+            reason = "Reviewer rejected this candidate-reference issue or residue."
+            next_action = "Do not promote this residue candidate until evidence is replaced."
+        elif review_decision == "hold":
+            applied_status = "held"
+            reason = "Reviewer placed this candidate action on hold."
+            next_action = "Resolve blocker or add evidence before promotion."
+        else:
+            applied_status = "pending"
+            reason = "Reviewer left this action in review."
+            next_action = "Complete accept/reject/hold decision."
+
+        rows.append(
+            {
+                "action_id": action_id,
+                "priority": _safe_text(action.get("priority")),
+                "benchmark_id": _safe_text(action.get("benchmark_id")),
+                "chain": _safe_text(action.get("chain")),
+                "resid": int(action.get("resid") or 0),
+                "resname": _safe_text(action.get("resname")).upper(),
+                "residue_label": _safe_text(action.get("residue_label")),
+                "issue_type": _safe_text(action.get("issue_type")),
+                "review_decision": review_decision,
+                "applied_status": applied_status,
+                "outcome_reason": reason,
+                "next_action": next_action,
+            }
+        )
+
+    return pd.DataFrame(rows, columns=BENCHMARK_REFERENCE_CANDIDATE_REVIEW_OUTCOME_COLUMNS)
+
+
+def build_pocket_benchmark_reference_candidate_accepted_reference(
+    reference_df: Optional[pd.DataFrame],
+    review_queue_df: Optional[pd.DataFrame],
+    review_outcome_df: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    """Promote only clean or fully accepted candidate reference residues."""
+
+    references = _reference_rows(reference_df)
+    if references.empty:
+        return _empty_reference_df()
+    queue = review_queue_df.copy() if review_queue_df is not None and not getattr(review_queue_df, "empty", True) else _empty_reference_candidate_review_queue_df()
+    outcomes = review_outcome_df.copy() if review_outcome_df is not None and not getattr(review_outcome_df, "empty", True) else _empty_reference_candidate_review_outcome_df()
+
+    def key_from_row(row: object) -> tuple[str, str, int]:
+        return (_safe_text(row.get("benchmark_id")), _safe_text(row.get("chain")), int(row.get("resid") or 0))
+
+    risk_actions_by_key: dict[tuple[str, str, int], set[str]] = {}
+    for _, action in queue.iterrows():
+        risk_actions_by_key.setdefault(key_from_row(action), set()).add(_safe_text(action.get("action_id")))
+
+    accepted_actions = {
+        _safe_text(row.get("action_id"))
+        for _, row in outcomes.iterrows()
+        if _safe_text(row.get("applied_status")) == "accepted"
+    }
+
+    accepted_rows: list[dict[str, object]] = []
+    for _, reference in references.iterrows():
+        key = key_from_row(reference)
+        risk_action_ids = risk_actions_by_key.get(key, set())
+        if risk_action_ids and not risk_action_ids.issubset(accepted_actions):
+            continue
+        accepted_rows.append(reference.to_dict())
+
+    if not accepted_rows:
+        return _empty_reference_df()
+    return pd.DataFrame(accepted_rows, columns=BENCHMARK_REFERENCE_COLUMNS).reset_index(drop=True)
 
 
 def _normalize_pocket_rows(pocket_df: Optional[pd.DataFrame]) -> pd.DataFrame:

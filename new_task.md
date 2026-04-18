@@ -19,7 +19,7 @@
 - [x] Conservation rerank-only 信号和 A/B 对比。
 - [x] External-evidence route 候选口袋生成。
 - [x] Literature A/B 和 evidence-route A/B。
-- [x] Catalytic pocket benchmark：提供 reference template、external-evidence reference candidate/import summary/review queue/checklist、reference curation quality check、PDB structure validation、case-level readiness gate 和 case/dataset-level readiness-aware interpretation，上传 curated catalytic residues，计算 Top-1 / Top-3 / Top-5 coverage、case/dataset summary、case interpretation matrix/summary/queue、dataset claim readiness queue/checklist/report、best hit rank、missed residues、整体/case/dataset/residue 四层 current vs ablation variant comparison，以及 remediation queue / summary / checklist。
+- [x] Catalytic pocket benchmark：提供 reference template、external-evidence reference candidate/import summary/review queue/checklist/decision loop/accepted candidate export、reference curation quality check、PDB structure validation、case-level readiness gate 和 case/dataset-level readiness-aware interpretation，上传 curated catalytic residues，计算 Top-1 / Top-3 / Top-5 coverage、case/dataset summary、case interpretation matrix/summary/queue、dataset claim readiness queue/checklist/report、best hit rank、missed residues、整体/case/dataset/residue 四层 current vs ablation variant comparison，以及 remediation queue / summary / checklist。
 - [x] Evidence quality label / score / warning。
 - [x] Pocket core / shell / rim 分层。
 - [x] Snapshot、report、history 中记录关键口袋证据。
@@ -31,7 +31,7 @@
 - [x] Release execution template、receipt import、validation、summary、report。
 - [x] Release closure certificate、closure ledger。
 - [x] Detached closure summary、blocker queue、remediation checklist、detached manifest。
-- [x] 单元测试和全量测试覆盖，最近一次验证：`222 passed`。
+- [x] 单元测试和全量测试覆盖，最近一次验证：`224 passed`。
 
 ## 当前导出重点
 
@@ -56,7 +56,7 @@
 
 - 已落地 benchmark 评估框架：上传 curated catalytic residues 后可输出 Top-1 / Top-3 / Top-5 catalytic coverage，并按 benchmark_id/case_id 输出 case summary 与 dataset summary。
 - 已落地 current vs no-p2rank / no-literature / no-evidence-route / no-conservation-rerank 的整体、case、dataset 和 residue 四层 benchmark variant comparison，并生成 remediation queue / summary / checklist，用 coverage loss 与 lost/gained residue 定位证据路径贡献。
-- 已落地 benchmark reference candidate/import summary/review queue/checklist，可把已加载的 UniProt / M-CSA / 文献 / AI 残基证据转换成待复核的 benchmark reference candidate，再把 weak mapping、wildcard chain、missing resname 和 manual-review 风险拆成行动队列，并明确提示不能直接当作独立精度证明。
+- 已落地 benchmark reference candidate/import summary/review queue/checklist/decision loop/accepted candidate export，可把已加载的 UniProt / M-CSA / 文献 / AI 残基证据转换成待复核的 benchmark reference candidate，再把 weak mapping、wildcard chain、missing resname 和 manual-review 风险拆成行动队列，由 reviewer 回填 accept/reject/hold 决策，最终只导出 clean 或全部风险 action 被接受的 reference candidate，并明确提示不能直接当作独立精度证明。
 - 已落地 benchmark reference template CSV/Markdown，方便后续收集 M-CSA + PDB + literature-confirmed catalytic residues。
 - 已落地 benchmark reference curation quality issues / summary / checklist，先检查 benchmark_id、source、chain、resname、编号假设和重复角色，再解释 coverage。
 - 已落地 benchmark reference structure validation，检查 curated residues 是否存在于当前 PDB、resname 是否匹配、空 chain 是否造成多链歧义。
