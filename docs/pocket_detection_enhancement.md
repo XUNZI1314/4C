@@ -241,7 +241,7 @@ The page also exports `pocket_benchmark_reference_template.csv` and `pocket_benc
 
 Loaded UniProt, M-CSA, literature and AI residue evidence can also be converted into `pocket_benchmark_reference_candidate.csv` plus `pocket_benchmark_reference_import_summary.csv`. The candidate review queue and checklist then split weak mapping, wildcard chain, missing residue identity, generic source and manual-review risks into row-level actions. Reviewers can export a decision template, upload normalized accept/reject/hold decisions, validate those decisions, inspect outcomes, and export only clean or fully accepted candidate references. This is meant to accelerate curation, not to create an independent accuracy claim automatically, because the same external evidence may also have influenced detection or reranking.
 
-When no curated benchmark file is uploaded, the benchmark source selector now prefers accepted reviewed candidates over provisional external-evidence candidates. Provisional candidates remain available only as an explicit fallback, and snapshot/report output records the `source_mode`, `is_provisional`, and `is_reviewed_candidate` flags so later analyses can distinguish reviewed references from triage-only references. The row-level source audit, summary, case summary, case decision import/validation/outcomes/outcome summary/closure queue/readiness impact/closure checklist, case checklist, action queue and checklist also record `source_claim_status` and `can_support_independent_claim`, separating uploaded curated references from review-qualified candidate references and blocked provisional references. The readiness gate consumes this audit with decision outcomes: provisional references remain `P0` blockers and review-qualified accepted candidates remain `P2` independence-review items until source-audit case decisions close them; `cleared`, `replaced` and `source-ready` cases stop producing source-audit readiness issues, while `blocked`, `pending`, `held` and unknown outcomes continue as P0/P1/P2 issues. A readiness impact export compares the original source issue with the decision-adjusted source issue per case, so reviewers can see which cases were cleared by decision and which still block claims. The case summary, case decision import/validation/outcomes/outcome summary/closure queue/closure checklist and case checklist group those source-only blockers and review needs by `benchmark_id`, then summarize blocked, pending, held, replaced, cleared and source-ready cases into a closure status, machine-readable action queue and reviewer checklist so batch benchmark runs can prioritize affected enzyme or structure cases first.
+When no curated benchmark file is uploaded, the benchmark source selector now prefers accepted reviewed candidates over provisional external-evidence candidates. Provisional candidates remain available only as an explicit fallback, and snapshot/report output records the `source_mode`, `is_provisional`, and `is_reviewed_candidate` flags so later analyses can distinguish reviewed references from triage-only references. The row-level source audit, summary, case summary, case decision import/validation/outcomes/outcome summary/closure queue/readiness impact/readiness impact summary/closure checklist, case checklist, action queue and checklist also record `source_claim_status` and `can_support_independent_claim`, separating uploaded curated references from review-qualified candidate references and blocked provisional references. The readiness gate consumes this audit with decision outcomes: provisional references remain `P0` blockers and review-qualified accepted candidates remain `P2` independence-review items until source-audit case decisions close them; `cleared`, `replaced` and `source-ready` cases stop producing source-audit readiness issues, while `blocked`, `pending`, `held` and unknown outcomes continue as P0/P1/P2 issues. A readiness impact export compares the original source issue with the decision-adjusted source issue per case, so reviewers can see which cases were cleared by decision and which still block claims. Its summary aggregates cleared/open cases, original/adjusted P0/P1/P2 counts and net blocker delta. The case summary, case decision import/validation/outcomes/outcome summary/closure queue/closure checklist and case checklist group those source-only blockers and review needs by `benchmark_id`, then summarize blocked, pending, held, replaced, cleared and source-ready cases into a closure status, machine-readable action queue and reviewer checklist so batch benchmark runs can prioritize affected enzyme or structure cases first.
 
 After upload, the reference table is checked for curation risks before coverage metrics are interpreted. The check flags missing `benchmark_id`, generic source labels, wildcard chain matching, missing residue identity, numbering assumptions such as UniProt/mature-chain offsets, and residues that intentionally carry multiple roles or evidence sources.
 
@@ -275,6 +275,7 @@ The benchmark exports:
 - `pocket_benchmark_reference_source_audit_case_decision_outcome_summary.csv`
 - `pocket_benchmark_reference_source_audit_case_decision_closure_queue.csv`
 - `pocket_benchmark_reference_source_audit_case_decision_readiness_impact.csv`
+- `pocket_benchmark_reference_source_audit_case_decision_readiness_impact_summary.csv`
 - `pocket_benchmark_reference_source_audit_case_decision_closure_checklist.md`
 - `pocket_benchmark_reference_source_audit_case_decision_outcomes.csv`
 - `pocket_benchmark_reference_source_audit_case_checklist.md`
@@ -323,7 +324,7 @@ Current summary metrics:
 - External-evidence reference candidate import status.
 - External-evidence reference candidate review queue status.
 - External-evidence reference candidate decision and accepted-reference status.
-- Benchmark reference `source_mode`, source audit summary/case summary/case decision import/validation/outcomes/outcome summary/closure queue/readiness impact/closure checklist/case checklist/action queue/checklist/status, decision-adjusted source-aware readiness blockers, provisional status and reviewed-candidate status.
+- Benchmark reference `source_mode`, source audit summary/case summary/case decision import/validation/outcomes/outcome summary/closure queue/readiness impact/readiness impact summary/closure checklist/case checklist/action queue/checklist/status, decision-adjusted source-aware readiness blockers, provisional status and reviewed-candidate status.
 - Dataset-level claim readiness by Top-N.
 - Case interpretation matrix, summary and one-row-per-case queue across Top-1 / Top-3 / Top-5.
 - Dataset interpretation blocker/review queue, checklist and report.
@@ -531,7 +532,7 @@ Coverage includes:
 Latest full run:
 
 ```text
-242 passed
+243 passed
 ```
 
 ## Known Limits

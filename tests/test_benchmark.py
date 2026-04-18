@@ -32,6 +32,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_source_audit_case_decision_outcomes,
     build_pocket_benchmark_reference_source_audit_case_decision_outcome_summary,
     build_pocket_benchmark_reference_source_audit_case_decision_readiness_impact,
+    build_pocket_benchmark_reference_source_audit_case_decision_readiness_impact_summary,
     build_pocket_benchmark_reference_source_audit_case_decision_template,
     build_pocket_benchmark_reference_source_audit_case_decision_validation,
     build_pocket_benchmark_reference_source_audit_case_summary,
@@ -1667,6 +1668,49 @@ def test_benchmark_reference_source_audit_case_decision_readiness_impact_explain
     assert enzyme_b["original_source_issue_type"] == "provisional_reference_source"
     assert enzyme_b["adjusted_source_issue_type"] == "source_audit_case_decision_pending"
     assert enzyme_b["adjusted_source_priority"] == "P1"
+
+
+def test_benchmark_reference_source_audit_case_decision_readiness_impact_summary_counts_delta():
+    impact = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "enzyme-a",
+                "readiness_impact": "cleared-by-decision",
+                "original_source_priority": "P0",
+                "adjusted_source_priority": "",
+            },
+            {
+                "benchmark_id": "enzyme-b",
+                "readiness_impact": "decision-adjusted-open",
+                "original_source_priority": "P0",
+                "adjusted_source_priority": "P1",
+            },
+            {
+                "benchmark_id": "enzyme-c",
+                "readiness_impact": "unchanged-open",
+                "original_source_priority": "P0",
+                "adjusted_source_priority": "P0",
+            },
+            {
+                "benchmark_id": "enzyme-d",
+                "readiness_impact": "source-ready",
+                "original_source_priority": "",
+                "adjusted_source_priority": "",
+            },
+        ]
+    )
+
+    summary = build_pocket_benchmark_reference_source_audit_case_decision_readiness_impact_summary(impact)
+
+    row = summary.iloc[0]
+    assert row["readiness_impact_status"] == "blocked"
+    assert row["case_count"] == 4
+    assert row["cleared_by_decision_cases"] == 1
+    assert row["decision_adjusted_open_cases"] == 1
+    assert row["unchanged_open_cases"] == 1
+    assert row["source_ready_cases"] == 1
+    assert row["open_after_decision_cases"] == 2
+    assert row["net_blocker_delta"] == -1
 
 
 def test_build_pocket_benchmark_summary_reports_top1_and_top3_coverage():

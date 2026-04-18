@@ -248,6 +248,27 @@ BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_READINESS_IMPACT_COLUMNS = [
     "readiness_note",
 ]
 
+BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_READINESS_IMPACT_SUMMARY_COLUMNS = [
+    "summary_id",
+    "readiness_impact_status",
+    "case_count",
+    "cleared_by_decision_cases",
+    "decision_adjusted_open_cases",
+    "decision_open_cases",
+    "unchanged_open_cases",
+    "source_ready_cases",
+    "open_after_decision_cases",
+    "original_p0_cases",
+    "original_p1_cases",
+    "original_p2_cases",
+    "adjusted_p0_cases",
+    "adjusted_p1_cases",
+    "adjusted_p2_cases",
+    "net_blocker_delta",
+    "recommended_action",
+    "summary_warning",
+]
+
 BENCHMARK_DETAIL_COLUMNS = [
     *BENCHMARK_REFERENCE_COLUMNS,
     "residue_label",
@@ -741,6 +762,10 @@ def _empty_reference_source_audit_case_decision_closure_queue_df() -> pd.DataFra
 
 def _empty_reference_source_audit_case_decision_readiness_impact_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_READINESS_IMPACT_COLUMNS)
+
+
+def _empty_reference_source_audit_case_decision_readiness_impact_summary_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_READINESS_IMPACT_SUMMARY_COLUMNS)
 
 
 def _empty_detail_df() -> pd.DataFrame:
@@ -3004,6 +3029,84 @@ def build_pocket_benchmark_reference_source_audit_case_decision_readiness_impact
         columns=["_impact_rank", "_priority_rank"]
     ).reset_index(drop=True)
     return frame[BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_READINESS_IMPACT_COLUMNS]
+
+
+def build_pocket_benchmark_reference_source_audit_case_decision_readiness_impact_summary(
+    readiness_impact_df: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    """Summarize source-audit decision readiness impact across cases."""
+
+    if readiness_impact_df is None or getattr(readiness_impact_df, "empty", True):
+        return _empty_reference_source_audit_case_decision_readiness_impact_summary_df()
+
+    impact = readiness_impact_df.copy()
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_READINESS_IMPACT_COLUMNS:
+        if column not in impact.columns:
+            impact[column] = ""
+
+    status = impact["readiness_impact"].astype(str).str.strip().str.lower()
+    original_priority = impact["original_source_priority"].astype(str).str.strip().str.upper()
+    adjusted_priority = impact["adjusted_source_priority"].astype(str).str.strip().str.upper()
+
+    case_count = int(len(impact))
+    cleared_cases = int(status.eq("cleared-by-decision").sum())
+    adjusted_open_cases = int(status.eq("decision-adjusted-open").sum())
+    decision_open_cases = int(status.eq("decision-open").sum())
+    unchanged_open_cases = int(status.eq("unchanged-open").sum())
+    source_ready_cases = int(status.eq("source-ready").sum())
+    open_after_decision_cases = int((~status.isin({"cleared-by-decision", "source-ready"})).sum())
+    original_p0_cases = int(original_priority.eq("P0").sum())
+    original_p1_cases = int(original_priority.eq("P1").sum())
+    original_p2_cases = int(original_priority.eq("P2").sum())
+    adjusted_p0_cases = int(adjusted_priority.eq("P0").sum())
+    adjusted_p1_cases = int(adjusted_priority.eq("P1").sum())
+    adjusted_p2_cases = int(adjusted_priority.eq("P2").sum())
+    original_blocker_cases = original_p0_cases + original_p1_cases
+    adjusted_blocker_cases = adjusted_p0_cases + adjusted_p1_cases
+    net_blocker_delta = int(adjusted_blocker_cases - original_blocker_cases)
+
+    if adjusted_blocker_cases > 0:
+        readiness_impact_status = "blocked"
+        recommended_action = "Resolve adjusted P0/P1 source-readiness issues before using benchmark coverage in precision claims."
+        summary_warning = "Some source-audit decision outcomes still block independent benchmark claims."
+    elif adjusted_p2_cases > 0:
+        readiness_impact_status = "review-needed"
+        recommended_action = "Resolve or explicitly sign off adjusted P2 source-readiness review items before publication-ready claims."
+        summary_warning = "Source-audit decision outcomes still need reviewer sign-off."
+    elif cleared_cases > 0:
+        readiness_impact_status = "cleared-by-decision"
+        recommended_action = "Keep decision outcomes and readiness impact exports with the benchmark report."
+        summary_warning = "Source-audit readiness issues represented here were cleared or are source-ready."
+    else:
+        readiness_impact_status = "source-ready"
+        recommended_action = "Keep source audit and readiness impact exports with the benchmark report."
+        summary_warning = "No source-audit readiness issues are open in the impact table."
+
+    return pd.DataFrame(
+        [
+            {
+                "summary_id": "BRSDIS-001",
+                "readiness_impact_status": readiness_impact_status,
+                "case_count": case_count,
+                "cleared_by_decision_cases": cleared_cases,
+                "decision_adjusted_open_cases": adjusted_open_cases,
+                "decision_open_cases": decision_open_cases,
+                "unchanged_open_cases": unchanged_open_cases,
+                "source_ready_cases": source_ready_cases,
+                "open_after_decision_cases": open_after_decision_cases,
+                "original_p0_cases": original_p0_cases,
+                "original_p1_cases": original_p1_cases,
+                "original_p2_cases": original_p2_cases,
+                "adjusted_p0_cases": adjusted_p0_cases,
+                "adjusted_p1_cases": adjusted_p1_cases,
+                "adjusted_p2_cases": adjusted_p2_cases,
+                "net_blocker_delta": net_blocker_delta,
+                "recommended_action": recommended_action,
+                "summary_warning": summary_warning,
+            }
+        ],
+        columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_READINESS_IMPACT_SUMMARY_COLUMNS,
+    )
 
 
 def build_pocket_benchmark_reference_source_audit_case_decision_closure_checklist_markdown(
