@@ -234,6 +234,36 @@ BENCHMARK_REFERENCE_QUALITY_SUMMARY_COLUMNS = [
     "summary_warning",
 ]
 
+BENCHMARK_REFERENCE_STRUCTURE_VALIDATION_COLUMNS = [
+    "issue_id",
+    "severity",
+    "issue_type",
+    "benchmark_id",
+    "chain",
+    "resid",
+    "resname",
+    "residue_label",
+    "structure_chains",
+    "structure_resnames",
+    "matched_chain",
+    "matched_resname",
+    "reference_source",
+    "reference_note",
+    "suggested_action",
+    "validation_warning",
+]
+
+BENCHMARK_REFERENCE_STRUCTURE_VALIDATION_SUMMARY_COLUMNS = [
+    "severity",
+    "issue_type",
+    "issue_count",
+    "affected_case_count",
+    "affected_residue_count",
+    "suggested_action",
+    "summary_status",
+    "summary_warning",
+]
+
 CHAIN_ALIASES = {"chain", "chainid", "chain_id", "authasymid", "auth_asym_id", "asymid", "asym_id"}
 RESID_ALIASES = {
     "resid",
@@ -335,6 +365,14 @@ def _empty_reference_quality_df() -> pd.DataFrame:
 
 def _empty_reference_quality_summary_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_REFERENCE_QUALITY_SUMMARY_COLUMNS)
+
+
+def _empty_reference_structure_validation_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_STRUCTURE_VALIDATION_COLUMNS)
+
+
+def _empty_reference_structure_validation_summary_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_STRUCTURE_VALIDATION_SUMMARY_COLUMNS)
 
 
 def _simplify_column_name(value: object) -> str:
@@ -866,6 +904,249 @@ def build_pocket_benchmark_reference_quality_checklist_markdown(
     for row in issues.itertuples(index=False):
         case_text = f"case `{row.benchmark_id}`" if _safe_text(row.benchmark_id) else "unnamed case"
         lines.append(f"- [ ] {row.severity} `{row.issue_type}` for {case_text}, residue `{row.residue_label}`: {row.suggested_action}")
+    return "\n".join(lines).strip() + "\n"
+
+
+def _structure_residue_rows(atom_df: Optional[pd.DataFrame]) -> pd.DataFrame:
+    if atom_df is None or getattr(atom_df, "empty", True):
+        return pd.DataFrame(columns=["chain", "resid", "resname"])
+    working = atom_df.copy()
+    if "resid" not in working.columns:
+        return pd.DataFrame(columns=["chain", "resid", "resname"])
+    for column in ("chain", "resname"):
+        if column not in working.columns:
+            working[column] = ""
+    working["resid"] = pd.to_numeric(working["resid"], errors="coerce")
+    working = working[working["resid"].notna()].copy()
+    if working.empty:
+        return pd.DataFrame(columns=["chain", "resid", "resname"])
+    working["resid"] = working["resid"].astype(int)
+    working["chain"] = working["chain"].map(_safe_text)
+    working["resname"] = working["resname"].map(_safe_text).str.upper()
+    if "record_type" in working.columns:
+        atom_rows = working[working["record_type"].astype(str).str.upper().eq("ATOM")].copy()
+        if not atom_rows.empty:
+            working = atom_rows
+    return working[["chain", "resid", "resname"]].drop_duplicates().reset_index(drop=True)
+
+
+def _structure_validation_issue(
+    issue_number: int,
+    reference_row: pd.Series,
+    *,
+    severity: str,
+    issue_type: str,
+    structure_chains: str,
+    structure_resnames: str,
+    matched_chain: str,
+    matched_resname: str,
+    suggested_action: str,
+    validation_warning: str,
+) -> dict[str, object]:
+    chain = _safe_text(reference_row.get("chain"))
+    resid = int(reference_row.get("resid"))
+    resname = _safe_text(reference_row.get("resname")).upper()
+    return {
+        "issue_id": f"REFS-{issue_number:03d}",
+        "severity": severity,
+        "issue_type": issue_type,
+        "benchmark_id": _safe_text(reference_row.get("benchmark_id")),
+        "chain": chain,
+        "resid": resid,
+        "resname": resname,
+        "residue_label": _residue_label(chain, resid, resname),
+        "structure_chains": structure_chains,
+        "structure_resnames": structure_resnames,
+        "matched_chain": matched_chain,
+        "matched_resname": matched_resname,
+        "reference_source": _safe_text(reference_row.get("reference_source")),
+        "reference_note": _safe_text(reference_row.get("reference_note")),
+        "suggested_action": suggested_action,
+        "validation_warning": validation_warning,
+    }
+
+
+def build_pocket_benchmark_reference_structure_validation(
+    reference_df: Optional[pd.DataFrame],
+    atom_df: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    """Validate benchmark reference residues against residues present in the uploaded structure."""
+
+    references = _reference_rows(reference_df)
+    structure_residues = _structure_residue_rows(atom_df)
+    if references.empty or structure_residues.empty:
+        return _empty_reference_structure_validation_df()
+
+    issues: list[dict[str, object]] = []
+
+    def add_issue(
+        reference_row: pd.Series,
+        *,
+        severity: str,
+        issue_type: str,
+        structure_chains: str,
+        structure_resnames: str,
+        matched_chain: str,
+        matched_resname: str,
+        suggested_action: str,
+        validation_warning: str,
+    ) -> None:
+        issues.append(
+            _structure_validation_issue(
+                len(issues) + 1,
+                reference_row,
+                severity=severity,
+                issue_type=issue_type,
+                structure_chains=structure_chains,
+                structure_resnames=structure_resnames,
+                matched_chain=matched_chain,
+                matched_resname=matched_resname,
+                suggested_action=suggested_action,
+                validation_warning=validation_warning,
+            )
+        )
+
+    for _, reference in references.iterrows():
+        chain = _safe_text(reference.get("chain"))
+        resid = int(reference.get("resid"))
+        resname = _safe_text(reference.get("resname")).upper()
+        same_resid = structure_residues[structure_residues["resid"].astype(int).eq(resid)]
+        if chain:
+            same_resid = same_resid[same_resid["chain"].map(_safe_text).eq(chain)]
+
+        if same_resid.empty:
+            all_same_number = structure_residues[structure_residues["resid"].astype(int).eq(resid)]
+            structure_chains = ";".join(sorted(all_same_number["chain"].map(_safe_text).replace("", pd.NA).dropna().unique().tolist()))
+            structure_resnames = ";".join(sorted(all_same_number["resname"].map(_safe_text).replace("", pd.NA).dropna().unique().tolist()))
+            add_issue(
+                reference,
+                severity="P1",
+                issue_type="reference_residue_absent",
+                structure_chains=structure_chains,
+                structure_resnames=structure_resnames,
+                matched_chain="",
+                matched_resname="",
+                suggested_action="Check whether the reference uses UniProt, mature-chain, isoform, or another PDB author's numbering before interpreting coverage.",
+                validation_warning="The curated reference residue was not found in the uploaded structure.",
+            )
+            continue
+
+        chains = sorted(same_resid["chain"].map(_safe_text).replace("", pd.NA).dropna().unique().tolist())
+        resnames = sorted(same_resid["resname"].map(_safe_text).replace("", pd.NA).dropna().unique().tolist())
+        structure_chains = ";".join(chains)
+        structure_resnames = ";".join(resnames)
+
+        if not chain and len(chains) > 1:
+            add_issue(
+                reference,
+                severity="P2",
+                issue_type="wildcard_chain_ambiguous_in_structure",
+                structure_chains=structure_chains,
+                structure_resnames=structure_resnames,
+                matched_chain="",
+                matched_resname=structure_resnames,
+                suggested_action="Choose the intended PDB chain for this benchmark residue or split the reference into chain-specific rows.",
+                validation_warning="Blank chain matches multiple chains in the uploaded structure and can inflate benchmark coverage.",
+            )
+
+        if resname and resname not in resnames:
+            add_issue(
+                reference,
+                severity="P1",
+                issue_type="reference_resname_mismatch",
+                structure_chains=structure_chains,
+                structure_resnames=structure_resnames,
+                matched_chain=structure_chains,
+                matched_resname=structure_resnames,
+                suggested_action="Verify residue numbering and expected residue identity against the uploaded PDB before using this row for accuracy claims.",
+                validation_warning="The reference residue name does not match the residue identity in the uploaded structure.",
+            )
+
+    if not issues:
+        return _empty_reference_structure_validation_df()
+    return pd.DataFrame(issues, columns=BENCHMARK_REFERENCE_STRUCTURE_VALIDATION_COLUMNS)
+
+
+def build_pocket_benchmark_reference_structure_validation_summary(
+    validation_issue_df: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    """Summarize structure validation issues for benchmark reference residues."""
+
+    if validation_issue_df is None or getattr(validation_issue_df, "empty", True):
+        return _empty_reference_structure_validation_summary_df()
+    working = validation_issue_df.copy()
+    for column in BENCHMARK_REFERENCE_STRUCTURE_VALIDATION_COLUMNS:
+        if column not in working.columns:
+            working[column] = ""
+    rows: list[dict[str, object]] = []
+    severity_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    for (severity, issue_type), group in working.groupby(["severity", "issue_type"], dropna=False):
+        severity_text = _safe_text(severity) or "P3"
+        if severity_text == "P1":
+            status = "mapping-blocked"
+            warning = "Fix before treating misses as pocket-detection errors."
+        elif severity_text == "P2":
+            status = "mapping-review"
+            warning = "Review before trusting wildcard-chain coverage."
+        else:
+            status = "informational"
+            warning = "Document the structure validation decision."
+        rows.append(
+            {
+                "severity": severity_text,
+                "issue_type": _safe_text(issue_type),
+                "issue_count": int(len(group)),
+                "affected_case_count": int(group["benchmark_id"].map(_safe_text).replace("", pd.NA).dropna().nunique()),
+                "affected_residue_count": int(group[["benchmark_id", "chain", "resid"]].astype(str).drop_duplicates().shape[0]),
+                "suggested_action": _safe_text(group.iloc[0].get("suggested_action")),
+                "summary_status": status,
+                "summary_warning": warning,
+            }
+        )
+    return pd.DataFrame(rows, columns=BENCHMARK_REFERENCE_STRUCTURE_VALIDATION_SUMMARY_COLUMNS).sort_values(
+        ["severity", "issue_count", "issue_type"],
+        key=lambda series: series.map(severity_rank).fillna(series) if series.name == "severity" else series,
+        ascending=[True, False, True],
+    ).reset_index(drop=True)
+
+
+def build_pocket_benchmark_reference_structure_validation_checklist_markdown(
+    validation_issue_df: Optional[pd.DataFrame],
+    validation_summary_df: Optional[pd.DataFrame] = None,
+) -> str:
+    """Render structure validation issues as a reviewer checklist."""
+
+    if validation_issue_df is None or getattr(validation_issue_df, "empty", True):
+        return ""
+    issues = validation_issue_df.copy()
+    summary = (
+        build_pocket_benchmark_reference_structure_validation_summary(issues)
+        if validation_summary_df is None
+        else validation_summary_df
+    )
+    lines = [
+        "# Benchmark reference structure validation checklist",
+        "",
+        "Resolve these structure-mapping issues before interpreting catalytic pocket benchmark misses as detection failures.",
+        "",
+    ]
+    if summary is not None and not getattr(summary, "empty", True):
+        lines.extend(["## Summary", ""])
+        for row in summary.itertuples(index=False):
+            lines.append(
+                f"- {row.severity} `{row.issue_type}`: {int(row.issue_count)} issues / {int(row.affected_residue_count)} residues / {row.summary_status}."
+            )
+        lines.append("")
+    lines.extend(["## Actions", ""])
+    severity_order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    issues["_severity_order"] = issues["severity"].map(severity_order).fillna(9)
+    issues = issues.sort_values(["_severity_order", "issue_type", "benchmark_id", "chain", "resid"]).drop(columns=["_severity_order"])
+    for row in issues.itertuples(index=False):
+        case_text = f"case `{row.benchmark_id}`" if _safe_text(row.benchmark_id) else "unnamed case"
+        structure_text = f"structure chains `{row.structure_chains or '-'}`, resnames `{row.structure_resnames or '-'}`"
+        lines.append(
+            f"- [ ] {row.severity} `{row.issue_type}` for {case_text}, residue `{row.residue_label}` ({structure_text}): {row.suggested_action}"
+        )
     return "\n".join(lines).strip() + "\n"
 
 

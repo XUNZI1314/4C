@@ -7,6 +7,9 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_quality_checklist_markdown,
     build_pocket_benchmark_reference_quality_issues,
     build_pocket_benchmark_reference_quality_summary,
+    build_pocket_benchmark_reference_structure_validation,
+    build_pocket_benchmark_reference_structure_validation_checklist_markdown,
+    build_pocket_benchmark_reference_structure_validation_summary,
     build_pocket_benchmark_reference_template,
     build_pocket_benchmark_reference_template_markdown,
     build_pocket_benchmark_summary,
@@ -66,6 +69,38 @@ enzyme-a,A,57,HIS,Mutagenesis,PMID:12345,
     assert summary["issue_count"].astype(int).sum() == len(issues)
     assert "Benchmark reference curation checklist" in checklist
     assert '"nan"' not in reference_df.to_csv(index=False).lower()
+
+
+def test_build_pocket_benchmark_reference_structure_validation_flags_mapping_risks():
+    reference_df, _ = parse_benchmark_reference_table(
+        """case_id,chain,resid,resname,type,source
+enzyme-a,A,57,HIS,Catalytic residue,M-CSA
+enzyme-a,A,102,ASP,Catalytic residue,M-CSA
+enzyme-a,,195,SER,Catalytic residue,M-CSA
+enzyme-a,B,999,GLY,Catalytic residue,M-CSA
+"""
+    )
+    atom_df = pd.DataFrame(
+        [
+            {"record_type": "ATOM", "chain": "A", "resid": 57, "resname": "HIS"},
+            {"record_type": "ATOM", "chain": "A", "resid": 102, "resname": "ASN"},
+            {"record_type": "ATOM", "chain": "A", "resid": 195, "resname": "SER"},
+            {"record_type": "ATOM", "chain": "B", "resid": 195, "resname": "SER"},
+        ]
+    )
+
+    issues = build_pocket_benchmark_reference_structure_validation(reference_df, atom_df)
+    summary = build_pocket_benchmark_reference_structure_validation_summary(issues)
+    checklist = build_pocket_benchmark_reference_structure_validation_checklist_markdown(issues, summary)
+
+    issue_types = set(issues["issue_type"].astype(str).tolist())
+    assert issue_types == {
+        "reference_residue_absent",
+        "reference_resname_mismatch",
+        "wildcard_chain_ambiguous_in_structure",
+    }
+    assert summary["issue_count"].astype(int).sum() == len(issues)
+    assert "Benchmark reference structure validation checklist" in checklist
 
 
 def test_parse_benchmark_reference_table_accepts_catalytic_residue_aliases():

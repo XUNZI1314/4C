@@ -241,6 +241,8 @@ The page also exports `pocket_benchmark_reference_template.csv` and `pocket_benc
 
 After upload, the reference table is checked for curation risks before coverage metrics are interpreted. The check flags missing `benchmark_id`, generic source labels, wildcard chain matching, missing residue identity, numbering assumptions such as UniProt/mature-chain offsets, and residues that intentionally carry multiple roles or evidence sources.
 
+The same reference residues are also validated against the uploaded PDB atom table. This catches reference residues absent from the structure, residue-name mismatches, and wildcard-chain residues that match multiple chains. These rows should be resolved before interpreting benchmark misses as pocket detection failures.
+
 ### Metrics
 
 The benchmark exports:
@@ -251,6 +253,9 @@ The benchmark exports:
 - `pocket_benchmark_reference_quality_issues.csv`
 - `pocket_benchmark_reference_quality_summary.csv`
 - `pocket_benchmark_reference_quality_checklist.md`
+- `pocket_benchmark_reference_structure_validation.csv`
+- `pocket_benchmark_reference_structure_validation_summary.csv`
+- `pocket_benchmark_reference_structure_validation_checklist.md`
 - `pocket_benchmark_summary.csv`
 - `pocket_benchmark_case_summary.csv`
 - `pocket_benchmark_dataset_summary.csv`
@@ -473,7 +478,7 @@ Coverage includes:
 Latest full run:
 
 ```text
-208 passed
+209 passed
 ```
 
 ## Known Limits

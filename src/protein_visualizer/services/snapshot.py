@@ -310,6 +310,13 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         lines.append(
             f"Benchmark reference curation quality: {benchmark_quality_rows} issues / summary {quality_summary_rows} rows / checklist {checklist_status}"
         )
+    benchmark_structure_validation_rows = int(extra.get("pocket_benchmark_reference_structure_validation_issue_rows") or 0)
+    if benchmark_structure_validation_rows > 0:
+        validation_summary_rows = int(extra.get("pocket_benchmark_reference_structure_validation_summary_rows") or 0)
+        checklist_status = "available" if bool(extra.get("pocket_benchmark_reference_structure_validation_checklist_available")) else "not available"
+        lines.append(
+            f"Benchmark reference structure validation: {benchmark_structure_validation_rows} issues / summary {validation_summary_rows} rows / checklist {checklist_status}"
+        )
     benchmark_case_summary = extra.get("pocket_benchmark_case_summary") or []
     benchmark_dataset_rows = int(extra.get("pocket_benchmark_dataset_summary_rows") or 0)
     if benchmark_dataset_rows > 0 or benchmark_case_summary:
