@@ -167,6 +167,27 @@ BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_VALIDATION_COLUMNS = [
     "required_fix",
 ]
 
+BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_OUTCOME_COLUMNS = [
+    "benchmark_id",
+    "source_decision",
+    "validation_status",
+    "applied_status",
+    "reference_rows",
+    "action_rows",
+    "blocker_rows",
+    "review_rows",
+    "top_priority",
+    "top_issue_type",
+    "source_claim_statuses",
+    "source_modes",
+    "reviewer",
+    "verified_source_mode",
+    "verified_independence",
+    "replacement_reference_source",
+    "outcome_reason",
+    "next_action",
+]
+
 BENCHMARK_DETAIL_COLUMNS = [
     *BENCHMARK_REFERENCE_COLUMNS,
     "residue_label",
@@ -644,6 +665,10 @@ def _empty_reference_source_audit_case_decision_template_df() -> pd.DataFrame:
 
 def _empty_reference_source_audit_case_decision_validation_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_VALIDATION_COLUMNS)
+
+
+def _empty_reference_source_audit_case_decision_outcome_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_OUTCOME_COLUMNS)
 
 
 def _empty_detail_df() -> pd.DataFrame:
@@ -2488,6 +2513,136 @@ def build_pocket_benchmark_reference_source_audit_case_decision_validation(
         )
 
     return pd.DataFrame(rows, columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_VALIDATION_COLUMNS)
+
+
+def build_pocket_benchmark_reference_source_audit_case_decision_outcomes(
+    case_summary_df: Optional[pd.DataFrame],
+    decision_df: Optional[pd.DataFrame] = None,
+    validation_df: Optional[pd.DataFrame] = None,
+) -> pd.DataFrame:
+    """Apply validated source-audit case decisions to case-level source risks."""
+
+    if case_summary_df is None or getattr(case_summary_df, "empty", True):
+        return _empty_reference_source_audit_case_decision_outcome_df()
+    summary = case_summary_df.copy()
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_SUMMARY_COLUMNS:
+        if column not in summary.columns:
+            summary[column] = ""
+    for column in ("reference_rows", "action_rows", "blocker_rows", "review_rows"):
+        summary[column] = pd.to_numeric(summary[column], errors="coerce").fillna(0).astype(int)
+
+    decisions = (
+        decision_df.copy()
+        if decision_df is not None and not getattr(decision_df, "empty", True)
+        else _empty_reference_source_audit_case_decision_template_df()
+    )
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_TEMPLATE_COLUMNS:
+        if column not in decisions.columns:
+            decisions[column] = ""
+
+    validation = (
+        validation_df.copy()
+        if validation_df is not None and not getattr(validation_df, "empty", True)
+        else pd.DataFrame()
+    )
+    if validation.empty and not decisions.empty:
+        validation = build_pocket_benchmark_reference_source_audit_case_decision_validation(decisions, summary)
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_VALIDATION_COLUMNS:
+        if column not in validation.columns:
+            validation[column] = ""
+
+    decision_by_case = {
+        _safe_text(row.get("benchmark_id")): row
+        for _, row in decisions.iterrows()
+        if _safe_text(row.get("benchmark_id"))
+    }
+    validation_by_case = {
+        _safe_text(row.get("benchmark_id")): row
+        for _, row in validation.iterrows()
+        if _safe_text(row.get("benchmark_id"))
+    }
+
+    rows: list[dict[str, object]] = []
+    for _, case in summary.iterrows():
+        benchmark_id = _safe_text(case.get("benchmark_id"))
+        reference_rows = int(case.get("reference_rows") or 0)
+        action_rows = int(case.get("action_rows") or 0)
+        blocker_rows = int(case.get("blocker_rows") or 0)
+        review_rows = int(case.get("review_rows") or 0)
+        has_source_risk = bool(action_rows or blocker_rows or review_rows or _safe_text(case.get("top_priority")))
+
+        decision = decision_by_case.get(benchmark_id)
+        validation_row = validation_by_case.get(benchmark_id)
+        source_decision = _normalize_source_audit_case_decision(decision.get("source_decision")) if decision is not None else ""
+        validation_status = _safe_text(validation_row.get("validation_status")) if validation_row is not None else ""
+        reviewer = _safe_text(decision.get("reviewer")) if decision is not None else ""
+        verified_source_mode = _safe_text(decision.get("verified_source_mode")) if decision is not None else ""
+        verified_independence = _safe_text(decision.get("verified_independence")) if decision is not None else ""
+        replacement_source = _safe_text(decision.get("replacement_reference_source")) if decision is not None else ""
+        issue_flags = _safe_text(validation_row.get("issue_flags")) if validation_row is not None else ""
+        required_fix = _safe_text(validation_row.get("required_fix")) if validation_row is not None else ""
+
+        if not has_source_risk:
+            applied_status = "source-ready"
+            outcome_reason = "No source-audit blocker or review action is recorded for this case."
+            next_action = "Keep source audit with the benchmark report."
+        elif decision is None:
+            source_decision = "review"
+            validation_status = "review"
+            applied_status = "pending"
+            outcome_reason = "No source-audit case decision has been uploaded for this case."
+            next_action = "Fill and upload the source-audit case decision template."
+        elif validation_status == "blocked":
+            applied_status = "blocked"
+            outcome_reason = issue_flags or "Uploaded source-audit case decision failed validation."
+            next_action = required_fix or "Fix validation issues and re-upload source-audit case decisions."
+        elif source_decision == "accept":
+            applied_status = "cleared"
+            outcome_reason = "Reviewer accepted the source decision and recorded independence evidence."
+            next_action = "Keep the validated case decision with benchmark exports before making precision claims."
+        elif source_decision == "replace":
+            applied_status = "replaced"
+            outcome_reason = "Reviewer replaced or curated the benchmark reference source for this case."
+            next_action = "Rebuild benchmark references from the replacement source before reporting final coverage."
+        elif source_decision == "hold":
+            applied_status = "held"
+            outcome_reason = _safe_text(decision.get("decision_note")) or "Reviewer held this case for later source remediation."
+            next_action = "Do not use this case for independent precision claims until the hold is resolved."
+        else:
+            applied_status = "pending"
+            outcome_reason = "Source decision is still pending review."
+            next_action = "Complete source audit case review before clearing this case."
+
+        rows.append(
+            {
+                "benchmark_id": benchmark_id,
+                "source_decision": source_decision,
+                "validation_status": validation_status,
+                "applied_status": applied_status,
+                "reference_rows": reference_rows,
+                "action_rows": action_rows,
+                "blocker_rows": blocker_rows,
+                "review_rows": review_rows,
+                "top_priority": _safe_text(case.get("top_priority")),
+                "top_issue_type": _safe_text(case.get("top_issue_type")),
+                "source_claim_statuses": _safe_text(case.get("source_claim_statuses")),
+                "source_modes": _safe_text(case.get("source_modes")),
+                "reviewer": reviewer,
+                "verified_source_mode": verified_source_mode,
+                "verified_independence": verified_independence,
+                "replacement_reference_source": replacement_source,
+                "outcome_reason": outcome_reason,
+                "next_action": next_action,
+            }
+        )
+
+    if not rows:
+        return _empty_reference_source_audit_case_decision_outcome_df()
+    status_rank = {"blocked": 0, "pending": 1, "held": 2, "replaced": 3, "cleared": 4, "source-ready": 5}
+    frame = pd.DataFrame(rows, columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_OUTCOME_COLUMNS)
+    frame["_status_rank"] = frame["applied_status"].map(status_rank).fillna(99)
+    frame = frame.sort_values(["_status_rank", "benchmark_id"]).drop(columns=["_status_rank"]).reset_index(drop=True)
+    return frame[BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_OUTCOME_COLUMNS]
 
 
 def _normalize_pocket_rows(pocket_df: Optional[pd.DataFrame]) -> pd.DataFrame:

@@ -27,6 +27,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_source_audit,
     build_pocket_benchmark_reference_source_audit_action_queue,
     build_pocket_benchmark_reference_source_audit_case_checklist_markdown,
+    build_pocket_benchmark_reference_source_audit_case_decision_outcomes,
     build_pocket_benchmark_reference_source_audit_case_decision_template,
     build_pocket_benchmark_reference_source_audit_case_decision_validation,
     build_pocket_benchmark_reference_source_audit_case_summary,
@@ -1326,6 +1327,64 @@ enzyme-b,accept,Alice,accepted-reviewed-candidate,,,
     assert metadata["accept_rows"] == "2"
     assert validation["validation_status"].tolist() == ["ok", "blocked"]
     assert "missing-independence-evidence" in str(validation.iloc[1]["issue_flags"])
+
+
+def test_benchmark_reference_source_audit_case_decision_outcomes_apply_validated_decisions():
+    case_summary = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "enzyme-a",
+                "reference_rows": 2,
+                "action_rows": 2,
+                "blocker_rows": 2,
+                "review_rows": 0,
+                "top_priority": "P0",
+                "top_issue_type": "provisional_reference_source",
+                "source_claim_statuses": "blocked-provisional",
+                "source_modes": "provisional-external-evidence",
+                "recommended_action": "Resolve blockers.",
+                "case_warning": "Blocked.",
+            },
+            {
+                "benchmark_id": "enzyme-b",
+                "reference_rows": 1,
+                "action_rows": 1,
+                "blocker_rows": 0,
+                "review_rows": 1,
+                "top_priority": "P2",
+                "top_issue_type": "review_qualified_reference_source",
+                "source_claim_statuses": "review-qualified",
+                "source_modes": "accepted-reviewed-candidate",
+                "recommended_action": "Confirm independence.",
+                "case_warning": "Review needed.",
+            },
+            {
+                "benchmark_id": "enzyme-ready",
+                "reference_rows": 1,
+                "action_rows": 0,
+                "blocker_rows": 0,
+                "review_rows": 0,
+                "top_priority": "",
+                "top_issue_type": "",
+                "source_claim_statuses": "source-ready",
+                "source_modes": "uploaded-curated",
+                "recommended_action": "Keep audit.",
+                "case_warning": "",
+            },
+        ]
+    )
+    decision_text = """benchmark_id,source_decision,reviewer,verified_source_mode,verified_independence,replacement_reference_source,decision_note
+enzyme-a,accept,Alice,uploaded-curated,yes,,independent source verified
+"""
+    decisions, _metadata = parse_pocket_benchmark_reference_source_audit_case_decision_table(decision_text)
+    validation = build_pocket_benchmark_reference_source_audit_case_decision_validation(decisions, case_summary)
+
+    outcomes = build_pocket_benchmark_reference_source_audit_case_decision_outcomes(case_summary, decisions, validation)
+
+    statuses = dict(zip(outcomes["benchmark_id"], outcomes["applied_status"]))
+    assert statuses["enzyme-a"] == "cleared"
+    assert statuses["enzyme-b"] == "pending"
+    assert statuses["enzyme-ready"] == "source-ready"
 
 
 def test_benchmark_reference_readiness_uses_source_audit_as_gate():
