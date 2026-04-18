@@ -359,8 +359,9 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
     if benchmark_dataset_interpretation_queue_rows > 0:
         blocker_rows = int(extra.get("pocket_benchmark_dataset_interpretation_queue_blocker_rows") or 0)
         review_rows = int(extra.get("pocket_benchmark_dataset_interpretation_queue_review_rows") or 0)
+        checklist_status = "available" if bool(extra.get("pocket_benchmark_dataset_interpretation_checklist_available")) else "not available"
         lines.append(
-            f"Benchmark dataset interpretation queue: {benchmark_dataset_interpretation_queue_rows} rows / blockers {blocker_rows} / review {review_rows}"
+            f"Benchmark dataset interpretation queue: {benchmark_dataset_interpretation_queue_rows} rows / blockers {blocker_rows} / review {review_rows} / checklist {checklist_status}"
         )
     benchmark_case_summary = extra.get("pocket_benchmark_case_summary") or []
     benchmark_dataset_rows = int(extra.get("pocket_benchmark_dataset_summary_rows") or 0)

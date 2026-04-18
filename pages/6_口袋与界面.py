@@ -44,6 +44,7 @@ from protein_visualizer.services.ai_evidence import (
 )
 from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_case_interpretation_summary,
+    build_pocket_benchmark_dataset_interpretation_checklist_markdown,
     build_pocket_benchmark_dataset_interpretation,
     build_pocket_benchmark_dataset_interpretation_queue,
     build_pocket_benchmark_interpretation_summary,
@@ -890,6 +891,7 @@ pocket_benchmark_interpretation_df = pd.DataFrame()
 pocket_benchmark_case_interpretation_df = pd.DataFrame()
 pocket_benchmark_dataset_interpretation_df = pd.DataFrame()
 pocket_benchmark_dataset_interpretation_queue_df = pd.DataFrame()
+pocket_benchmark_dataset_interpretation_checklist_markdown = ""
 pocket_benchmark_summary_df = pd.DataFrame()
 pocket_benchmark_details_df = pd.DataFrame()
 pocket_benchmark_case_summary_df = pd.DataFrame()
@@ -1637,6 +1639,11 @@ pocket_benchmark_dataset_interpretation_df = build_pocket_benchmark_dataset_inte
 pocket_benchmark_dataset_interpretation_queue_df = build_pocket_benchmark_dataset_interpretation_queue(
     pocket_benchmark_case_interpretation_df
 )
+pocket_benchmark_dataset_interpretation_checklist_markdown = (
+    build_pocket_benchmark_dataset_interpretation_checklist_markdown(
+        pocket_benchmark_dataset_interpretation_queue_df
+    )
+)
 benchmark_variants: list[tuple[str, pd.DataFrame, pd.DataFrame]] = []
 if not benchmark_reference_df.empty:
     benchmark_variants.append(("current", effective_pocket_df, effective_pocket_summary))
@@ -2124,6 +2131,7 @@ try:
             "pocket_benchmark_dataset_interpretation_queue_rows": int(len(pocket_benchmark_dataset_interpretation_queue_df)),
             "pocket_benchmark_dataset_interpretation_queue_blocker_rows": int(pocket_benchmark_dataset_interpretation_queue_df["action_status"].astype(str).eq("blocker").sum()) if not pocket_benchmark_dataset_interpretation_queue_df.empty and "action_status" in pocket_benchmark_dataset_interpretation_queue_df.columns else 0,
             "pocket_benchmark_dataset_interpretation_queue_review_rows": int(pocket_benchmark_dataset_interpretation_queue_df["action_status"].astype(str).eq("review").sum()) if not pocket_benchmark_dataset_interpretation_queue_df.empty and "action_status" in pocket_benchmark_dataset_interpretation_queue_df.columns else 0,
+            "pocket_benchmark_dataset_interpretation_checklist_available": bool(pocket_benchmark_dataset_interpretation_checklist_markdown),
             "pocket_benchmark_top1_coverage": float(top1_benchmark.get("coverage_ratio") or 0.0) if top1_benchmark is not None else None,
             "pocket_benchmark_top1_status": str(top1_benchmark.get("benchmark_status") or "") if top1_benchmark is not None else None,
             "pocket_benchmark_top3_coverage": float(top3_benchmark.get("coverage_ratio") or 0.0) if top3_benchmark is not None else None,
@@ -2379,6 +2387,8 @@ snapshot = build_analysis_snapshot(
         "pocket_benchmark_dataset_interpretation_queue": pocket_benchmark_dataset_interpretation_queue_df.to_dict(orient="records"),
         "pocket_benchmark_dataset_interpretation_queue_blocker_rows": int(pocket_benchmark_dataset_interpretation_queue_df["action_status"].astype(str).eq("blocker").sum()) if not pocket_benchmark_dataset_interpretation_queue_df.empty and "action_status" in pocket_benchmark_dataset_interpretation_queue_df.columns else 0,
         "pocket_benchmark_dataset_interpretation_queue_review_rows": int(pocket_benchmark_dataset_interpretation_queue_df["action_status"].astype(str).eq("review").sum()) if not pocket_benchmark_dataset_interpretation_queue_df.empty and "action_status" in pocket_benchmark_dataset_interpretation_queue_df.columns else 0,
+        "pocket_benchmark_dataset_interpretation_checklist_available": bool(pocket_benchmark_dataset_interpretation_checklist_markdown),
+        "pocket_benchmark_dataset_interpretation_checklist": pocket_benchmark_dataset_interpretation_checklist_markdown,
         "pocket_benchmark_summary_rows": int(len(pocket_benchmark_summary_df)),
         "pocket_benchmark_summary": pocket_benchmark_summary_df.to_dict(orient="records"),
         "pocket_benchmark_details_rows": int(len(pocket_benchmark_details_df)),
@@ -2702,6 +2712,9 @@ if not pocket_benchmark_summary_df.empty:
         if not pocket_benchmark_dataset_interpretation_queue_df.empty:
             st.caption("Benchmark dataset interpretation queue: non-claim-ready cases that block or weaken dataset-level precision claims.")
             st.dataframe(pocket_benchmark_dataset_interpretation_queue_df, use_container_width=True, hide_index=True)
+            if pocket_benchmark_dataset_interpretation_checklist_markdown:
+                with st.expander("Benchmark dataset interpretation checklist", expanded=False):
+                    st.markdown(pocket_benchmark_dataset_interpretation_checklist_markdown)
         st.dataframe(pocket_benchmark_summary_df, use_container_width=True, hide_index=True)
         if not pocket_benchmark_dataset_summary_df.empty:
             st.caption("Benchmark dataset summary: case-level aggregation prevents large catalytic sets from dominating accuracy.")
@@ -3649,6 +3662,13 @@ with tab_export:
                 file_name="pocket_benchmark_dataset_interpretation_queue.csv",
                 mime="text/csv",
             )
+        if pocket_benchmark_dataset_interpretation_checklist_markdown:
+            st.download_button(
+                "Export pocket benchmark dataset interpretation checklist MD",
+                data=pocket_benchmark_dataset_interpretation_checklist_markdown.encode("utf-8"),
+                file_name="pocket_benchmark_dataset_interpretation_checklist.md",
+                mime="text/markdown",
+            )
         if not pocket_benchmark_summary_df.empty:
             st.download_button(
                 "Export pocket benchmark summary CSV",
@@ -4142,7 +4162,7 @@ with tab_export:
         f"Benchmark interpretation: {len(pocket_benchmark_interpretation_df)} rows / Top-1 claim {pocket_benchmark_interpretation_df[pocket_benchmark_interpretation_df['top_n'].astype(int) == 1].iloc[0].get('claim_status') if not pocket_benchmark_interpretation_df.empty and 'top_n' in pocket_benchmark_interpretation_df.columns and (pocket_benchmark_interpretation_df['top_n'].astype(int) == 1).any() else '-'} / Top-3 claim {pocket_benchmark_interpretation_df[pocket_benchmark_interpretation_df['top_n'].astype(int) == 3].iloc[0].get('claim_status') if not pocket_benchmark_interpretation_df.empty and 'top_n' in pocket_benchmark_interpretation_df.columns and (pocket_benchmark_interpretation_df['top_n'].astype(int) == 3).any() else '-'}",
         f"Benchmark case interpretation: {len(pocket_benchmark_case_interpretation_df)} rows / blocked {int(pocket_benchmark_case_interpretation_df['claim_status'].astype(str).eq('blocked').sum()) if not pocket_benchmark_case_interpretation_df.empty and 'claim_status' in pocket_benchmark_case_interpretation_df.columns else 0} / review {int(pocket_benchmark_case_interpretation_df['claim_status'].astype(str).eq('review-needed').sum()) if not pocket_benchmark_case_interpretation_df.empty and 'claim_status' in pocket_benchmark_case_interpretation_df.columns else 0}",
         f"Benchmark dataset interpretation: {len(pocket_benchmark_dataset_interpretation_df)} rows / blocked {int(pocket_benchmark_dataset_interpretation_df['dataset_claim_status'].astype(str).eq('blocked').sum()) if not pocket_benchmark_dataset_interpretation_df.empty and 'dataset_claim_status' in pocket_benchmark_dataset_interpretation_df.columns else 0} / review {int(pocket_benchmark_dataset_interpretation_df['dataset_claim_status'].astype(str).eq('review-needed').sum()) if not pocket_benchmark_dataset_interpretation_df.empty and 'dataset_claim_status' in pocket_benchmark_dataset_interpretation_df.columns else 0}",
-        f"Benchmark dataset interpretation queue: {len(pocket_benchmark_dataset_interpretation_queue_df)} rows / blockers {int(pocket_benchmark_dataset_interpretation_queue_df['action_status'].astype(str).eq('blocker').sum()) if not pocket_benchmark_dataset_interpretation_queue_df.empty and 'action_status' in pocket_benchmark_dataset_interpretation_queue_df.columns else 0} / review {int(pocket_benchmark_dataset_interpretation_queue_df['action_status'].astype(str).eq('review').sum()) if not pocket_benchmark_dataset_interpretation_queue_df.empty and 'action_status' in pocket_benchmark_dataset_interpretation_queue_df.columns else 0}",
+        f"Benchmark dataset interpretation queue: {len(pocket_benchmark_dataset_interpretation_queue_df)} rows / blockers {int(pocket_benchmark_dataset_interpretation_queue_df['action_status'].astype(str).eq('blocker').sum()) if not pocket_benchmark_dataset_interpretation_queue_df.empty and 'action_status' in pocket_benchmark_dataset_interpretation_queue_df.columns else 0} / review {int(pocket_benchmark_dataset_interpretation_queue_df['action_status'].astype(str).eq('review').sum()) if not pocket_benchmark_dataset_interpretation_queue_df.empty and 'action_status' in pocket_benchmark_dataset_interpretation_queue_df.columns else 0} / checklist {'available' if pocket_benchmark_dataset_interpretation_checklist_markdown else 'not available'}",
         f"Catalytic benchmark dataset: cases {int(pocket_benchmark_case_summary_df['benchmark_id'].nunique()) if not pocket_benchmark_case_summary_df.empty and 'benchmark_id' in pocket_benchmark_case_summary_df.columns else 0} / dataset rows {len(pocket_benchmark_dataset_summary_df)}",
         f"Catalytic benchmark variants: {len(pocket_benchmark_variant_comparison_df)} rows / current vs ablations {'available' if not pocket_benchmark_variant_comparison_df.empty else 'not available'}",
         f"Catalytic benchmark variant cases: {len(pocket_benchmark_variant_case_comparison_df)} rows / variant dataset rows {len(pocket_benchmark_variant_dataset_comparison_df)}",

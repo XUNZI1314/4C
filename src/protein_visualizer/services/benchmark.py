@@ -2014,6 +2014,80 @@ def build_pocket_benchmark_dataset_interpretation_queue(case_interpretation_df: 
     return frame[BENCHMARK_DATASET_INTERPRETATION_QUEUE_COLUMNS]
 
 
+def build_pocket_benchmark_dataset_interpretation_checklist_markdown(
+    dataset_interpretation_queue_df: Optional[pd.DataFrame],
+    *,
+    title: str = "Benchmark dataset interpretation checklist",
+    max_actions: int = 80,
+) -> str:
+    """Render dataset-level benchmark interpretation blockers as a reviewer checklist."""
+
+    if dataset_interpretation_queue_df is None or getattr(dataset_interpretation_queue_df, "empty", True):
+        return ""
+
+    working = dataset_interpretation_queue_df.copy()
+    for column in BENCHMARK_DATASET_INTERPRETATION_QUEUE_COLUMNS:
+        if column not in working.columns:
+            working[column] = ""
+    working["top_n"] = pd.to_numeric(working["top_n"], errors="coerce").fillna(0).astype(int)
+    working["coverage_ratio"] = pd.to_numeric(working["coverage_ratio"], errors="coerce").fillna(0.0)
+    working["best_rank"] = pd.to_numeric(working["best_rank"], errors="coerce").fillna(0).astype(int)
+    priority_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    working["_priority_rank"] = working["priority"].map(priority_rank).fillna(99)
+    working = working.sort_values(["top_n", "_priority_rank", "benchmark_id", "issue_type"]).drop(columns=["_priority_rank"])
+
+    summary = (
+        working.groupby(["priority", "action_status", "issue_type"], sort=False, dropna=False)
+        .agg(action_count=("action_id", "count"), affected_case_count=("benchmark_id", "nunique"))
+        .reset_index()
+    )
+    summary["_priority_rank"] = summary["priority"].map(priority_rank).fillna(99)
+    summary = summary.sort_values(["_priority_rank", "issue_type"]).drop(columns=["_priority_rank"])
+
+    lines = [
+        f"# {title}",
+        "",
+        "Generated from `pocket_benchmark_dataset_interpretation_queue.csv`.",
+        "",
+        "Use this checklist before reporting dataset-level benchmark coverage as a precision claim.",
+        "",
+        "## Summary",
+        "",
+        "| Priority | Status | Issue | Actions | Cases |",
+        "| --- | --- | --- | ---: | ---: |",
+    ]
+    for _, row in summary.iterrows():
+        lines.append(
+            "| {priority} | {status} | {issue} | {actions} | {cases} |".format(
+                priority=_safe_text(row.get("priority")) or "-",
+                status=_safe_text(row.get("action_status")) or "-",
+                issue=_safe_text(row.get("issue_type")) or "-",
+                actions=int(row.get("action_count") or 0),
+                cases=int(row.get("affected_case_count") or 0),
+            )
+        )
+
+    lines.extend(["", "## Actions", ""])
+    for _, row in working.head(max_actions).iterrows():
+        lines.append(
+            "- [ ] `{priority}` Top-{top_n} `{issue}` case `{case}` coverage `{coverage}` best rank `{best_rank}` pocket `{pocket}`: {action}".format(
+                priority=_safe_text(row.get("priority")) or "-",
+                top_n=int(row.get("top_n") or 0),
+                issue=_safe_text(row.get("issue_type")) or "-",
+                case=_safe_text(row.get("benchmark_id")) or "current",
+                coverage=round(float(row.get("coverage_ratio") or 0.0), 3),
+                best_rank=int(row.get("best_rank") or 0),
+                pocket=_safe_text(row.get("best_pocket_id")) or "-",
+                action=_safe_text(row.get("suggested_action")) or "Review this benchmark case before reporting dataset-level coverage.",
+            )
+        )
+
+    remaining = int(len(working) - max_actions)
+    if remaining > 0:
+        lines.append(f"- [ ] Review {remaining} additional queued actions in the CSV export.")
+    return "\n".join(lines).strip() + "\n"
+
+
 def build_pocket_benchmark_case_summary(
     reference_df: Optional[pd.DataFrame],
     pocket_df: Optional[pd.DataFrame],

@@ -2,6 +2,7 @@ import pandas as pd
 
 from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_case_interpretation_summary,
+    build_pocket_benchmark_dataset_interpretation_checklist_markdown,
     build_pocket_benchmark_dataset_interpretation,
     build_pocket_benchmark_dataset_interpretation_queue,
     build_pocket_benchmark_interpretation_summary,
@@ -380,6 +381,52 @@ def test_build_pocket_benchmark_dataset_interpretation_queue_lists_blocking_case
     assert queue["priority"].tolist() == ["P0", "P2"]
     assert queue["issue_type"].tolist() == ["blocked-case", "review-needed-case"]
     assert str(queue.iloc[0]["suggested_action"]) == "Fix numbering."
+
+
+def test_build_pocket_benchmark_dataset_interpretation_checklist_markdown():
+    queue = pd.DataFrame(
+        [
+            {
+                "action_id": "BDSI-001",
+                "priority": "P0",
+                "action_status": "blocker",
+                "top_n": 1,
+                "benchmark_id": "enzyme-b",
+                "claim_status": "blocked",
+                "coverage_ratio": 0.5,
+                "best_rank": 2,
+                "best_pocket_id": "Pocket-2",
+                "benchmark_status": "top1-partial-hit",
+                "readiness_status": "blocked",
+                "issue_type": "blocked-case",
+                "suggested_action": "Fix numbering.",
+                "interpretation_warning": "Reference blocked.",
+            },
+            {
+                "action_id": "BDSI-002",
+                "priority": "P2",
+                "action_status": "review",
+                "top_n": 1,
+                "benchmark_id": "enzyme-c",
+                "claim_status": "review-needed",
+                "coverage_ratio": 0.0,
+                "best_rank": 0,
+                "best_pocket_id": "",
+                "benchmark_status": "top1-miss",
+                "readiness_status": "review-needed",
+                "issue_type": "review-needed-case",
+                "suggested_action": "Reviewer sign-off required.",
+                "interpretation_warning": "Reference needs review.",
+            },
+        ]
+    )
+
+    checklist = build_pocket_benchmark_dataset_interpretation_checklist_markdown(queue)
+
+    assert checklist.startswith("# Benchmark dataset interpretation checklist")
+    assert "| P0 | blocker | blocked-case | 1 | 1 |" in checklist
+    assert "| P2 | review | review-needed-case | 1 | 1 |" in checklist
+    assert "`P0` Top-1 `blocked-case` case `enzyme-b` coverage `0.5` best rank `2` pocket `Pocket-2`: Fix numbering." in checklist
 
 
 def test_parse_benchmark_reference_table_accepts_catalytic_residue_aliases():
