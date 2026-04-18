@@ -336,6 +336,23 @@ BENCHMARK_DATASET_INTERPRETATION_COLUMNS = [
     "interpretation_warning",
 ]
 
+BENCHMARK_DATASET_INTERPRETATION_QUEUE_COLUMNS = [
+    "action_id",
+    "priority",
+    "action_status",
+    "top_n",
+    "benchmark_id",
+    "claim_status",
+    "coverage_ratio",
+    "best_rank",
+    "best_pocket_id",
+    "benchmark_status",
+    "readiness_status",
+    "issue_type",
+    "suggested_action",
+    "interpretation_warning",
+]
+
 CHAIN_ALIASES = {"chain", "chainid", "chain_id", "authasymid", "auth_asym_id", "asymid", "asym_id"}
 RESID_ALIASES = {
     "resid",
@@ -469,6 +486,10 @@ def _empty_case_interpretation_df() -> pd.DataFrame:
 
 def _empty_dataset_interpretation_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_DATASET_INTERPRETATION_COLUMNS)
+
+
+def _empty_dataset_interpretation_queue_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_DATASET_INTERPRETATION_QUEUE_COLUMNS)
 
 
 def _simplify_column_name(value: object) -> str:
@@ -1923,6 +1944,74 @@ def build_pocket_benchmark_dataset_interpretation(case_interpretation_df: Option
     if not rows:
         return _empty_dataset_interpretation_df()
     return pd.DataFrame(rows, columns=BENCHMARK_DATASET_INTERPRETATION_COLUMNS)
+
+
+def _dataset_interpretation_queue_issue(claim_status: str) -> tuple[str, str, str]:
+    if claim_status == "blocked":
+        return "P0", "blocker", "blocked-case"
+    if claim_status == "review-needed":
+        return "P2", "review", "review-needed-case"
+    if claim_status == "readiness-unknown":
+        return "P2", "review", "readiness-unknown-case"
+    return "", "", ""
+
+
+def build_pocket_benchmark_dataset_interpretation_queue(case_interpretation_df: Optional[pd.DataFrame]) -> pd.DataFrame:
+    """List non-claim-ready benchmark cases that block or weaken dataset-level interpretation."""
+
+    if case_interpretation_df is None or getattr(case_interpretation_df, "empty", True) or "top_n" not in case_interpretation_df.columns:
+        return _empty_dataset_interpretation_queue_df()
+
+    working = case_interpretation_df.copy()
+    for column in BENCHMARK_CASE_INTERPRETATION_COLUMNS:
+        if column not in working.columns:
+            working[column] = ""
+    working["top_n"] = pd.to_numeric(working["top_n"], errors="coerce")
+    working = working[working["top_n"].notna()].copy()
+    if working.empty:
+        return _empty_dataset_interpretation_queue_df()
+
+    working["coverage_ratio"] = pd.to_numeric(working["coverage_ratio"], errors="coerce").fillna(0.0)
+    working["best_rank"] = pd.to_numeric(working["best_rank"], errors="coerce").fillna(0).astype(int)
+    working["claim_status"] = working["claim_status"].map(_normalized_claim_status)
+    working.loc[working["claim_status"].eq(""), "claim_status"] = "readiness-unknown"
+    if "claim_ready" in working.columns:
+        working["claim_ready"] = working["claim_ready"].map(_claim_ready_bool)
+        working.loc[working["claim_ready"] & working["claim_status"].eq("readiness-unknown"), "claim_status"] = "claim-ready"
+
+    rows: list[dict[str, object]] = []
+    for _, row in working.iterrows():
+        claim_status = _safe_text(row.get("claim_status"))
+        priority, action_status, issue_type = _dataset_interpretation_queue_issue(claim_status)
+        if not priority:
+            continue
+        rows.append(
+            {
+                "priority": priority,
+                "action_status": action_status,
+                "top_n": int(row.get("top_n") or 0),
+                "benchmark_id": _safe_text(row.get("benchmark_id")) or "current",
+                "claim_status": claim_status,
+                "coverage_ratio": round(float(row.get("coverage_ratio") or 0.0), 3),
+                "best_rank": int(row.get("best_rank") or 0),
+                "best_pocket_id": _safe_text(row.get("best_pocket_id")),
+                "benchmark_status": _safe_text(row.get("benchmark_status")),
+                "readiness_status": _safe_text(row.get("readiness_status")),
+                "issue_type": issue_type,
+                "suggested_action": _safe_text(row.get("recommended_action")),
+                "interpretation_warning": _safe_text(row.get("interpretation_warning")),
+            }
+        )
+
+    if not rows:
+        return _empty_dataset_interpretation_queue_df()
+
+    frame = pd.DataFrame(rows)
+    priority_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    frame["_priority_rank"] = frame["priority"].map(priority_rank).fillna(99)
+    frame = frame.sort_values(["top_n", "_priority_rank", "benchmark_id", "issue_type"]).drop(columns=["_priority_rank"]).reset_index(drop=True)
+    frame["action_id"] = [f"BDSI-{index + 1:03d}" for index in range(len(frame))]
+    return frame[BENCHMARK_DATASET_INTERPRETATION_QUEUE_COLUMNS]
 
 
 def build_pocket_benchmark_case_summary(
