@@ -22,6 +22,25 @@ BENCHMARK_REFERENCE_TEMPLATE_COLUMNS = [
     *BENCHMARK_REFERENCE_COLUMNS,
 ]
 
+BENCHMARK_REFERENCE_IMPORT_SUMMARY_COLUMNS = [
+    "source",
+    "import_status",
+    "evidence_rows",
+    "reference_rows",
+    "case_count",
+    "chain_specific_rows",
+    "wildcard_chain_rows",
+    "exact_mapping_rows",
+    "weak_mapping_rows",
+    "structure_verified_rows",
+    "manual_review_rows",
+    "missing_resname_rows",
+    "duplicate_rows",
+    "skipped_rows",
+    "recommended_action",
+    "import_warning",
+]
+
 BENCHMARK_DETAIL_COLUMNS = [
     *BENCHMARK_REFERENCE_COLUMNS,
     "residue_label",
@@ -420,10 +439,11 @@ RESID_ALIASES = {
 RESNAME_ALIASES = {"resname", "residue_name", "aa", "aminoacid", "amino_acid"}
 RESIDUE_TOKEN_ALIASES = {"residuelabel", "residue_label", "site", "positiontext", "position_text"}
 TYPE_ALIASES = {"reference_type", "type", "evidence_type", "role", "annotation", "function"}
-SOURCE_ALIASES = {"reference_source", "source", "dataset", "citation", "reference", "pmid", "doi"}
+SOURCE_ALIASES = {"reference_source", "evidence_source", "source", "dataset", "citation", "reference", "pmid", "doi"}
 NOTE_ALIASES = {"reference_note", "note", "notes", "comment", "description", "evidence_note"}
 EXPECTED_POCKET_ALIASES = {"expected_pocket_id", "pocket_id", "active_site_pocket", "validated_pocket_id"}
-BENCHMARK_ID_ALIASES = {"benchmark_id", "case_id", "dataset_id", "enzyme_id", "pdb_id", "entry_id"}
+BENCHMARK_ID_ALIASES = {"benchmark_id", "case_id", "dataset_id", "enzyme_id", "pdb_id", "entry_id", "mcsa_id"}
+PDB_ID_ALIASES = {"pdb_id", "pdb", "pdbcode", "pdb_code", "structure_id", "structure"}
 GENERIC_REFERENCE_SOURCE_LABELS = {
     "",
     "source",
@@ -453,6 +473,10 @@ def _empty_reference_df() -> pd.DataFrame:
 
 def _empty_reference_template_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_REFERENCE_TEMPLATE_COLUMNS)
+
+
+def _empty_reference_import_summary_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_IMPORT_SUMMARY_COLUMNS)
 
 
 def _empty_detail_df() -> pd.DataFrame:
@@ -573,6 +597,15 @@ def _simplify_column_name(value: object) -> str:
 
 
 def _find_column(frame: pd.DataFrame, aliases: set[str]) -> Optional[str]:
+    simplified = {_simplify_column_name(column): column for column in frame.columns}
+    for alias in aliases:
+        normalized_alias = _simplify_column_name(alias)
+        if normalized_alias in simplified:
+            return simplified[normalized_alias]
+    return None
+
+
+def _find_column_in_order(frame: pd.DataFrame, aliases: Sequence[str]) -> Optional[str]:
     simplified = {_simplify_column_name(column): column for column in frame.columns}
     for alias in aliases:
         normalized_alias = _simplify_column_name(alias)
@@ -750,10 +783,25 @@ def parse_benchmark_reference_table(text: str, *, source_hint: str = "Curated be
     chain_column = _find_column(frame, CHAIN_ALIASES)
     resname_column = _find_column(frame, RESNAME_ALIASES)
     type_column = _find_column(frame, TYPE_ALIASES)
-    source_column = _find_column(frame, SOURCE_ALIASES)
+    source_column = _find_column_in_order(
+        frame,
+        (
+            "reference_source",
+            "evidence_source",
+            "source",
+            "dataset",
+            "citation",
+            "reference",
+            "pmid",
+            "doi",
+        ),
+    )
     note_column = _find_column(frame, NOTE_ALIASES)
     expected_pocket_column = _find_column(frame, EXPECTED_POCKET_ALIASES)
-    benchmark_id_column = _find_column(frame, BENCHMARK_ID_ALIASES)
+    benchmark_id_column = _find_column_in_order(
+        frame,
+        ("benchmark_id", "case_id", "dataset_id", "enzyme_id", "mcsa_id", "entry_id", "pdb_id"),
+    )
 
     rows: list[dict[str, object]] = []
     for index, row in frame.iterrows():
@@ -804,6 +852,287 @@ def parse_benchmark_reference_table(text: str, *, source_hint: str = "Curated be
         "chain_specific_rows": str(int(reference_df["chain"].astype(str).str.strip().ne("").sum())),
         "wildcard_chain_rows": str(int(reference_df["chain"].astype(str).str.strip().eq("").sum())),
     }
+
+
+def _safe_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "y", "review", "needs-review", "manual-review"}
+
+
+def _external_reference_source(row: dict[str, object], source_hint: str) -> str:
+    values = [_safe_text(row.get("evidence_source")) or source_hint]
+    for column, prefix in (("pmid", "PMID"), ("pmcid", "PMCID"), ("doi", "DOI")):
+        value = _safe_text(row.get(column))
+        if value:
+            values.append(f"{prefix}:{value}")
+    return "; ".join(dict.fromkeys(value for value in values if value))
+
+
+def _external_reference_note(row: dict[str, object]) -> str:
+    parts: list[str] = []
+    for column in ("evidence_note", "article_title", "evidence_snippet"):
+        value = _safe_text(row.get(column))
+        if value:
+            parts.append(value[:240])
+
+    mapping_parts: list[str] = []
+    mapping_level = _safe_text(row.get("mapping_level"))
+    mapping_method = _safe_text(row.get("mapping_method"))
+    mapping_confidence = _safe_text(row.get("mapping_confidence"))
+    uniprot_resid = _safe_text(row.get("uniprot_resid"))
+    if mapping_level:
+        mapping_parts.append(f"mapping_level={mapping_level}")
+    if mapping_confidence:
+        mapping_parts.append(f"mapping_confidence={mapping_confidence}")
+    if mapping_method:
+        mapping_parts.append(f"mapping_method={mapping_method}")
+    if uniprot_resid and uniprot_resid not in {"0", "0.0"}:
+        mapping_parts.append(f"uniprot_resid={uniprot_resid}")
+    if _safe_bool(row.get("requires_manual_review")):
+        mapping_parts.append("requires_manual_review=true")
+    if mapping_parts:
+        parts.append("; ".join(mapping_parts))
+    return " | ".join(dict.fromkeys(part for part in parts if part))
+
+
+def build_pocket_benchmark_reference_from_external_evidence(
+    evidence_df: Optional[pd.DataFrame],
+    *,
+    default_benchmark_id: str = "current-structure",
+    source_hint: str = "External residue evidence",
+) -> tuple[pd.DataFrame, dict[str, str]]:
+    """Convert loaded residue evidence into a benchmark reference candidate table.
+
+    The returned table is intentionally a candidate: if the same evidence was
+    used for pocket detection, it still needs independent curation before it is
+    used as an accuracy claim.
+    """
+
+    if evidence_df is None or getattr(evidence_df, "empty", True):
+        return _empty_reference_df(), {
+            "status": "empty",
+            "source": source_hint,
+            "evidence_rows": "0",
+            "reference_rows": "0",
+            "reason": "No external evidence rows were available.",
+        }
+
+    frame = evidence_df.copy()
+    resid_column = _find_column(frame, RESID_ALIASES)
+    token_column = _find_column(frame, RESIDUE_TOKEN_ALIASES)
+    chain_column = _find_column(frame, CHAIN_ALIASES)
+    resname_column = _find_column(frame, RESNAME_ALIASES)
+    type_column = _find_column(frame, TYPE_ALIASES)
+    source_column = _find_column_in_order(
+        frame,
+        (
+            "reference_source",
+            "evidence_source",
+            "source",
+            "dataset",
+            "citation",
+            "reference",
+            "pmid",
+            "doi",
+        ),
+    )
+    note_column = _find_column(frame, NOTE_ALIASES)
+    expected_pocket_column = _find_column(frame, EXPECTED_POCKET_ALIASES)
+    benchmark_id_column = _find_column_in_order(
+        frame,
+        ("benchmark_id", "case_id", "dataset_id", "enzyme_id", "mcsa_id", "entry_id", "pdb_id"),
+    )
+    pdb_id_column = _find_column(frame, PDB_ID_ALIASES)
+
+    rows: list[dict[str, object]] = []
+    for _, row in frame.iterrows():
+        row_dict = row.to_dict()
+        token_chain = ""
+        token_resname = ""
+        token_resid = None
+        if token_column:
+            token_chain, token_resname, token_resid = _extract_residue_token(row_dict.get(token_column))
+
+        resid = _safe_int(row_dict.get(resid_column)) if resid_column else None
+        if resid is None:
+            resid = token_resid
+        if resid is None:
+            continue
+
+        benchmark_id = _safe_text(row_dict.get(benchmark_id_column, "") if benchmark_id_column else "")
+        if not benchmark_id and pdb_id_column:
+            benchmark_id = _safe_text(row_dict.get(pdb_id_column))
+        if not benchmark_id:
+            benchmark_id = _safe_text(default_benchmark_id) or "current-structure"
+
+        chain = _safe_text(row_dict.get(chain_column, "") if chain_column else "") or token_chain
+        resname = _safe_text(row_dict.get(resname_column, "") if resname_column else "").upper() or token_resname
+        evidence_type = _safe_text(row_dict.get(type_column, "") if type_column else "") or "Functional site"
+        source_value = _safe_text(row_dict.get(source_column, "") if source_column else "")
+        note_value = _safe_text(row_dict.get(note_column, "") if note_column else "")
+        enriched_row = {
+            **row_dict,
+            "evidence_source": source_value or row_dict.get("evidence_source") or source_hint,
+            "evidence_note": note_value or row_dict.get("evidence_note") or "",
+        }
+        rows.append(
+            {
+                "benchmark_id": benchmark_id,
+                "chain": chain,
+                "resid": int(resid),
+                "resname": resname,
+                "reference_type": evidence_type,
+                "reference_source": _external_reference_source(enriched_row, source_hint),
+                "reference_note": _external_reference_note(enriched_row),
+                "expected_pocket_id": _safe_text(row_dict.get(expected_pocket_column, "") if expected_pocket_column else ""),
+            }
+        )
+
+    evidence_rows = int(len(frame))
+    if not rows:
+        return _empty_reference_df(), {
+            "status": "empty",
+            "source": source_hint,
+            "evidence_rows": str(evidence_rows),
+            "reference_rows": "0",
+            "skipped_rows": str(evidence_rows),
+            "reason": "No valid residue numbers were found in external evidence.",
+        }
+
+    raw_df = pd.DataFrame(rows, columns=BENCHMARK_REFERENCE_COLUMNS)
+    grouped_rows: list[dict[str, object]] = []
+    group_columns = ["benchmark_id", "chain", "resid", "reference_type", "expected_pocket_id"]
+    for _, group in raw_df.groupby(group_columns, dropna=False, sort=True):
+        sources = "; ".join(
+            dict.fromkeys(group["reference_source"].map(_safe_text).replace("", pd.NA).dropna().tolist())
+        )
+        notes = " | ".join(
+            dict.fromkeys(group["reference_note"].map(_safe_text).replace("", pd.NA).dropna().tolist())
+        )
+        resnames = group["resname"].map(_safe_text).replace("", pd.NA).dropna().tolist()
+        first = group.iloc[0]
+        grouped_rows.append(
+            {
+                "benchmark_id": _safe_text(first.get("benchmark_id")),
+                "chain": _safe_text(first.get("chain")),
+                "resid": int(first.get("resid")),
+                "resname": _safe_text(resnames[0]).upper() if resnames else "",
+                "reference_type": _safe_text(first.get("reference_type")),
+                "reference_source": sources or source_hint,
+                "reference_note": notes,
+                "expected_pocket_id": _safe_text(first.get("expected_pocket_id")),
+            }
+        )
+
+    reference_df = pd.DataFrame(grouped_rows, columns=BENCHMARK_REFERENCE_COLUMNS).sort_values(
+        ["benchmark_id", "chain", "resid", "reference_type"],
+        ascending=[True, True, True, True],
+    ).reset_index(drop=True)
+
+    mapping_levels = frame["mapping_level"].astype(str).str.lower() if "mapping_level" in frame.columns else pd.Series(dtype=str)
+    manual_review_rows = (
+        int(frame["requires_manual_review"].map(_safe_bool).sum())
+        if "requires_manual_review" in frame.columns
+        else 0
+    )
+    structure_verified_rows = 0
+    if "structure_verified" in frame.columns:
+        structure_verified_rows = int(frame["structure_verified"].map(_safe_bool).sum())
+    elif not mapping_levels.empty:
+        structure_verified_rows = int(mapping_levels.eq("exact").sum())
+
+    return reference_df[BENCHMARK_REFERENCE_COLUMNS], {
+        "status": "ok",
+        "source": source_hint,
+        "evidence_rows": str(evidence_rows),
+        "reference_rows": str(len(reference_df)),
+        "case_count": str(int(reference_df["benchmark_id"].map(_safe_text).replace("", pd.NA).dropna().nunique())),
+        "chain_specific_rows": str(int(reference_df["chain"].map(_safe_text).ne("").sum())),
+        "wildcard_chain_rows": str(int(reference_df["chain"].map(_safe_text).eq("").sum())),
+        "exact_mapping_rows": str(int(mapping_levels.eq("exact").sum()) if not mapping_levels.empty else 0),
+        "weak_mapping_rows": str(int(mapping_levels.eq("weak").sum()) if not mapping_levels.empty else 0),
+        "structure_verified_rows": str(structure_verified_rows),
+        "manual_review_rows": str(manual_review_rows),
+        "missing_resname_rows": str(int(reference_df["resname"].map(_safe_text).eq("").sum())),
+        "duplicate_rows": str(max(0, len(raw_df) - len(reference_df))),
+        "skipped_rows": str(max(0, evidence_rows - len(raw_df))),
+    }
+
+
+def build_pocket_benchmark_reference_import_summary(
+    reference_df: Optional[pd.DataFrame],
+    metadata: Optional[dict[str, object]] = None,
+) -> pd.DataFrame:
+    """Summarize an external-evidence-to-benchmark-reference import."""
+
+    meta = dict(metadata or {})
+    references = _reference_rows(reference_df)
+    if references.empty:
+        evidence_rows = int(meta.get("evidence_rows") or 0)
+        skipped_rows = int(meta.get("skipped_rows") or evidence_rows or 0)
+        return pd.DataFrame(
+            [
+                {
+                    "source": _safe_text(meta.get("source")) or "External residue evidence",
+                    "import_status": "empty",
+                    "evidence_rows": evidence_rows,
+                    "reference_rows": 0,
+                    "case_count": 0,
+                    "chain_specific_rows": 0,
+                    "wildcard_chain_rows": 0,
+                    "exact_mapping_rows": int(meta.get("exact_mapping_rows") or 0),
+                    "weak_mapping_rows": int(meta.get("weak_mapping_rows") or 0),
+                    "structure_verified_rows": int(meta.get("structure_verified_rows") or 0),
+                    "manual_review_rows": int(meta.get("manual_review_rows") or 0),
+                    "missing_resname_rows": 0,
+                    "duplicate_rows": int(meta.get("duplicate_rows") or 0),
+                    "skipped_rows": skipped_rows,
+                    "recommended_action": "Fetch UniProt/M-CSA/literature evidence or upload a curated benchmark reference CSV.",
+                    "import_warning": _safe_text(meta.get("reason")) or "No benchmark reference candidate rows were produced.",
+                }
+            ],
+            columns=BENCHMARK_REFERENCE_IMPORT_SUMMARY_COLUMNS,
+        )
+
+    wildcard_chain_rows = int(meta.get("wildcard_chain_rows") or references["chain"].map(_safe_text).eq("").sum())
+    weak_mapping_rows = int(meta.get("weak_mapping_rows") or 0)
+    manual_review_rows = int(meta.get("manual_review_rows") or 0)
+    missing_resname_rows = int(meta.get("missing_resname_rows") or references["resname"].map(_safe_text).eq("").sum())
+    review_needed = any(value > 0 for value in (wildcard_chain_rows, weak_mapping_rows, manual_review_rows, missing_resname_rows))
+    import_status = "review-needed" if review_needed else "candidate-ready"
+    recommended_action = (
+        "Review weak mappings, wildcard chains, manual-review rows and missing residue names before using this as a benchmark."
+        if review_needed
+        else "Export this candidate, then lock it as an independently curated benchmark before claiming accuracy."
+    )
+    warning = (
+        "External evidence candidates can overlap with detection inputs; treat them as curation input, not independent accuracy proof."
+    )
+
+    return pd.DataFrame(
+        [
+            {
+                "source": _safe_text(meta.get("source")) or "External residue evidence",
+                "import_status": import_status,
+                "evidence_rows": int(meta.get("evidence_rows") or len(references)),
+                "reference_rows": int(meta.get("reference_rows") or len(references)),
+                "case_count": int(meta.get("case_count") or references["benchmark_id"].map(_safe_text).replace("", pd.NA).dropna().nunique()),
+                "chain_specific_rows": int(meta.get("chain_specific_rows") or references["chain"].map(_safe_text).ne("").sum()),
+                "wildcard_chain_rows": wildcard_chain_rows,
+                "exact_mapping_rows": int(meta.get("exact_mapping_rows") or 0),
+                "weak_mapping_rows": weak_mapping_rows,
+                "structure_verified_rows": int(meta.get("structure_verified_rows") or 0),
+                "manual_review_rows": manual_review_rows,
+                "missing_resname_rows": missing_resname_rows,
+                "duplicate_rows": int(meta.get("duplicate_rows") or 0),
+                "skipped_rows": int(meta.get("skipped_rows") or 0),
+                "recommended_action": recommended_action,
+                "import_warning": warning,
+            }
+        ],
+        columns=BENCHMARK_REFERENCE_IMPORT_SUMMARY_COLUMNS,
+    )
 
 
 def _normalize_pocket_rows(pocket_df: Optional[pd.DataFrame]) -> pd.DataFrame:

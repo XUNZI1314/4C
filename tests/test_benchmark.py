@@ -16,6 +16,8 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_quality_checklist_markdown,
     build_pocket_benchmark_reference_quality_issues,
     build_pocket_benchmark_reference_quality_summary,
+    build_pocket_benchmark_reference_from_external_evidence,
+    build_pocket_benchmark_reference_import_summary,
     build_pocket_benchmark_reference_readiness_case_summary,
     build_pocket_benchmark_reference_readiness_checklist_markdown,
     build_pocket_benchmark_reference_readiness_queue,
@@ -665,6 +667,69 @@ trypsin,A,Asp102,Catalytic residue,M-CSA,acid,Pocket-3
     assert set(reference_df["resname"].astype(str).tolist()) == {"SER", "HIS", "ASP"}
     assert reference_df["benchmark_id"].eq("trypsin").all()
     assert reference_df["expected_pocket_id"].isin({"Pocket-2", "Pocket-3"}).all()
+
+
+def test_build_pocket_benchmark_reference_from_external_evidence_creates_candidate_summary():
+    evidence_df = pd.DataFrame(
+        [
+            {
+                "chain": "A",
+                "resid": 195,
+                "resname": "SER",
+                "evidence_source": "M-CSA",
+                "evidence_type": "Catalytic residue",
+                "evidence_note": "nucleophile",
+                "mapping_level": "exact",
+                "mapping_confidence": 0.98,
+                "mapping_method": "sifts",
+                "pmid": "12345",
+            },
+            {
+                "chain": "A",
+                "resid": 195,
+                "resname": "SER",
+                "evidence_source": "UniProt",
+                "evidence_type": "Catalytic residue",
+                "evidence_note": "active site",
+                "mapping_level": "exact",
+                "mapping_confidence": 0.96,
+                "mapping_method": "sifts",
+            },
+            {
+                "chain": "",
+                "resid": 57,
+                "evidence_source": "AI-Literature",
+                "evidence_type": "Catalytic residue",
+                "evidence_note": "general acid/base",
+                "mapping_level": "weak",
+                "mapping_confidence": 0.4,
+                "mapping_method": "assumed-structure-numbering",
+                "requires_manual_review": True,
+            },
+        ]
+    )
+
+    reference_df, metadata = build_pocket_benchmark_reference_from_external_evidence(
+        evidence_df,
+        default_benchmark_id="1ABC",
+        source_hint="Loaded external evidence",
+    )
+    summary = build_pocket_benchmark_reference_import_summary(reference_df, metadata)
+
+    assert metadata["status"] == "ok"
+    assert metadata["evidence_rows"] == "3"
+    assert metadata["reference_rows"] == "2"
+    assert metadata["duplicate_rows"] == "1"
+    assert reference_df["benchmark_id"].eq("1ABC").all()
+    catalytic_195 = reference_df[reference_df["resid"].astype(int) == 195].iloc[0]
+    assert str(catalytic_195["reference_source"]) == "M-CSA; PMID:12345; UniProt"
+    assert "mapping_level=exact" in str(catalytic_195["reference_note"])
+    summary_row = summary.iloc[0]
+    assert str(summary_row["import_status"]) == "review-needed"
+    assert int(summary_row["weak_mapping_rows"]) == 1
+    assert int(summary_row["manual_review_rows"]) == 1
+    assert int(summary_row["wildcard_chain_rows"]) == 1
+    assert int(summary_row["missing_resname_rows"]) == 1
 
 
 def test_build_pocket_benchmark_summary_reports_top1_and_top3_coverage():

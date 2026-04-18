@@ -58,6 +58,8 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_quality_checklist_markdown,
     build_pocket_benchmark_reference_quality_issues,
     build_pocket_benchmark_reference_quality_summary,
+    build_pocket_benchmark_reference_from_external_evidence,
+    build_pocket_benchmark_reference_import_summary,
     build_pocket_benchmark_reference_readiness_case_summary,
     build_pocket_benchmark_reference_readiness_checklist_markdown,
     build_pocket_benchmark_reference_readiness_queue,
@@ -809,9 +811,14 @@ with st.sidebar:
             accept_multiple_files=False,
         )
         benchmark_source_name = st.text_input("Benchmark source label", value="Curated catalytic benchmark")
+        use_external_evidence_as_benchmark_reference = st.checkbox(
+            "Use loaded external evidence as provisional benchmark reference when no curated file is uploaded",
+            value=False,
+        )
         st.caption(
             "Columns can include chain,resid,resname,reference_type,reference_source,reference_note,expected_pocket_id. "
-            "Blank chain is treated as wildcard."
+            "Blank chain is treated as wildcard. Provisional external-evidence references are useful for triage, "
+            "but should not be treated as independent accuracy proof until curated separately."
         )
         st.download_button(
             "Download benchmark reference template CSV",
@@ -881,6 +888,10 @@ residue_evidence_consensus_df = pd.DataFrame()
 pocket_consensus_coverage_df = pd.DataFrame()
 benchmark_reference_df = pd.DataFrame()
 benchmark_reference_meta: dict = {}
+benchmark_reference_candidate_df = pd.DataFrame()
+benchmark_reference_candidate_meta: dict = {}
+benchmark_reference_import_summary_df = pd.DataFrame()
+benchmark_reference_is_provisional = False
 pocket_benchmark_reference_quality_issue_df = pd.DataFrame()
 pocket_benchmark_reference_quality_summary_df = pd.DataFrame()
 pocket_benchmark_reference_quality_checklist_markdown = ""
@@ -1228,6 +1239,22 @@ if bool(enable_ai_evidence):
             )
         if ai_review_bundle_certificate_markdown:
             st.sidebar.caption("AI review bundle handoff certificate: ready")
+if not external_site_df.empty:
+    benchmark_reference_candidate_df, benchmark_reference_candidate_meta = build_pocket_benchmark_reference_from_external_evidence(
+        external_site_df,
+        default_benchmark_id=str(structure_pdb_id or uniprot_accession or enzyme_ec_number or "current-structure").strip(),
+        source_hint=str(external_site_meta.get("sources") or "Loaded external evidence").strip() or "Loaded external evidence",
+    )
+    benchmark_reference_import_summary_df = build_pocket_benchmark_reference_import_summary(
+        benchmark_reference_candidate_df,
+        benchmark_reference_candidate_meta,
+    )
+    if not benchmark_reference_import_summary_df.empty:
+        import_row = benchmark_reference_import_summary_df.iloc[0]
+        st.sidebar.caption(
+            f"Benchmark reference candidate: {import_row.get('reference_rows') or 0} residues / "
+            f"{import_row.get('import_status') or '-'}."
+        )
 if uploaded_conservation is not None:
     conservation_text = _read_uploaded_text(uploaded_conservation)
     if conservation_text.strip():
@@ -1237,16 +1264,35 @@ if uploaded_conservation is not None:
                 chain_hint=str(uniprot_chain_hint or "").strip(),
                 source_hint=str(conservation_source_name or "").strip() or "ConSurf",
             )
+benchmark_reference_loaded = False
 if benchmark_reference_text.strip():
     benchmark_reference_df, benchmark_reference_meta = parse_benchmark_reference_table(
         benchmark_reference_text,
         source_hint=str(benchmark_source_name or "").strip() or "Curated catalytic benchmark",
     )
+    benchmark_reference_loaded = True
+elif bool(use_external_evidence_as_benchmark_reference):
+    if benchmark_reference_candidate_df.empty:
+        st.sidebar.caption("Benchmark reference: external evidence candidate is empty; upload a curated reference file instead.")
+    else:
+        benchmark_reference_df = benchmark_reference_candidate_df.copy()
+        benchmark_reference_meta = {
+            **benchmark_reference_candidate_meta,
+            "source": "Provisional external evidence benchmark reference",
+        }
+        benchmark_reference_is_provisional = True
+        benchmark_reference_loaded = True
+        st.sidebar.caption("Benchmark reference: using provisional external-evidence candidate.")
+if benchmark_reference_loaded:
     if benchmark_reference_df.empty:
         st.sidebar.caption(
             f"Benchmark reference: no usable rows ({benchmark_reference_meta.get('reason') or benchmark_reference_meta.get('status') or '-'})."
         )
     else:
+        if benchmark_reference_is_provisional:
+            st.sidebar.caption(
+                "Benchmark reference warning: this candidate can overlap with detection inputs; curate separately before accuracy claims."
+            )
         pocket_benchmark_reference_quality_issue_df = build_pocket_benchmark_reference_quality_issues(benchmark_reference_df)
         pocket_benchmark_reference_quality_summary_df = build_pocket_benchmark_reference_quality_summary(
             pocket_benchmark_reference_quality_issue_df
@@ -2130,6 +2176,10 @@ try:
             "top_pocket_consensus_label": str(top_pocket_consensus_coverage.get("pocket_consensus_label")) if top_pocket_consensus_coverage is not None and pd.notna(top_pocket_consensus_coverage.get("pocket_consensus_label")) else None,
             "top_pocket_consensus_anchor_count": int(top_pocket_consensus_coverage.get("rank_safe_anchor_count") or 0) if top_pocket_consensus_coverage is not None else 0,
             "top_pocket_consensus_best_score": float(top_pocket_consensus_coverage.get("best_consensus_score")) if top_pocket_consensus_coverage is not None and pd.notna(top_pocket_consensus_coverage.get("best_consensus_score")) else None,
+            "pocket_benchmark_reference_candidate_rows": int(len(benchmark_reference_candidate_df)),
+            "pocket_benchmark_reference_import_summary_rows": int(len(benchmark_reference_import_summary_df)),
+            "pocket_benchmark_reference_import_status": str(benchmark_reference_import_summary_df.iloc[0].get("import_status") or "") if not benchmark_reference_import_summary_df.empty else "",
+            "pocket_benchmark_reference_is_provisional": bool(benchmark_reference_is_provisional),
             "pocket_benchmark_reference_rows": int(len(benchmark_reference_df)),
             "pocket_benchmark_reference_template_rows": int(len(benchmark_reference_template_df)),
             "pocket_benchmark_reference_template_notes_available": bool(benchmark_reference_template_markdown),
@@ -2380,6 +2430,12 @@ snapshot = build_analysis_snapshot(
         "top_pocket_consensus_label": str(top_pocket_consensus_coverage.get("pocket_consensus_label")) if top_pocket_consensus_coverage is not None and pd.notna(top_pocket_consensus_coverage.get("pocket_consensus_label")) else None,
         "top_pocket_consensus_anchor_count": int(top_pocket_consensus_coverage.get("rank_safe_anchor_count") or 0) if top_pocket_consensus_coverage is not None else 0,
         "top_pocket_consensus_best_score": float(top_pocket_consensus_coverage.get("best_consensus_score")) if top_pocket_consensus_coverage is not None and pd.notna(top_pocket_consensus_coverage.get("best_consensus_score")) else None,
+        "pocket_benchmark_reference_candidate_rows": int(len(benchmark_reference_candidate_df)),
+        "pocket_benchmark_reference_candidate": benchmark_reference_candidate_df.to_dict(orient="records"),
+        "pocket_benchmark_reference_import_summary_rows": int(len(benchmark_reference_import_summary_df)),
+        "pocket_benchmark_reference_import_summary": benchmark_reference_import_summary_df.to_dict(orient="records"),
+        "pocket_benchmark_reference_import_status": str(benchmark_reference_import_summary_df.iloc[0].get("import_status") or "") if not benchmark_reference_import_summary_df.empty else "",
+        "pocket_benchmark_reference_is_provisional": bool(benchmark_reference_is_provisional),
         "pocket_benchmark_reference_rows": int(len(benchmark_reference_df)),
         "pocket_benchmark_reference": benchmark_reference_df.to_dict(orient="records"),
         "pocket_benchmark_reference_template_rows": int(len(benchmark_reference_template_df)),
@@ -2704,6 +2760,14 @@ if not pocket_consensus_coverage_df.empty:
             "Maps residue-level consensus anchors back onto each pocket without changing the pocket ranking."
         )
         st.dataframe(pocket_consensus_coverage_df, use_container_width=True, hide_index=True)
+if not benchmark_reference_candidate_df.empty:
+    with st.expander("Benchmark reference candidate from external evidence", expanded=False):
+        st.caption(
+            "Generated from currently loaded UniProt/M-CSA/literature/AI residue evidence. Curate this table before using it as an independent benchmark."
+        )
+        if not benchmark_reference_import_summary_df.empty:
+            st.dataframe(benchmark_reference_import_summary_df, use_container_width=True, hide_index=True)
+        st.dataframe(benchmark_reference_candidate_df, use_container_width=True, hide_index=True)
 if not pocket_benchmark_summary_df.empty:
     with st.expander("Catalytic pocket benchmark", expanded=True):
         st.caption(
@@ -3609,6 +3673,20 @@ with tab_export:
                 file_name="pocket_consensus_coverage.csv",
                 mime="text/csv",
             )
+        if not benchmark_reference_candidate_df.empty:
+            st.download_button(
+                "Export benchmark reference candidate CSV",
+                data=_to_csv_bytes(benchmark_reference_candidate_df),
+                file_name="pocket_benchmark_reference_candidate.csv",
+                mime="text/csv",
+            )
+        if not benchmark_reference_import_summary_df.empty:
+            st.download_button(
+                "Export benchmark reference import summary CSV",
+                data=_to_csv_bytes(benchmark_reference_import_summary_df),
+                file_name="pocket_benchmark_reference_import_summary.csv",
+                mime="text/csv",
+            )
         if not benchmark_reference_df.empty:
             st.download_button(
                 "Export benchmark reference CSV",
@@ -4245,6 +4323,7 @@ with tab_export:
         f"AI evidence used for ranking: {len(rankable_ai_evidence_df)} rows / status {rankable_ai_evidence_meta.get('status') or '-'}",
         f"Residue evidence consensus: {len(residue_evidence_consensus_df)} rows / top {top_residue_consensus.get('residue_anchor') if top_residue_consensus is not None else '-'} / tier {top_residue_consensus.get('consensus_tier') if top_residue_consensus is not None else '-'}",
         f"Pocket consensus coverage: {len(pocket_consensus_coverage_df)} rows / top {top_pocket_consensus_coverage.get('pocket_id') if top_pocket_consensus_coverage is not None else '-'} / label {top_pocket_consensus_coverage.get('pocket_consensus_label') if top_pocket_consensus_coverage is not None else '-'}",
+        f"Benchmark reference candidate: {len(benchmark_reference_candidate_df)} rows / import {benchmark_reference_import_summary_df.iloc[0].get('import_status') if not benchmark_reference_import_summary_df.empty else '-'} / provisional used {'yes' if benchmark_reference_is_provisional else 'no'}",
         f"Catalytic pocket benchmark: references {len(benchmark_reference_df)} / Top-1 {top1_benchmark.get('coverage_ratio') if top1_benchmark is not None else '-'} / Top-3 {top3_benchmark.get('coverage_ratio') if top3_benchmark is not None else '-'} / best rank {top3_benchmark.get('best_rank') if top3_benchmark is not None else '-'}",
         f"Benchmark reference template: {len(benchmark_reference_template_df)} rows / notes {'available' if benchmark_reference_template_markdown else 'not available'}",
         f"Benchmark reference curation quality: {len(pocket_benchmark_reference_quality_issue_df)} issues / summary {len(pocket_benchmark_reference_quality_summary_df)} rows / checklist {'available' if pocket_benchmark_reference_quality_checklist_markdown else 'not available'}",

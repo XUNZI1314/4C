@@ -55,6 +55,10 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
             "p2rank_ab_comparison": [{"pocket_id": "Pocket-1", "rank_delta": 1}],
             "auto_detection_external_rows": 2,
             "auto_detection_external_sources": "M-CSA,UniProt",
+            "pocket_benchmark_reference_candidate_rows": 2,
+            "pocket_benchmark_reference_import_summary_rows": 1,
+            "pocket_benchmark_reference_import_status": "review-needed",
+            "pocket_benchmark_reference_is_provisional": True,
             "pocket_benchmark_reference_rows": 3,
             "pocket_benchmark_reference_template_rows": 3,
             "pocket_benchmark_reference_template_notes_available": True,
@@ -127,6 +131,7 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
     assert any("geometry-cluster" in line for line in summary_lines)
     assert any("P2Rank: ok" in line for line in summary_lines)
     assert any("P2Rank A/B: enabled / rows 1" in line for line in summary_lines)
+    assert any("Benchmark reference candidate: 2 rows / import review-needed / provisional used yes" in line for line in summary_lines)
     assert any("Catalytic pocket benchmark: references 3 / Top-1 0.667" in line for line in summary_lines)
     assert any("Benchmark reference template: 3 rows / notes available" in line for line in summary_lines)
     assert any("Benchmark reference curation quality: 2 issues / summary 1 rows / checklist available" in line for line in summary_lines)

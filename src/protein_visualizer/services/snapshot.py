@@ -290,6 +290,13 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         lines.append(
             f"Pocket consensus coverage: {pocket_consensus_rows} rows / top {top_pocket or '-'} ({top_label or '-'}, anchors {anchor_count}, score {best_score})"
         )
+    benchmark_reference_candidate_rows = int(extra.get("pocket_benchmark_reference_candidate_rows") or 0)
+    if benchmark_reference_candidate_rows > 0:
+        import_status = str(extra.get("pocket_benchmark_reference_import_status") or "-").strip()
+        provisional_status = "yes" if bool(extra.get("pocket_benchmark_reference_is_provisional")) else "no"
+        lines.append(
+            f"Benchmark reference candidate: {benchmark_reference_candidate_rows} rows / import {import_status or '-'} / provisional used {provisional_status}"
+        )
     benchmark_reference_rows = int(extra.get("pocket_benchmark_reference_rows") or 0)
     if benchmark_reference_rows > 0:
         top1_coverage = format_energy_value(extra.get("pocket_benchmark_top1_coverage"))

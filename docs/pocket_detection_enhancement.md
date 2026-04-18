@@ -239,6 +239,8 @@ The parser also accepts residue labels such as `Ser195`, `A:195` or `D123A`. Bla
 
 The page also exports `pocket_benchmark_reference_template.csv` and `pocket_benchmark_reference_template.md` so M-CSA, PDB and literature-confirmed catalytic residue cases can be collected with a consistent schema before upload.
 
+Loaded UniProt, M-CSA, literature and AI residue evidence can also be converted into `pocket_benchmark_reference_candidate.csv` plus `pocket_benchmark_reference_import_summary.csv`. This is meant to accelerate curation, not to create an independent accuracy claim automatically, because the same external evidence may also have influenced detection or reranking.
+
 After upload, the reference table is checked for curation risks before coverage metrics are interpreted. The check flags missing `benchmark_id`, generic source labels, wildcard chain matching, missing residue identity, numbering assumptions such as UniProt/mature-chain offsets, and residues that intentionally carry multiple roles or evidence sources.
 
 The same reference residues are also validated against the uploaded PDB atom table. This catches reference residues absent from the structure, residue-name mismatches, and wildcard-chain residues that match multiple chains. These rows should be resolved before interpreting benchmark misses as pocket detection failures.
@@ -254,6 +256,8 @@ Benchmark interpretation then joins Top-N coverage with the readiness gate. A co
 The benchmark exports:
 
 - `pocket_benchmark_reference.csv`
+- `pocket_benchmark_reference_candidate.csv`
+- `pocket_benchmark_reference_import_summary.csv`
 - `pocket_benchmark_reference_template.csv`
 - `pocket_benchmark_reference_template.md`
 - `pocket_benchmark_reference_quality_issues.csv`
@@ -293,6 +297,7 @@ Current summary metrics:
 - Top-1 catalytic residue coverage.
 - Top-3 catalytic residue coverage.
 - Top-5 catalytic residue coverage.
+- External-evidence reference candidate import status.
 - Dataset-level claim readiness by Top-N.
 - Case interpretation matrix, summary and one-row-per-case queue across Top-1 / Top-3 / Top-5.
 - Dataset interpretation blocker/review queue, checklist and report.
@@ -500,7 +505,7 @@ Coverage includes:
 Latest full run:
 
 ```text
-220 passed
+221 passed
 ```
 
 ## Known Limits
