@@ -203,3 +203,6 @@ def test_app_uses_chinese_first_font_stack():
 
     assert "font-family: Inter, -apple-system" not in source
     assert "'Noto Sans SC', 'Source Han Sans SC', 'Microsoft YaHei', 'PingFang SC'" in source
+    assert "cartoon / sticks / surface" not in source
+    assert "卡通视图 / 球棍视图 / 分子表面" in source
+    assert "结构输入 → 能量映射 → 热点/口袋定位 → 证据复核" in source

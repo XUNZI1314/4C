@@ -31,7 +31,6 @@ if __name__ == "__main__":
         .hero-shell { background: linear-gradient(135deg, rgba(43,108,176,0.10), rgba(128,90,213,0.10)); border: 1px solid rgba(43,108,176,0.16); border-radius: 18px; padding: 18px; margin: 14px 0 18px 0; }
         .hero-grid { display: grid; grid-template-columns: 1.3fr 0.9fr; gap: 14px; align-items: start; }
         .hero-aside { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-        .hero-aside .feature-card:last-child { grid-column: 1 / -1; }
         .hero-title { font-size: 28px; line-height: 1.1; margin: 0 0 10px 0; color: #0f1724; }
         .hero-copy { font-size: 15px; line-height: 1.75; color: #334155; margin: 0; }
         .info-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; margin: 8px 8px 0 0; border-radius: 999px; background: rgba(255,255,255,0.88); border: 1px solid rgba(15,23,42,0.08); font-size: 12px; color: #0f1724; }
@@ -79,11 +78,15 @@ if __name__ == "__main__":
                     <div class="hero-aside">
                     <div class="feature-card">
                         <strong>分析模式</strong>
-                        <div style="margin-top:6px;color:#475569;">cartoon / sticks / surface</div>
+                        <div style="margin-top:6px;color:#475569;">卡通视图 / 球棍视图 / 分子表面</div>
                     </div>
                     <div class="feature-card">
                         <strong>分析能力</strong>
                         <div style="margin-top:6px;color:#475569;">口袋分析、界面注释、多构象比较、历史记录</div>
+                    </div>
+                    <div class="feature-card">
+                        <strong>分析链路</strong>
+                        <div style="margin-top:6px;color:#475569;">结构输入 → 能量映射 → 热点/口袋定位 → 证据复核</div>
                     </div>
                     <div class="feature-card">
                         <strong>导出内容</strong>
@@ -99,7 +102,7 @@ if __name__ == "__main__":
 
     col1, col2, col3 = st.columns(3)
     with col1:
-                st.markdown('<div class="feature-card"><h4>3D 结构可视化</h4><p>支持主链、侧链、球棒和表面模式，并兼容 PyMOL 与 3Dmol 渲染路径。</p></div>', unsafe_allow_html=True)
+                st.markdown('<div class="feature-card"><h4>三维结构可视化</h4><p>支持主链、侧链、球棍和表面模式，并兼容 PyMOL 与 3Dmol 渲染路径。</p></div>', unsafe_allow_html=True)
     with col2:
                 st.markdown('<div class="feature-card"><h4>比较与口袋分析</h4><p>支持多构象热点对比、口袋/界面标注与重叠分析，便于复核关键位点。</p></div>', unsafe_allow_html=True)
     with col3:
