@@ -1,412 +1,145 @@
-# 蛋白质可视化软件
+# ProteinInsight
 
-这是一个基于 **Streamlit + py3Dmol** 的蛋白质可视化与分析原型软件，用于把 **PDB 结构展示**、**MMPBSA 能量结果**、**热点残基分析**、**结果导出** 和 **最近分析历史** 整合在一个界面中，适合课程设计、比赛展示和基础科研演示。
+ProteinInsight 是一个面向酶蛋白的结构可视化、口袋定位、关键残基证据融合和审计导出的 Streamlit 工具。
 
----
+项目目标不是只回答“结构表面哪里像口袋”，而是回答更适合酶蛋白场景的问题：哪些候选口袋真正围绕催化残基、底物/辅因子结合残基、金属配位残基或文献支持的关键位点形成，并且这些结论能否被复核、导出和归档。
 
-## 1. 这个软件能做什么
+## 当前能力
 
-本项目目前已经支持：
+- PDB / MMPBSA 上传、示例数据、热点残基识别和结构可视化。
+- 自动口袋识别：优先 `pyKVFinder`，可选本地 `P2Rank`，并保留 ligand proximity、geometry clustering 和 external-evidence route。
+- 外部证据融合：UniProt、PDBe/SIFTS、M-CSA、PubMed、Europe PMC、手动文献文本、保守性表格、热点和界面信息。
+- 强化 UniProt/PDB 残基对齐：优先结构中真实存在的链和残基，降低缺失、gap、弱映射和 residue identity mismatch 的置信度。
+- 文献残基抽取：支持 catalytic、active site、mutagenesis、activity-loss 等上下文过滤，并做跨文章支持统计。
+- 证据驱动口袋排序：输出 evidence quality、direct anchor、route anchor、mapping risk、A/B rank delta 和 practical recommendation。
+- 口袋分层：将口袋残基标注为 `core`、`shell`、`rim`，便于区分关键位点和边界残基。
+- Consensus rerank 审计链：从建议、预览、policy gate、action queue、scorecard、guardrail 到 release approval、apply plan、execution receipt 和 closure。
+- 导出：CSV、JSON snapshot、SVG snapshot、TXT report、PDF report、Markdown report、handoff ZIP、manifest 和 closure detached manifest。
+- 分析历史持久化：默认写入 `data/analysis_history.json`。
 
-- 上传或使用内置示例 `PDB` 文件
-- 上传或使用内置示例 `MMPBSA` 结果文件
-- 以 3D 方式查看蛋白质结构
-- 切换主链 / 侧链 / 球棒 / 表面等显示效果
-- 根据 `DELTA TOTAL` 对残基进行热力着色
-- 通过阈值筛选高亮热点残基
-- 选择链和残基并联动查看细节
-- 自动生成分析摘要
-- 导出 CSV、文本报告、PDF 报告
-- 查看最近分析历史
+## Release / Closure 审计链
 
-如果你是第一次使用，可以直接按下面的“快速开始”操作。
+精度敏感的 consensus rerank 不会默认自动应用。当前流程分为以下阶段：
 
----
+1. `consensus_rerank_suggestions.csv`：证据驱动的 rerank 建议。
+2. `consensus_rerank_preview.csv`：保守分数预览。
+3. `consensus_rerank_policy_gate.csv`：全局安全 gate。
+4. `consensus_rerank_action_queue.csv` 和 `consensus_rerank_action_checklist.md`：待修复问题和人工清单。
+5. `consensus_rerank_precision_scorecard.csv`：预期精度收益与 blocker 汇总。
+6. `consensus_rerank_precision_guardrail.csv` 和 `consensus_rerank_precision_guardrail_report.md`：是否允许进入人工 release review。
+7. `consensus_rerank_guardrail_handoff.zip` 和 `consensus_rerank_guardrail_artifact_manifest.csv`：可归档的证据包。
+8. `consensus_rerank_guardrail_bundle_verification.csv` 和 summary：校验 ZIP 中每个文件的 byte size 和 SHA-256。
+9. `consensus_rerank_guardrail_handoff_certificate.md`：ZIP 交付证明。
+10. `consensus_rerank_release_decision_template.csv`：人工审批表。
+11. `consensus_rerank_release_decisions_normalized.csv`、validation、summary：审批回传解析和验证。
+12. `consensus_rerank_release_apply_plan.csv` 和 apply report：只有审批通过且模拟干净时生成。
+13. `consensus_rerank_release_execution_template.csv`：执行回执模板。
+14. `consensus_rerank_release_execution_receipt_normalized.csv`、validation、summary、report：执行结果回传和验证。
+15. `consensus_rerank_release_closure_certificate.md`：最终闭环证书。
+16. `consensus_rerank_release_closure_ledger.csv`：闭环证据结构化 ledger。
+17. `consensus_rerank_release_closure_summary.csv`：ZIP 外 detached readiness gate。
+18. `consensus_rerank_release_closure_blocker_queue.csv`：闭环失败时的修复队列。
+19. `consensus_rerank_release_closure_remediation_checklist.md`：人工修复清单。
+20. `consensus_rerank_release_closure_detached_manifest.csv`：ZIP 外 closure 产物的 SHA-256 索引。
 
-## 2. 环境要求
+`closure_summary`、`closure_blocker_queue`、`closure_remediation_checklist` 和 `closure_detached_manifest` 是 ZIP 外产物，因为它们依赖 ZIP verification 输出，不能放回同一个 ZIP 里形成哈希循环。
 
-- Python 3.11
-- Windows / Linux / macOS 均可运行
+## 快速开始
 
-推荐先确认 Python 版本：
+### 1. 安装依赖
 
-```bash
-python --version
-```
-
----
-
-## 3. 安装方法
-
-在项目根目录执行：
-
-```bash
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-如果你想用可编辑安装方式，也可以使用：
+### 2. 启动应用
 
-```bash
-pip install -e .
-```
-
-如果安装后 VS Code 仍提示 `streamlit`、`pandas`、`numpy` 无法解析，通常是因为当前解释器没有切换到正确环境，不一定是代码有问题。
-
----
-
-## 4. 如何启动软件
-
-在项目根目录运行：
-
-```bash
+```powershell
 streamlit run app.py
 ```
 
-启动后默认会打开浏览器。如果没有自动打开，可以手动访问：
+默认访问地址：
 
 ```text
 http://localhost:8501
 ```
 
-如果你要部署到服务器，可使用：
+### 3. 运行测试
 
-```bash
-streamlit run app.py --server.port 8501 --server.address 0.0.0.0
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
 ```
 
-然后在浏览器中访问：
+最近一次完整验证结果：
 
 ```text
-http://服务器IP:8501
+195 passed
 ```
 
----
+## 输入文件
 
-## 5. 软件页面说明
+- PDB：标准 `.pdb`，至少包含可解析的 `ATOM/HETATM` 行。
+- MMPBSA：`.txt`、`.dat`、`.out`、`.csv`，需能解析 residue-level `DELTA TOTAL`。
+- 口袋文件，可选：CSV，推荐包含 `pocket_id, chain, resid, resname, volume, score`。
+- 界面注释，可选：CSV，推荐包含 `chain, resid, resname, annotation, region_type`。
+- Conservation，可选：ConSurf / Rate4Site / generic residue score table。
+- 文献文本，可选：abstract、full-text snippet、XML snippet 或人工整理的 residue evidence。
 
-当前软件包含以下页面：
+## 页面说明
 
-### `1_首页`
-用于展示软件简介、适用场景和整体功能入口。
+- `pages/1_首页.py`：产品入口和总览。
+- `pages/3_使用说明.py`：使用说明。
+- `pages/4_多构象比较.py`：多构象比较。
+- `pages/4_结果与导出.py`：结果查看和导出。
+- `pages/5_分析历史.py`：历史记录。
+- `pages/6_口袋与界面.py`：口袋、界面、证据融合、rerank 审计和 closure workflow。
 
-### `2_结构可视化`
-这是主要分析页面。你可以：
-
-- 上传 `PDB` 文件
-- 上传 `MMPBSA` 结果文件
-- 调整显示模式与透明度
-- 选择链和残基
-- 查看 3D 结构和热点残基信息
-
-### `3_使用说明`
-用于说明输入格式、操作流程和软件用途。
-
-### `4_结果与导出`
-用于查看最近一次分析结果，并导出：
-
-- CSV 结果表
-- 文本分析报告
-- PDF 报告
-
-### `5_分析历史`
-用于查看当前会话中的最近分析记录。
-
----
-
-## 6. 最常用的操作流程
-
-建议按下面流程使用：
-
-### 第一步：启动软件
-运行：
-
-```bash
-streamlit run app.py
-```
-
-### 第二步：进入 `结构可视化` 页面
-如果你没有自己的文件，也可以直接使用内置示例数据进行演示。
-
-### 第三步：上传数据
-侧边栏中支持：
-
-- 上传 `.pdb`
-- 上传 `.txt / .dat / .out / .csv` 的 MMPBSA 结果
-
-如果不上传，系统会自动使用示例数据。
-
-### 第四步：调节可视化参数
-你可以在侧边栏调整：
-
-- `MMPBSA |阈值|`
-- 显示模式（球棒 / 表面 / 透明）
-- 透明度
-- 是否显示主链
-- 是否显示侧链
-- 是否显示表面
-- 选择链 ID
-- 选择残基编号
-
-### 第五步：查看结果
-主页面会显示：
-
-- 3D 蛋白结构
-- 当前高亮残基数量
-- 当前模式
-- 平均能量
-- 当前选中残基的详细信息
-- 残基能量表
-- 能量分布图
-
-### 第六步：导出报告
-进入 `结果与导出` 页面，可以导出：
-
-- `protein_energy_results.csv`
-- `protein_analysis_report.txt`
-- `protein_analysis_report.pdf`
-
-### 第七步：查看分析历史
-进入 `分析历史` 页面，可查看最近几次分析摘要。
-
----
-
-## 7. 输入文件怎么准备
-
-### 7.1 PDB 文件
-支持标准 `.pdb` 文件。
-
-软件当前主要解析 `ATOM/HETATM` 相关内容，用于提取：
-
-- 链 ID
-- 残基编号
-- 残基名称
-- 原子名称
-
-### 7.2 MMPBSA 文件
-支持：
-
-- `.txt`
-- `.dat`
-- `.out`
-- `.csv`
-
-当前原型重点解析 `DELTA TOTAL` 信息。建议文件中包含残基级能量结果。
-
-如果你只是比赛展示，可以先使用项目自带示例数据。
-
----
-
-## 8. 如何理解界面中的结果
-
-### 8.1 颜色含义
-- **低能量残基**：更偏红色
-- **高能量残基**：更偏蓝色
-- **未达到阈值的残基**：可能显示为中性色
-
-### 8.2 热点残基
-通常指满足阈值条件、值得重点关注的残基。你可以通过阈值滑块控制高亮范围。
-
-### 8.3 当前状态卡片
-在 `结构可视化` 页面右侧会显示：
-
-- 高亮残基数
-- 当前模式
-- 平均能量
-
-这些信息适合演示时快速说明当前分析结果。
-
-### 8.4 分析历史
-历史页面保存的是当前 Streamlit 会话中的最近分析记录，不是永久存档。
-
----
-
-## 9. 分析历史说明
-
-当你在 `结构可视化` 页面完成一次解析后，系统会自动记录一条历史摘要，包含：
-
-- 分析时间
-- PDB 来源
-- MMPBSA 来源
-- 残基数量
-- 最低能量
-- 最高能量
-- 平均能量
-- 最低能量残基
-- 最高能量残基
-
-注意：
-
-- 当前历史记录只保存在会话中
-- 刷新页面、关闭浏览器或重启服务后，历史可能消失
-- 这一版本更适合比赛演示，不是数据库持久化系统
-
----
-
-## 10. 导出功能说明
-
-在 `结果与导出` 页面中，你可以导出三类内容：
-
-### CSV 结果表
-适合后续做表格分析或论文附表整理。
-
-### 文本报告
-适合快速查看自动生成的分析摘要。
-
-### PDF 报告
-适合比赛展示、提交附件或截图存档。
-
----
-
-## 11. 项目结构说明
+## 关键目录
 
 ```text
 .
 ├─ app.py
-├─ pyproject.toml
-├─ Dockerfile
-├─ .dockerignore
-├─ requirements.txt
-├─ README.md
-├─ .streamlit/
-│  └─ config.toml
 ├─ pages/
-│  ├─ 1_首页.py
-│  ├─ 2_结构可视化.py
-│  ├─ 3_使用说明.py
-│  ├─ 4_结果与导出.py
-│  └─ 5_分析历史.py
+├─ src/protein_visualizer/
+│  ├─ services/
+│  └─ ui/
 ├─ tests/
-│  ├─ conftest.py
-│  ├─ test_parsers.py
-│  └─ test_energy.py
-├─ src/
-│  └─ protein_visualizer/
-│     ├─ __init__.py
-│     ├─ models.py
-│     ├─ sample_data.py
-│     ├─ config/
-│     │  └─ settings.py
-│     ├─ services/
-│     │  ├─ energy.py
-│     │  ├─ logging_utils.py
-│     │  ├─ parsers.py
-│     │  ├─ pdf_export.py
-│     │  ├─ reporting.py
-│     │  ├─ session_state.py
-│     │  └─ viewer.py
-│     └─ ui/
-│        └─ layout.py
-└─ protein_visualization_prototype.ipynb
+├─ docs/
+├─ data/
+├─ requirements.txt
+├─ pyproject.toml
+└─ Dockerfile
 ```
 
-### 关键文件作用
+## 文档索引
 
-- `app.py`：软件入口页
-- `pages/2_结构可视化.py`：核心分析页面
-- `pages/4_结果与导出.py`：导出页面
-- `pages/5_分析历史.py`：历史记录页面
-- `src/protein_visualizer/services/parsers.py`：负责解析输入文件
-- `src/protein_visualizer/services/energy.py`：负责能量映射与颜色处理
-- `src/protein_visualizer/services/viewer.py`：负责生成 3D 结构视图
-- `src/protein_visualizer/services/reporting.py`：负责生成分析摘要
-- `src/protein_visualizer/services/pdf_export.py`：负责 PDF 报告输出
+- `advantage.md`：同类产品缺陷、我们的优势、当前能力和后续改进。
+- `new_task.md`：当前实现状态和后续任务清单。
+- `docs/pocket_detection_enhancement.md`：口袋检测、外部证据、文献、P2Rank、rerank closure 的技术记录。
+- `docs/docker_local_setup.md`：本地 Docker 安装、构建和运行说明。
+- `protein_insight/README.md`：子目录原型说明。
 
----
+## Docker
 
-## 12. 如何运行测试
-
-在项目根目录执行：
-
-```bash
-pytest tests
-```
-
----
-
-## 13. Docker 运行方式
-
-### 构建镜像
-
-```bash
+```powershell
 docker build -t protein-visualizer .
+docker run -d --name protein-visualizer -p 8501:8501 -v ${PWD}\data:/app/data protein-visualizer
 ```
 
-### 启动容器
+或：
 
-```bash
-docker run -d -p 8501:8501 --name protein-visualizer protein-visualizer
+```powershell
+docker compose up --build -d
 ```
 
-浏览器访问：
+## 常见问题
 
-```text
-http://localhost:8501
-```
-
-### 一键构建与运行脚本
-
-项目根目录包含便捷脚本用于本地快速部署：
-
-- `run_docker.sh`：在类 Unix 系统上构建并运行 Docker 容器（需可执行权限）。
-- `run_docker.ps1`：在 Windows/PowerShell 上执行相同操作。
-- `docker-compose.yml`：使用 `docker-compose up --build` 进行编排运行。
-
-示例：
-
-```bash
-# 使用脚本（类 Unix）
-bash run_docker.sh
-
-# 使用 PowerShell（Windows）
-./run_docker.ps1
-
-# 使用 docker-compose
-docker-compose up --build -d
-```
-
-脚本会将当前目录下的 `data/` 目录挂载到容器 `/app/data`，便于上传或持久化演示数据（可按需调整）。
-
----
-
-## 14. 常见问题
-
-### 1）软件启动了，但页面打不开
-先检查终端是否有报错，并确认端口 `8501` 没被占用。
-
-### 2）VS Code 提示无法解析 `streamlit` / `pandas` / `numpy`
-通常是当前 Python 解释器不对，或者依赖没有安装到当前环境。
-
-### 3）上传文件后显示解析失败
-请检查：
-
-- PDB 是否为标准格式
-- MMPBSA 文件中是否包含可解析的残基能量信息
-- 编码是否正常
-
-### 4）分析历史为什么消失了
-因为当前版本的历史记录是保存在 Streamlit 会话中的，不是永久数据库。
-
----
-
-## 15. 当前版本适合怎么用
-
-这个版本最适合：
-
-- 比赛展示
-- 课程答辩
-- 软件原型演示
-- 基础科研可视化说明
-
-如果你接下来还要继续完善，可以优先扩展：
-
-- 历史记录持久化
-- 多构象比较
-- 口袋/界面专页
-- 更精美的 PDF 模板
-- 图像导出与结果快照
-
----
-
-## 16. 一句话使用说明
-
-**安装依赖 → 运行 `streamlit run app.py` → 进入“结构可视化”页面上传文件或使用示例数据 → 调整阈值和显示模式 → 在“结果与导出”页面导出报告 → 在“分析历史”页面回顾最近分析。**
+- 页面没有数据：先完成一次结构/口袋分析，或启用示例数据。
+- PDF 不可用：安装 `reportlab` 后重启应用。
+- P2Rank 无结果：确认已安装 P2Rank，并设置 `P2RANK_HOME`、`P2RANK_SCRIPT` 或在页面中填写可执行文件路径。
+- 文献证据过弱：优先提供 UniProt accession、EC number、PDB ID 和结构编号一致性信息。
+- closure 不能关闭：查看 `consensus_rerank_release_closure_summary.csv`、blocker queue 和 remediation checklist。
+- 历史无法写入：检查 `data/analysis_history.json` 和 `data/` 目录权限。
