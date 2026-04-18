@@ -60,9 +60,10 @@ st.markdown(
             现在进一步加入了残基分类图例、热点注释表、多构象比较、口袋/界面分析、结果快照和导出能力，适合比赛展示、课程设计和生物信息学可视化演示。
         </p>
         <div>
-            <span class="pill">3D 可视化</span>
+            <span class="pill">三维可视化</span>
             <span class="pill">热点识别</span>
             <span class="pill">分类图例</span>
+            <span class="pill">证据复核</span>
             <span class="pill">快照导出</span>
         </div>
     </div>
@@ -75,12 +76,12 @@ st.markdown("### 你可以直接做什么")
 col1, col2, col3 = st.columns(3)
 with col1:
     st.markdown(
-        "<div class='stat-card'><strong>结构展示</strong><br><span style='color:#475569;'>cartoon / sticks / surface，适合从整体到局部逐层查看。</span></div>",
+        "<div class='stat-card'><strong>结构展示</strong><br><span style='color:#475569;'>卡通视图、球棍视图和分子表面适合从整体到局部逐层查看。</span></div>",
         unsafe_allow_html=True,
     )
 with col2:
     st.markdown(
-        "<div class='stat-card'><strong>比较与分析</strong><br><span style='color:#475569;'>支持多构象比较、口袋/界面分析和历史记录查看。</span></div>",
+        "<div class='stat-card'><strong>比较与分析</strong><br><span style='color:#475569;'>支持多构象比较、口袋/界面分析、证据复核和历史记录查看。</span></div>",
         unsafe_allow_html=True,
     )
 with col3:
@@ -102,6 +103,16 @@ st.markdown(
     """
 )
 
+st.markdown(
+    """
+    ### 推荐分析链路
+    1. 在 **结构可视化** 中上传 PDB 和能量文件，确认结构、颜色模式与热点阈值。
+    2. 在 **口袋与界面** 中运行自动口袋识别，并叠加外部证据、文献位点和保守性支持。
+    3. 在 **多构象比较** 中检查热点是否稳定，避免只依赖单一构象。
+    4. 在 **结果与导出** 中导出表格、快照和报告，保留可复核证据。
+    """
+)
+
 col1, col2 = st.columns(2)
 with col1:
     st.info("适用场景：蛋白质结构可视化、残基能量分析、比赛演示、课程设计。")
@@ -110,7 +121,7 @@ with col2:
 
 st.markdown("---")
 st.markdown("### 软件设计目标")
-st.write("- 提供直观的 3D 蛋白质查看界面")
+st.write("- 提供直观的三维蛋白质查看界面")
 st.write("- 支持 MMPBSA DELTA TOTAL 残基能量热力映射")
 st.write("- 提供易用的交互控件、分类图例与残基注释表")
 st.write("- 形成可部署的软件原型系统")

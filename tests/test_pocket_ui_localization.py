@@ -3,6 +3,7 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 APP_PAGE = ROOT_DIR / "app.py"
+HOME_PAGE = ROOT_DIR / "pages" / "1_首页.py"
 STRUCTURE_LAYOUT = ROOT_DIR / "src" / "protein_visualizer" / "ui" / "layout.py"
 POCKET_PAGE = ROOT_DIR / "pages" / "6_口袋与界面.py"
 RESULTS_PAGE = ROOT_DIR / "pages" / "4_结果与导出.py"
@@ -12,6 +13,10 @@ HISTORY_PAGE = ROOT_DIR / "pages" / "5_分析历史.py"
 
 def _app_source() -> str:
     return APP_PAGE.read_text(encoding="utf-8")
+
+
+def _home_source() -> str:
+    return HOME_PAGE.read_text(encoding="utf-8")
 
 
 def _structure_layout_source() -> str:
@@ -206,3 +211,12 @@ def test_app_uses_chinese_first_font_stack():
     assert "cartoon / sticks / surface" not in source
     assert "卡通视图 / 球棍视图 / 分子表面" in source
     assert "结构输入 → 能量映射 → 热点/口袋定位 → 证据复核" in source
+
+
+def test_home_page_keeps_visible_mode_labels_localized():
+    source = _home_source()
+
+    assert "cartoon / sticks / surface" not in source
+    assert "卡通视图、球棍视图和分子表面" in source
+    assert "推荐分析链路" in source
+    assert "证据复核" in source
