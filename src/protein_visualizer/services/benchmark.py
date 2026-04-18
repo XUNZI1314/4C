@@ -49,6 +49,28 @@ BENCHMARK_SUMMARY_COLUMNS = [
     "benchmark_warning",
 ]
 
+BENCHMARK_VARIANT_COMPARISON_COLUMNS = [
+    "variant_label",
+    "reference_variant_label",
+    "top_n",
+    "reference_residue_count",
+    "matched_reference_count",
+    "coverage_ratio",
+    "reference_coverage_ratio",
+    "coverage_delta_vs_reference",
+    "coverage_loss_vs_reference",
+    "best_rank",
+    "reference_best_rank",
+    "best_rank_delta_vs_reference",
+    "best_pocket_id",
+    "top_pocket_id",
+    "top_pocket_hit",
+    "matched_residues",
+    "missed_residues",
+    "benchmark_status",
+    "benchmark_warning",
+]
+
 CHAIN_ALIASES = {"chain", "chainid", "chain_id", "authasymid", "auth_asym_id", "asymid", "asym_id"}
 RESID_ALIASES = {
     "resid",
@@ -85,6 +107,10 @@ def _empty_detail_df() -> pd.DataFrame:
 
 def _empty_summary_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_SUMMARY_COLUMNS)
+
+
+def _empty_variant_comparison_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_VARIANT_COMPARISON_COLUMNS)
 
 
 def _simplify_column_name(value: object) -> str:
@@ -451,3 +477,95 @@ def build_pocket_benchmark_summary(
         )
 
     return pd.DataFrame(rows, columns=BENCHMARK_SUMMARY_COLUMNS)
+
+
+def build_pocket_benchmark_variant_comparison(
+    reference_df: Optional[pd.DataFrame],
+    variants: Sequence[tuple[str, Optional[pd.DataFrame], Optional[pd.DataFrame]]],
+    *,
+    reference_variant_label: str = "current",
+    top_ns: Sequence[int] = (1, 3),
+) -> pd.DataFrame:
+    """Compare catalytic coverage across pocket-ranking variants.
+
+    `variants` contains `(label, pocket_df, pocket_summary_df)` tuples. The
+    reference variant is usually the active/current run; ablated variants then
+    show coverage loss when literature, evidence-route or conservation support
+    is removed.
+    """
+
+    references = _reference_rows(reference_df)
+    if references.empty or not variants:
+        return _empty_variant_comparison_df()
+
+    summaries: dict[str, pd.DataFrame] = {}
+    labels: list[str] = []
+    for label, pocket_df, pocket_summary_df in variants:
+        cleaned_label = str(label or "").strip()
+        if not cleaned_label or cleaned_label in summaries:
+            continue
+        summary = build_pocket_benchmark_summary(
+            references,
+            pocket_df,
+            pocket_summary_df,
+            top_ns=top_ns,
+        )
+        if summary.empty:
+            continue
+        summaries[cleaned_label] = summary
+        labels.append(cleaned_label)
+
+    if not summaries:
+        return _empty_variant_comparison_df()
+
+    reference_label = str(reference_variant_label or "").strip()
+    if reference_label not in summaries:
+        reference_label = labels[0]
+    reference_summary = summaries[reference_label].copy()
+    reference_by_top_n = {
+        int(row.top_n): row
+        for row in reference_summary.itertuples(index=False)
+        if pd.notna(getattr(row, "top_n", None))
+    }
+
+    rows: list[dict[str, object]] = []
+    for label in labels:
+        summary = summaries[label]
+        for row in summary.itertuples(index=False):
+            top_n = int(getattr(row, "top_n"))
+            reference_row = reference_by_top_n.get(top_n)
+            reference_coverage = float(getattr(reference_row, "coverage_ratio", 0.0)) if reference_row is not None else 0.0
+            coverage = float(getattr(row, "coverage_ratio", 0.0))
+            reference_best_rank = int(getattr(reference_row, "best_rank", 0) or 0) if reference_row is not None else 0
+            best_rank = int(getattr(row, "best_rank", 0) or 0)
+            if best_rank <= 0 or reference_best_rank <= 0:
+                rank_delta = 0
+            else:
+                rank_delta = int(best_rank - reference_best_rank)
+            rows.append(
+                {
+                    "variant_label": label,
+                    "reference_variant_label": reference_label,
+                    "top_n": top_n,
+                    "reference_residue_count": int(getattr(row, "reference_residue_count", 0) or 0),
+                    "matched_reference_count": int(getattr(row, "matched_reference_count", 0) or 0),
+                    "coverage_ratio": coverage,
+                    "reference_coverage_ratio": reference_coverage,
+                    "coverage_delta_vs_reference": round(float(coverage - reference_coverage), 3),
+                    "coverage_loss_vs_reference": round(float(reference_coverage - coverage), 3),
+                    "best_rank": best_rank,
+                    "reference_best_rank": reference_best_rank,
+                    "best_rank_delta_vs_reference": rank_delta,
+                    "best_pocket_id": str(getattr(row, "best_pocket_id", "") or ""),
+                    "top_pocket_id": str(getattr(row, "top_pocket_id", "") or ""),
+                    "top_pocket_hit": bool(getattr(row, "top_pocket_hit", False)),
+                    "matched_residues": str(getattr(row, "matched_residues", "") or ""),
+                    "missed_residues": str(getattr(row, "missed_residues", "") or ""),
+                    "benchmark_status": str(getattr(row, "benchmark_status", "") or ""),
+                    "benchmark_warning": str(getattr(row, "benchmark_warning", "") or ""),
+                }
+            )
+
+    if not rows:
+        return _empty_variant_comparison_df()
+    return pd.DataFrame(rows, columns=BENCHMARK_VARIANT_COMPARISON_COLUMNS)

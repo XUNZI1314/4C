@@ -243,6 +243,7 @@ The benchmark exports:
 
 - `pocket_benchmark_reference.csv`
 - `pocket_benchmark_summary.csv`
+- `pocket_benchmark_variant_comparison.csv`
 - `pocket_benchmark_details.csv`
 
 Current summary metrics:
@@ -252,8 +253,19 @@ Current summary metrics:
 - Top-5 catalytic residue coverage.
 - Best hit rank and best hit pocket.
 - Matched and missed catalytic residues.
+- Coverage delta / loss for current vs ablated variants.
 
 This gives a concrete accuracy check before claiming that the top-ranked pocket is the active-site pocket.
+
+### Variant Comparison
+
+When the relevant A/B toggles are enabled, the benchmark also compares current ranking against ablated variants:
+
+- `no-literature`
+- `no-evidence-route`
+- `no-conservation-rerank`
+
+Positive `coverage_loss_vs_reference` means removing that evidence path reduced catalytic residue coverage compared with the current run. This converts A/B ranking changes into an active-site accuracy metric.
 
 ## P2Rank Integration
 

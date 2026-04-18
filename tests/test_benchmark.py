@@ -3,6 +3,7 @@ import pandas as pd
 from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_details,
     build_pocket_benchmark_summary,
+    build_pocket_benchmark_variant_comparison,
     parse_benchmark_reference_table,
 )
 
@@ -86,3 +87,51 @@ def test_build_pocket_benchmark_summary_handles_missing_reference():
     summary = build_pocket_benchmark_summary(pd.DataFrame(), pd.DataFrame())
 
     assert summary.empty
+
+
+def test_build_pocket_benchmark_variant_comparison_reports_ablation_loss():
+    reference_df, _ = parse_benchmark_reference_table(
+        """chain,resid,resname
+A,195,SER
+A,57,HIS
+"""
+    )
+    current_pocket_df = pd.DataFrame(
+        [
+            {"pocket_id": "Pocket-1", "chain": "A", "resid": 195, "resname": "SER"},
+            {"pocket_id": "Pocket-1", "chain": "A", "resid": 57, "resname": "HIS"},
+        ]
+    )
+    current_summary_df = pd.DataFrame([{"pocket_id": "Pocket-1", "smart_rank_order": 1, "smart_rank_score": 0.90}])
+    ablated_pocket_df = pd.DataFrame(
+        [
+            {"pocket_id": "Pocket-X", "chain": "A", "resid": 30, "resname": "GLY"},
+            {"pocket_id": "Pocket-2", "chain": "A", "resid": 195, "resname": "SER"},
+            {"pocket_id": "Pocket-3", "chain": "A", "resid": 57, "resname": "HIS"},
+        ]
+    )
+    ablated_summary_df = pd.DataFrame(
+        [
+            {"pocket_id": "Pocket-X", "smart_rank_order": 1, "smart_rank_score": 0.95},
+            {"pocket_id": "Pocket-2", "smart_rank_order": 2, "smart_rank_score": 0.70},
+            {"pocket_id": "Pocket-3", "smart_rank_order": 3, "smart_rank_score": 0.65},
+        ]
+    )
+
+    comparison = build_pocket_benchmark_variant_comparison(
+        reference_df,
+        [
+            ("current", current_pocket_df, current_summary_df),
+            ("no-literature", ablated_pocket_df, ablated_summary_df),
+        ],
+        reference_variant_label="current",
+        top_ns=(1, 3),
+    )
+
+    current_top1 = comparison[(comparison["variant_label"] == "current") & (comparison["top_n"] == 1)].iloc[0]
+    ablated_top1 = comparison[(comparison["variant_label"] == "no-literature") & (comparison["top_n"] == 1)].iloc[0]
+    ablated_top3 = comparison[(comparison["variant_label"] == "no-literature") & (comparison["top_n"] == 3)].iloc[0]
+    assert float(current_top1["coverage_ratio"]) == 1.0
+    assert float(ablated_top1["coverage_ratio"]) == 0.0
+    assert float(ablated_top1["coverage_loss_vs_reference"]) == 1.0
+    assert float(ablated_top3["coverage_ratio"]) == 1.0
