@@ -105,6 +105,34 @@ def test_pocket_page_keeps_display_localization_hooks_enabled():
         assert snippet in source
 
 
+def test_pocket_page_ai_export_buttons_are_explicitly_localized():
+    source = _page_source()
+
+    forbidden_snippets = [
+        '"Export AI evidence CSV"',
+        '"Export AI evidence audit CSV"',
+        '"Export normalized AI review decisions CSV"',
+        '"Export AI review decision validation CSV"',
+        '"Export AI review artifact bundle ZIP"',
+        '"Export ranking-gated AI evidence CSV"',
+        '"Export AI follow-up prompt bundle"',
+    ]
+    required_snippets = [
+        '"导出 AI 残基证据 CSV"',
+        '"导出 AI 证据审计 CSV"',
+        '"导出规范化 AI 复核决策 CSV"',
+        '"导出 AI 复核决策校验 CSV"',
+        '"导出 AI 复核产物包 ZIP"',
+        '"导出通过排名门控的 AI 证据 CSV"',
+        '"导出 AI 后续提示词包"',
+    ]
+
+    for snippet in forbidden_snippets:
+        assert snippet not in source
+    for snippet in required_snippets:
+        assert snippet in source
+
+
 def test_results_page_keeps_pocket_export_labels_readable():
     source = _results_page_source()
 

@@ -5242,28 +5242,28 @@ with tab_export:
             )
         if not ai_evidence_df.empty:
             st.download_button(
-                "Export AI evidence CSV",
+                "导出 AI 残基证据 CSV",
                 data=_to_csv_bytes(ai_evidence_df),
                 file_name="ai_residue_evidence.csv",
                 mime="text/csv",
             )
         if not ai_evidence_audit_df.empty:
             st.download_button(
-                "Export AI evidence audit CSV",
+                "导出 AI 证据审计 CSV",
                 data=_to_csv_bytes(ai_evidence_audit_df),
                 file_name="ai_residue_evidence_audit.csv",
                 mime="text/csv",
             )
         if not residue_evidence_consensus_df.empty:
             st.download_button(
-                "Export residue evidence consensus CSV",
+                "导出残基证据共识 CSV",
                 data=_to_csv_bytes(residue_evidence_consensus_df),
                 file_name="residue_evidence_consensus.csv",
                 mime="text/csv",
             )
         if not pocket_consensus_coverage_df.empty:
             st.download_button(
-                "Export pocket consensus coverage CSV",
+                "导出口袋共识覆盖 CSV",
                 data=_to_csv_bytes(pocket_consensus_coverage_df),
                 file_name="pocket_consensus_coverage.csv",
                 mime="text/csv",
@@ -5947,131 +5947,131 @@ with tab_export:
             )
         if not ai_review_decision_df.empty:
             st.download_button(
-                "Export normalized AI review decisions CSV",
+                "导出规范化 AI 复核决策 CSV",
                 data=_to_csv_bytes(ai_review_decision_df),
                 file_name="ai_review_decisions_normalized.csv",
                 mime="text/csv",
             )
         if not ai_review_decision_validation_df.empty:
             st.download_button(
-                "Export AI review decision validation CSV",
+                "导出 AI 复核决策校验 CSV",
                 data=_to_csv_bytes(ai_review_decision_validation_df),
                 file_name="ai_review_decision_validation.csv",
                 mime="text/csv",
             )
         if not ai_review_round_summary_df.empty:
             st.download_button(
-                "Export AI review round summary CSV",
+                "导出 AI 复核轮次汇总 CSV",
                 data=_to_csv_bytes(ai_review_round_summary_df),
                 file_name="ai_review_round_summary.csv",
                 mime="text/csv",
             )
         if not ai_review_ranking_delta_df.empty:
             st.download_button(
-                "Export AI review ranking delta CSV",
+                "导出 AI 复核排名变化 CSV",
                 data=_to_csv_bytes(ai_review_ranking_delta_df),
                 file_name="ai_review_ranking_delta.csv",
                 mime="text/csv",
             )
         if ai_review_round_report_markdown:
             st.download_button(
-                "Export AI review round report",
+                "导出 AI 复核轮次报告",
                 data=ai_review_round_report_markdown.encode("utf-8"),
                 file_name="ai_review_round_report.md",
                 mime="text/markdown",
             )
         if not ai_review_artifact_manifest_df.empty:
             st.download_button(
-                "Export AI review artifact manifest CSV",
+                "导出 AI 复核产物清单 CSV",
                 data=_to_csv_bytes(ai_review_artifact_manifest_df),
                 file_name="ai_review_artifact_manifest.csv",
                 mime="text/csv",
             )
         if ai_review_bundle_readme_markdown:
             st.download_button(
-                "Export AI review bundle README",
+                "导出 AI 复核包 README",
                 data=ai_review_bundle_readme_markdown.encode("utf-8"),
                 file_name="ai_review_bundle_README.md",
                 mime="text/markdown",
             )
         if ai_review_artifact_bundle_zip:
             st.download_button(
-                "Export AI review artifact bundle ZIP",
+                "导出 AI 复核产物包 ZIP",
                 data=ai_review_artifact_bundle_zip,
                 file_name="ai_review_artifacts.zip",
                 mime="application/zip",
             )
         if not ai_review_bundle_verification_df.empty:
             st.download_button(
-                "Export AI review bundle verification CSV",
+                "导出 AI 复核包校验 CSV",
                 data=_to_csv_bytes(ai_review_bundle_verification_df),
                 file_name="ai_review_bundle_verification.csv",
                 mime="text/csv",
             )
         if not ai_review_bundle_verification_summary_df.empty:
             st.download_button(
-                "Export AI review bundle verification summary CSV",
+                "导出 AI 复核包校验汇总 CSV",
                 data=_to_csv_bytes(ai_review_bundle_verification_summary_df),
                 file_name="ai_review_bundle_verification_summary.csv",
                 mime="text/csv",
             )
         if ai_review_bundle_certificate_markdown:
             st.download_button(
-                "Export AI review bundle handoff certificate",
+                "导出 AI 复核交接证书",
                 data=ai_review_bundle_certificate_markdown.encode("utf-8"),
                 file_name="ai_review_bundle_certificate.md",
                 mime="text/markdown",
             )
         if not ai_review_decision_outcome_df.empty:
             st.download_button(
-                "Export AI review decision outcomes CSV",
+                "导出 AI 复核决策结果 CSV",
                 data=_to_csv_bytes(ai_review_decision_outcome_df),
                 file_name="ai_review_decision_outcomes.csv",
                 mime="text/csv",
             )
         if not ai_evidence_review_queue_df.empty:
             st.download_button(
-                "Export AI evidence review queue CSV",
+                "导出 AI 证据复核队列 CSV",
                 data=_to_csv_bytes(ai_evidence_review_queue_df),
                 file_name="ai_evidence_review_queue.csv",
                 mime="text/csv",
             )
             if not ai_review_decision_template_df.empty:
                 st.download_button(
-                    "Export AI review decision template CSV",
+                    "导出 AI 复核决策模板 CSV",
                     data=_to_csv_bytes(ai_review_decision_template_df),
                     file_name="ai_review_decision_template.csv",
                     mime="text/csv",
                 )
             st.download_button(
-                "Export AI evidence review checklist",
+                "导出 AI 证据复核清单",
                 data=ai_review_checklist_markdown.encode("utf-8"),
                 file_name="ai_evidence_review_checklist.md",
                 mime="text/markdown",
             )
         if not rankable_ai_evidence_df.empty:
             st.download_button(
-                "Export ranking-gated AI evidence CSV",
+                "导出通过排名门控的 AI 证据 CSV",
                 data=_to_csv_bytes(rankable_ai_evidence_df),
                 file_name="ai_residue_evidence_ranked.csv",
                 mime="text/csv",
             )
         if not ai_ranking_impact_df.empty:
             st.download_button(
-                "Export AI ranking impact CSV",
+                "导出 AI 排名影响 CSV",
                 data=_to_csv_bytes(ai_ranking_impact_df),
                 file_name="ai_ranking_impact_summary.csv",
                 mime="text/csv",
             )
         if not ai_followup_plan_df.empty:
             st.download_button(
-                "Export AI follow-up evidence plan CSV",
+                "导出 AI 后续取证计划 CSV",
                 data=_to_csv_bytes(ai_followup_plan_df),
                 file_name="ai_followup_evidence_plan.csv",
                 mime="text/csv",
             )
             st.download_button(
-                "Export AI follow-up prompt bundle",
+                "导出 AI 后续提示词包",
                 data=ai_followup_prompt_bundle.encode("utf-8"),
                 file_name="ai_followup_prompt_bundle.md",
                 mime="text/markdown",
