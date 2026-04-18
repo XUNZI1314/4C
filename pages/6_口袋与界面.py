@@ -2000,6 +2000,7 @@ pocket_benchmark_reference_source_audit_case_decision_dataset_impact_report_mark
     build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_report_markdown(
         pocket_benchmark_reference_source_audit_case_decision_dataset_impact_df,
         pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_df,
+        action_summary_df=pocket_benchmark_reference_source_audit_case_decision_dataset_impact_action_queue_summary_df,
         checklist_available=bool(pocket_benchmark_reference_source_audit_case_decision_dataset_impact_case_checklist_markdown),
     )
 )

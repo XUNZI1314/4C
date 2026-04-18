@@ -32,7 +32,7 @@
 - [x] Release execution template、receipt import、validation、summary、report。
 - [x] Release closure certificate、closure ledger。
 - [x] Detached closure summary、blocker queue、remediation checklist、detached manifest。
-- [x] 单元测试和全量测试覆盖，最近一次验证：`249 passed`。
+- [x] 单元测试和全量测试覆盖，最近一次验证：`250 passed`。
 
 ## 当前导出重点
 
@@ -74,7 +74,7 @@
 - 已落地 benchmark reference source audit case decision dataset impact case checklist：只把 blocker/review/mismatch case 转成 Markdown 勾选项，方便 reviewer 按 Top-N/case 指派和关闭。
 - 已落地 benchmark reference source audit case decision dataset impact action queue：把 blocker/review/mismatch case 转成 machine-readable CSV 队列，便于按 priority/action_status/source_gate_mismatch 批量筛选和指派。
 - 已落地 benchmark reference source audit case decision dataset impact action summary：按 priority/action_status/source_impact_status 汇总 action 数、受影响 case、Top-N、mismatch 和首要 action，方便批量 benchmark 时先看哪类来源问题最该处理。
-- 已落地 benchmark reference source audit case decision dataset impact report：把 source gate、Top-N impact 汇总和 case actions 组合成可归档 Markdown 报告，便于随 benchmark 结果交付。
+- 已落地 benchmark reference source audit case decision dataset impact report：把 source gate、Top-N impact 汇总、action summary 和 case actions 组合成可归档 Markdown 报告，便于随 benchmark 结果交付。
 - 已落地 benchmark reference source audit case decision closure checklist：把 outcome summary 和未关闭 outcomes 转成 Markdown 勾选清单，方便 reviewer 按 blocked/pending/held/unknown case 继续整改并归档。
 - 已落地 benchmark reference source audit case checklist：把 source audit case summary 和逐行来源动作组合成 case-first Markdown 清单，便于 reviewer 按酶/结构 case 逐个关闭来源风险。
 - 已落地 benchmark reference source audit checklist：把 source audit summary 和非 source-ready reference 行转成可勾选 Markdown 动作，便于人工整改和归档。

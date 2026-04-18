@@ -2168,6 +2168,66 @@ def test_benchmark_reference_source_audit_case_decision_dataset_impact_report_su
     assert "| review | 3 | enzyme-c | source-review-needed | review-needed | 0.800 | P2 | Complete source review. |" in report
 
 
+def test_benchmark_reference_source_audit_case_decision_dataset_impact_report_includes_action_summary():
+    dataset_impact = pd.DataFrame(
+        [
+            {
+                "top_n": 1,
+                "case_count": 2,
+                "source_open_case_count": 1,
+                "source_blocker_case_count": 1,
+                "source_review_case_count": 0,
+                "source_gate_mismatch_case_count": 1,
+                "mean_source_open_coverage": 0.6,
+                "mean_source_cleared_coverage": 0.0,
+                "dataset_source_impact_status": "source-gate-mismatch",
+            }
+        ]
+    )
+    detail = pd.DataFrame(
+        [
+            {
+                "top_n": 1,
+                "benchmark_id": "enzyme-b",
+                "claim_status": "claim-ready",
+                "coverage_ratio": 0.6,
+                "adjusted_source_priority": "P2",
+                "source_impact_status": "source-gate-mismatch",
+                "source_action_status": "blocker",
+                "source_gate_mismatch": True,
+                "recommended_action": "Regenerate readiness interpretation.",
+            }
+        ]
+    )
+    action_summary = pd.DataFrame(
+        [
+            {
+                "summary_id": "BRSDIAS-001",
+                "priority": "P0",
+                "action_status": "blocker",
+                "source_impact_status": "source-gate-mismatch",
+                "action_count": 1,
+                "affected_case_count": 1,
+                "top_n_values": "1",
+                "mismatch_count": 1,
+                "mean_coverage_ratio": 0.6,
+                "top_action_id": "BRSDIA-001",
+                "recommended_action": "Regenerate readiness interpretation for source-gate mismatches.",
+            }
+        ]
+    )
+
+    report = build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_report_markdown(
+        dataset_impact,
+        detail,
+        action_summary_df=action_summary,
+    )
+
+    assert "Action summary rows: 1." in report
+    assert "## Action Summary" in report
+    assert "| P0 | blocker | source-gate-mismatch | 1 | 1 | 1 | 1 | 0.600 | BRSDIA-001 | Regenerate readiness interpretation for source-gate mismatches. |" in report
+
+
 def test_build_pocket_benchmark_summary_reports_top1_and_top3_coverage():
     reference_df, _ = parse_benchmark_reference_table(
         """chain,resid,resname,reference_type

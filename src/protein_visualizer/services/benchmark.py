@@ -3767,6 +3767,7 @@ def build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_r
     dataset_impact_df: Optional[pd.DataFrame],
     impact_case_df: Optional[pd.DataFrame],
     *,
+    action_summary_df: Optional[pd.DataFrame] = None,
     checklist_available: bool = False,
     title: str = "Benchmark source-audit decision dataset impact report",
     max_case_actions: int = 30,
@@ -3775,7 +3776,8 @@ def build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_r
 
     has_dataset = dataset_impact_df is not None and not getattr(dataset_impact_df, "empty", True)
     has_cases = impact_case_df is not None and not getattr(impact_case_df, "empty", True)
-    if not has_dataset and not has_cases:
+    has_action_summary = action_summary_df is not None and not getattr(action_summary_df, "empty", True)
+    if not has_dataset and not has_cases and not has_action_summary:
         return ""
 
     dataset = dataset_impact_df.copy() if has_dataset else _empty_reference_source_audit_case_decision_dataset_impact_df()
@@ -3810,6 +3812,30 @@ def build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_r
         cases = cases.sort_values(
             ["top_n", "_action_rank", "_mismatch_rank", "benchmark_id", "source_impact_status"]
         ).drop(columns=["_action_rank", "_mismatch_rank"])
+
+    action_summary = (
+        action_summary_df.copy()
+        if has_action_summary
+        else _empty_reference_source_audit_case_decision_dataset_impact_action_queue_summary_df()
+    )
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_DATASET_IMPACT_ACTION_QUEUE_SUMMARY_COLUMNS:
+        if column not in action_summary.columns:
+            action_summary[column] = ""
+    if not action_summary.empty:
+        for column in ("action_count", "affected_case_count", "mismatch_count"):
+            action_summary[column] = pd.to_numeric(action_summary[column], errors="coerce").fillna(0).astype(int)
+        action_summary["mean_coverage_ratio"] = pd.to_numeric(
+            action_summary["mean_coverage_ratio"], errors="coerce"
+        ).fillna(0.0)
+        priority_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+        status_rank = {"blocker": 0, "review": 1}
+        impact_rank = {"source-gate-mismatch": 0, "source-blocked": 1, "source-review-needed": 2, "source-open": 3}
+        action_summary["_priority_rank"] = action_summary["priority"].map(priority_rank).fillna(9)
+        action_summary["_status_rank"] = action_summary["action_status"].map(status_rank).fillna(9)
+        action_summary["_impact_rank"] = action_summary["source_impact_status"].map(impact_rank).fillna(9)
+        action_summary = action_summary.sort_values(
+            ["_priority_rank", "_status_rank", "_impact_rank", "source_impact_status"]
+        ).drop(columns=["_priority_rank", "_status_rank", "_impact_rank"])
 
     statuses = set(dataset["dataset_source_impact_status"].astype(str).str.strip().str.lower()) if not dataset.empty else set()
     if "source-gate-mismatch" in statuses:
@@ -3846,6 +3872,7 @@ def build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_r
         f"- Dataset source-impact status: `{report_status}`.",
         f"- Dataset impact rows: {int(len(dataset))}.",
         f"- Case impact rows: {int(len(cases))}.",
+        f"- Action summary rows: {int(len(action_summary))}.",
         f"- Blocker case actions: {blocker_rows}.",
         f"- Review case actions: {review_rows}.",
         f"- Source gate mismatches: {mismatch_rows}.",
@@ -3872,6 +3899,28 @@ def build_pocket_benchmark_reference_source_audit_case_decision_dataset_impact_r
                     mismatch=int(row.get("source_gate_mismatch_case_count") or 0),
                     open_cov=float(row.get("mean_source_open_coverage") or 0.0),
                     cleared_cov=float(row.get("mean_source_cleared_coverage") or 0.0),
+                )
+            )
+
+    lines.extend(["", "## Action Summary", ""])
+    if action_summary.empty:
+        lines.append("No source-impact action summary rows are available.")
+    else:
+        lines.append("| Priority | Action | Source impact | Actions | Cases | Top-N | Mismatch | Mean coverage | Top action | Recommended action |")
+        lines.append("| --- | --- | --- | ---: | ---: | --- | ---: | ---: | --- | --- |")
+        for _, row in action_summary.iterrows():
+            lines.append(
+                "| {priority} | {action} | {impact} | {actions} | {cases} | {top_n} | {mismatch} | {coverage:.3f} | {top_action} | {recommended} |".format(
+                    priority=_safe_text(row.get("priority")) or "-",
+                    action=_safe_text(row.get("action_status")) or "-",
+                    impact=_safe_text(row.get("source_impact_status")) or "-",
+                    actions=int(row.get("action_count") or 0),
+                    cases=int(row.get("affected_case_count") or 0),
+                    top_n=_safe_text(row.get("top_n_values")) or "-",
+                    mismatch=int(row.get("mismatch_count") or 0),
+                    coverage=float(row.get("mean_coverage_ratio") or 0.0),
+                    top_action=_safe_text(row.get("top_action_id")) or "-",
+                    recommended=_safe_text(row.get("recommended_action")) or "Review source-impact actions.",
                 )
             )
 
