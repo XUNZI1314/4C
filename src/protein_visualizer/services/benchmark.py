@@ -205,6 +205,32 @@ BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_OUTCOME_SUMMARY_COLUMNS = [
     "summary_warning",
 ]
 
+BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_CLOSURE_QUEUE_COLUMNS = [
+    "closure_action_id",
+    "benchmark_id",
+    "applied_status",
+    "closure_priority",
+    "closure_action_status",
+    "closure_issue_type",
+    "source_decision",
+    "validation_status",
+    "reference_rows",
+    "action_rows",
+    "blocker_rows",
+    "review_rows",
+    "top_priority",
+    "top_issue_type",
+    "source_claim_statuses",
+    "source_modes",
+    "reviewer",
+    "verified_source_mode",
+    "verified_independence",
+    "replacement_reference_source",
+    "outcome_reason",
+    "required_action",
+    "closure_warning",
+]
+
 BENCHMARK_DETAIL_COLUMNS = [
     *BENCHMARK_REFERENCE_COLUMNS,
     "residue_label",
@@ -690,6 +716,10 @@ def _empty_reference_source_audit_case_decision_outcome_df() -> pd.DataFrame:
 
 def _empty_reference_source_audit_case_decision_outcome_summary_df() -> pd.DataFrame:
     return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_OUTCOME_SUMMARY_COLUMNS)
+
+
+def _empty_reference_source_audit_case_decision_closure_queue_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_CLOSURE_QUEUE_COLUMNS)
 
 
 def _empty_detail_df() -> pd.DataFrame:
@@ -2739,6 +2769,89 @@ def build_pocket_benchmark_reference_source_audit_case_decision_outcome_summary(
         ],
         columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_OUTCOME_SUMMARY_COLUMNS,
     )
+
+
+def build_pocket_benchmark_reference_source_audit_case_decision_closure_queue(
+    outcome_df: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    """Build a machine-readable queue for open source-audit decision outcomes."""
+
+    if outcome_df is None or getattr(outcome_df, "empty", True):
+        return _empty_reference_source_audit_case_decision_closure_queue_df()
+
+    outcomes = outcome_df.copy()
+    for column in BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_OUTCOME_COLUMNS:
+        if column not in outcomes.columns:
+            outcomes[column] = ""
+
+    closed_statuses = {"cleared", "replaced", "source-ready"}
+    status = outcomes["applied_status"].astype(str).str.strip().str.lower()
+    open_rows = outcomes[~status.isin(closed_statuses)].copy()
+    if open_rows.empty:
+        return _empty_reference_source_audit_case_decision_closure_queue_df()
+
+    rows: list[dict[str, object]] = []
+    for _, outcome in open_rows.iterrows():
+        applied_status = _safe_text(outcome.get("applied_status")).lower() or "unknown"
+        if applied_status == "blocked":
+            closure_priority = "P0"
+            closure_action_status = "blocker"
+            closure_issue_type = "invalid_source_audit_case_decision"
+            fallback_action = "Fix validation issues and re-upload source-audit case decisions."
+        elif applied_status == "pending":
+            closure_priority = "P1"
+            closure_action_status = "blocker"
+            closure_issue_type = "missing_source_audit_case_decision"
+            fallback_action = "Fill and upload the source-audit case decision template."
+        elif applied_status == "held":
+            closure_priority = "P2"
+            closure_action_status = "review"
+            closure_issue_type = "held_source_audit_case"
+            fallback_action = "Resolve the hold decision or exclude this case from independent precision claims."
+        else:
+            closure_priority = "P1"
+            closure_action_status = "blocker"
+            closure_issue_type = "unknown_source_audit_case_status"
+            fallback_action = "Review this source-audit case decision outcome before reporting precision."
+
+        rows.append(
+            {
+                "closure_action_id": "",
+                "benchmark_id": _safe_text(outcome.get("benchmark_id")),
+                "applied_status": applied_status,
+                "closure_priority": closure_priority,
+                "closure_action_status": closure_action_status,
+                "closure_issue_type": closure_issue_type,
+                "source_decision": _safe_text(outcome.get("source_decision")),
+                "validation_status": _safe_text(outcome.get("validation_status")),
+                "reference_rows": _safe_int(outcome.get("reference_rows")) or 0,
+                "action_rows": _safe_int(outcome.get("action_rows")) or 0,
+                "blocker_rows": _safe_int(outcome.get("blocker_rows")) or 0,
+                "review_rows": _safe_int(outcome.get("review_rows")) or 0,
+                "top_priority": _safe_text(outcome.get("top_priority")),
+                "top_issue_type": _safe_text(outcome.get("top_issue_type")),
+                "source_claim_statuses": _safe_text(outcome.get("source_claim_statuses")),
+                "source_modes": _safe_text(outcome.get("source_modes")),
+                "reviewer": _safe_text(outcome.get("reviewer")),
+                "verified_source_mode": _safe_text(outcome.get("verified_source_mode")),
+                "verified_independence": _safe_text(outcome.get("verified_independence")),
+                "replacement_reference_source": _safe_text(outcome.get("replacement_reference_source")),
+                "outcome_reason": _safe_text(outcome.get("outcome_reason")),
+                "required_action": _safe_text(outcome.get("next_action")) or fallback_action,
+                "closure_warning": _safe_text(outcome.get("outcome_reason")) or "Source-audit case is not closed yet.",
+            }
+        )
+
+    priority_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    status_rank = {"blocked": 0, "pending": 1, "held": 2}
+    frame = pd.DataFrame(rows, columns=BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_CLOSURE_QUEUE_COLUMNS)
+    frame["_priority_rank"] = frame["closure_priority"].map(priority_rank).fillna(9)
+    frame["_status_rank"] = frame["applied_status"].map(status_rank).fillna(9)
+    frame = frame.sort_values(["_priority_rank", "_status_rank", "benchmark_id"]).drop(
+        columns=["_priority_rank", "_status_rank"]
+    ).reset_index(drop=True)
+    frame["closure_action_id"] = [f"BRSDQ-{index + 1:03d}" for index in range(len(frame))]
+    return frame[BENCHMARK_REFERENCE_SOURCE_AUDIT_CASE_DECISION_CLOSURE_QUEUE_COLUMNS]
 
 
 def build_pocket_benchmark_reference_source_audit_case_decision_closure_checklist_markdown(

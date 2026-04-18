@@ -28,6 +28,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_source_audit_action_queue,
     build_pocket_benchmark_reference_source_audit_case_checklist_markdown,
     build_pocket_benchmark_reference_source_audit_case_decision_closure_checklist_markdown,
+    build_pocket_benchmark_reference_source_audit_case_decision_closure_queue,
     build_pocket_benchmark_reference_source_audit_case_decision_outcomes,
     build_pocket_benchmark_reference_source_audit_case_decision_outcome_summary,
     build_pocket_benchmark_reference_source_audit_case_decision_template,
@@ -1443,6 +1444,47 @@ def test_benchmark_reference_source_audit_case_decision_closure_checklist_markdo
     assert "BRSDC-001 case `enzyme-b` `pending`" in checklist
     assert "Fill and upload the source-audit case decision template." in checklist
     assert "case `enzyme-a`" not in checklist
+
+
+def test_benchmark_reference_source_audit_case_decision_closure_queue_lists_open_cases():
+    outcomes = pd.DataFrame(
+        [
+            {"benchmark_id": "enzyme-a", "applied_status": "cleared", "next_action": "Keep decision."},
+            {
+                "benchmark_id": "enzyme-b",
+                "applied_status": "pending",
+                "source_decision": "review",
+                "validation_status": "review",
+                "next_action": "Fill and upload the source-audit case decision template.",
+                "outcome_reason": "No decision was uploaded.",
+            },
+            {
+                "benchmark_id": "enzyme-c",
+                "applied_status": "blocked",
+                "source_decision": "accept",
+                "validation_status": "blocked",
+                "next_action": "Fix validation issues and re-upload source-audit case decisions.",
+                "outcome_reason": "missing-independence-evidence",
+            },
+            {
+                "benchmark_id": "enzyme-d",
+                "applied_status": "held",
+                "source_decision": "hold",
+                "validation_status": "ok",
+                "next_action": "Do not use this case for independent precision claims until the hold is resolved.",
+                "outcome_reason": "Reviewer held this case.",
+            },
+        ]
+    )
+
+    queue = build_pocket_benchmark_reference_source_audit_case_decision_closure_queue(outcomes)
+
+    assert queue["benchmark_id"].tolist() == ["enzyme-c", "enzyme-b", "enzyme-d"]
+    assert queue["closure_action_id"].tolist() == ["BRSDQ-001", "BRSDQ-002", "BRSDQ-003"]
+    assert queue["closure_priority"].tolist() == ["P0", "P1", "P2"]
+    assert queue["closure_action_status"].tolist() == ["blocker", "blocker", "review"]
+    assert queue.iloc[0]["closure_issue_type"] == "invalid_source_audit_case_decision"
+    assert "missing-independence-evidence" in queue.iloc[0]["closure_warning"]
 
 
 def test_benchmark_reference_readiness_uses_source_audit_as_gate():

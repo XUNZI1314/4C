@@ -70,6 +70,7 @@ from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_reference_source_audit_action_queue,
     build_pocket_benchmark_reference_source_audit_case_checklist_markdown,
     build_pocket_benchmark_reference_source_audit_case_decision_closure_checklist_markdown,
+    build_pocket_benchmark_reference_source_audit_case_decision_closure_queue,
     build_pocket_benchmark_reference_source_audit_case_decision_outcomes,
     build_pocket_benchmark_reference_source_audit_case_decision_outcome_summary,
     build_pocket_benchmark_reference_source_audit_case_decision_template,
@@ -963,6 +964,7 @@ benchmark_reference_source_audit_case_decision_outcome_df = pd.DataFrame()
 benchmark_reference_source_audit_case_decision_outcome_summary_df = pd.DataFrame()
 benchmark_reference_source_audit_case_decision_outcome_summary_status = ""
 benchmark_reference_source_audit_case_decision_outcome_summary_open_cases = 0
+benchmark_reference_source_audit_case_decision_closure_queue_df = pd.DataFrame()
 benchmark_reference_source_audit_case_decision_closure_checklist_markdown = ""
 benchmark_reference_source_audit_checklist_markdown = ""
 pocket_benchmark_reference_quality_issue_df = pd.DataFrame()
@@ -1494,6 +1496,11 @@ if benchmark_reference_loaded:
             benchmark_reference_source_audit_case_decision_outcome_summary_open_cases = int(
                 _source_audit_outcome_summary_row.get("open_actionable_case_count") or 0
             )
+        benchmark_reference_source_audit_case_decision_closure_queue_df = (
+            build_pocket_benchmark_reference_source_audit_case_decision_closure_queue(
+                benchmark_reference_source_audit_case_decision_outcome_df
+            )
+        )
         benchmark_reference_source_audit_case_decision_closure_checklist_markdown = (
             build_pocket_benchmark_reference_source_audit_case_decision_closure_checklist_markdown(
                 benchmark_reference_source_audit_case_decision_outcome_summary_df,
@@ -2435,6 +2442,10 @@ try:
             "pocket_benchmark_reference_source_audit_case_decision_outcome_summary_rows": int(len(benchmark_reference_source_audit_case_decision_outcome_summary_df)),
             "pocket_benchmark_reference_source_audit_case_decision_outcome_summary_status": benchmark_reference_source_audit_case_decision_outcome_summary_status,
             "pocket_benchmark_reference_source_audit_case_decision_outcome_summary_open_cases": int(benchmark_reference_source_audit_case_decision_outcome_summary_open_cases),
+            "pocket_benchmark_reference_source_audit_case_decision_closure_queue_rows": int(len(benchmark_reference_source_audit_case_decision_closure_queue_df)),
+            "pocket_benchmark_reference_source_audit_case_decision_closure_queue_blocker_rows": int(benchmark_reference_source_audit_case_decision_closure_queue_df["closure_action_status"].astype(str).eq("blocker").sum()) if not benchmark_reference_source_audit_case_decision_closure_queue_df.empty and "closure_action_status" in benchmark_reference_source_audit_case_decision_closure_queue_df.columns else 0,
+            "pocket_benchmark_reference_source_audit_case_decision_closure_queue_review_rows": int(benchmark_reference_source_audit_case_decision_closure_queue_df["closure_action_status"].astype(str).eq("review").sum()) if not benchmark_reference_source_audit_case_decision_closure_queue_df.empty and "closure_action_status" in benchmark_reference_source_audit_case_decision_closure_queue_df.columns else 0,
+            "pocket_benchmark_reference_source_audit_case_decision_closure_queue_top_status": str(benchmark_reference_source_audit_case_decision_closure_queue_df.iloc[0].get("applied_status") or "") if not benchmark_reference_source_audit_case_decision_closure_queue_df.empty else "",
             "pocket_benchmark_reference_source_audit_case_decision_closure_checklist_available": bool(benchmark_reference_source_audit_case_decision_closure_checklist_markdown),
             "pocket_benchmark_reference_source_audit_checklist_available": bool(benchmark_reference_source_audit_checklist_markdown),
             "pocket_benchmark_reference_source_claim_status": str(benchmark_reference_source_audit_df.iloc[0].get("source_claim_status") or "") if not benchmark_reference_source_audit_df.empty else "",
@@ -2753,6 +2764,11 @@ snapshot = build_analysis_snapshot(
         "pocket_benchmark_reference_source_audit_case_decision_outcome_summary_status": benchmark_reference_source_audit_case_decision_outcome_summary_status,
         "pocket_benchmark_reference_source_audit_case_decision_outcome_summary_open_cases": int(benchmark_reference_source_audit_case_decision_outcome_summary_open_cases),
         "pocket_benchmark_reference_source_audit_case_decision_outcome_summary": benchmark_reference_source_audit_case_decision_outcome_summary_df.to_dict(orient="records"),
+        "pocket_benchmark_reference_source_audit_case_decision_closure_queue_rows": int(len(benchmark_reference_source_audit_case_decision_closure_queue_df)),
+        "pocket_benchmark_reference_source_audit_case_decision_closure_queue_blocker_rows": int(benchmark_reference_source_audit_case_decision_closure_queue_df["closure_action_status"].astype(str).eq("blocker").sum()) if not benchmark_reference_source_audit_case_decision_closure_queue_df.empty and "closure_action_status" in benchmark_reference_source_audit_case_decision_closure_queue_df.columns else 0,
+        "pocket_benchmark_reference_source_audit_case_decision_closure_queue_review_rows": int(benchmark_reference_source_audit_case_decision_closure_queue_df["closure_action_status"].astype(str).eq("review").sum()) if not benchmark_reference_source_audit_case_decision_closure_queue_df.empty and "closure_action_status" in benchmark_reference_source_audit_case_decision_closure_queue_df.columns else 0,
+        "pocket_benchmark_reference_source_audit_case_decision_closure_queue_top_status": str(benchmark_reference_source_audit_case_decision_closure_queue_df.iloc[0].get("applied_status") or "") if not benchmark_reference_source_audit_case_decision_closure_queue_df.empty else "",
+        "pocket_benchmark_reference_source_audit_case_decision_closure_queue": benchmark_reference_source_audit_case_decision_closure_queue_df.to_dict(orient="records"),
         "pocket_benchmark_reference_source_audit_case_decision_closure_checklist_available": bool(benchmark_reference_source_audit_case_decision_closure_checklist_markdown),
         "pocket_benchmark_reference_source_audit_case_decision_closure_checklist": benchmark_reference_source_audit_case_decision_closure_checklist_markdown,
         "pocket_benchmark_reference_source_audit_checklist_available": bool(benchmark_reference_source_audit_checklist_markdown),
@@ -3134,6 +3150,9 @@ if not benchmark_reference_source_audit_df.empty:
         if not benchmark_reference_source_audit_case_decision_outcome_summary_df.empty:
             st.caption("Source audit case decision outcome summary: closure status, open cases, and next action for source-risk decisions.")
             st.dataframe(benchmark_reference_source_audit_case_decision_outcome_summary_df, use_container_width=True, hide_index=True)
+        if not benchmark_reference_source_audit_case_decision_closure_queue_df.empty:
+            st.caption("Source audit case decision closure queue: machine-readable open case actions after decision outcomes.")
+            st.dataframe(benchmark_reference_source_audit_case_decision_closure_queue_df, use_container_width=True, hide_index=True)
         if benchmark_reference_source_audit_case_decision_closure_checklist_markdown:
             with st.expander("Benchmark reference source audit decision closure checklist", expanded=False):
                 st.markdown(benchmark_reference_source_audit_case_decision_closure_checklist_markdown)
@@ -4168,6 +4187,13 @@ with tab_export:
                     file_name="pocket_benchmark_reference_source_audit_case_decision_outcome_summary.csv",
                     mime="text/csv",
                 )
+            if not benchmark_reference_source_audit_case_decision_closure_queue_df.empty:
+                st.download_button(
+                    "Export benchmark reference source audit case decision closure queue CSV",
+                    data=_to_csv_bytes(benchmark_reference_source_audit_case_decision_closure_queue_df),
+                    file_name="pocket_benchmark_reference_source_audit_case_decision_closure_queue.csv",
+                    mime="text/csv",
+                )
             if benchmark_reference_source_audit_case_decision_closure_checklist_markdown:
                 st.download_button(
                     "Export benchmark reference source audit case decision closure checklist MD",
@@ -4847,6 +4873,7 @@ with tab_export:
         f"Benchmark reference source audit case decision template: {len(benchmark_reference_source_audit_case_decision_template_df)} rows",
         f"Benchmark reference source audit case decisions: {len(benchmark_reference_source_audit_case_decision_df)} rows / validation blocked {int(benchmark_reference_source_audit_case_decision_validation_df['validation_status'].astype(str).eq('blocked').sum()) if not benchmark_reference_source_audit_case_decision_validation_df.empty and 'validation_status' in benchmark_reference_source_audit_case_decision_validation_df.columns else 0}",
         f"Benchmark reference source audit case decision outcome summary: {len(benchmark_reference_source_audit_case_decision_outcome_summary_df)} rows / status {benchmark_reference_source_audit_case_decision_outcome_summary_status or '-'} / open {benchmark_reference_source_audit_case_decision_outcome_summary_open_cases}",
+        f"Benchmark reference source audit case decision closure queue: {len(benchmark_reference_source_audit_case_decision_closure_queue_df)} rows / blockers {int(benchmark_reference_source_audit_case_decision_closure_queue_df['closure_action_status'].astype(str).eq('blocker').sum()) if not benchmark_reference_source_audit_case_decision_closure_queue_df.empty and 'closure_action_status' in benchmark_reference_source_audit_case_decision_closure_queue_df.columns else 0} / review {int(benchmark_reference_source_audit_case_decision_closure_queue_df['closure_action_status'].astype(str).eq('review').sum()) if not benchmark_reference_source_audit_case_decision_closure_queue_df.empty and 'closure_action_status' in benchmark_reference_source_audit_case_decision_closure_queue_df.columns else 0}",
         f"Benchmark reference source audit case decision closure checklist: {'available' if benchmark_reference_source_audit_case_decision_closure_checklist_markdown else 'not available'}",
         f"Benchmark reference source audit case decision outcomes: {len(benchmark_reference_source_audit_case_decision_outcome_df)} rows / blocked {int(benchmark_reference_source_audit_case_decision_outcome_df['applied_status'].astype(str).eq('blocked').sum()) if not benchmark_reference_source_audit_case_decision_outcome_df.empty and 'applied_status' in benchmark_reference_source_audit_case_decision_outcome_df.columns else 0} / pending {int(benchmark_reference_source_audit_case_decision_outcome_df['applied_status'].astype(str).eq('pending').sum()) if not benchmark_reference_source_audit_case_decision_outcome_df.empty and 'applied_status' in benchmark_reference_source_audit_case_decision_outcome_df.columns else 0}",
         f"Benchmark reference source audit case checklist: {'available' if benchmark_reference_source_audit_case_checklist_markdown else 'not available'}",

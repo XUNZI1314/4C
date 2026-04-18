@@ -365,6 +365,22 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
         lines.append(
             f"Benchmark reference source audit case decision outcome summary: {source_audit_case_decision_outcome_summary_rows} rows / status {outcome_summary_status} / open {outcome_summary_open_cases}"
         )
+    source_audit_case_decision_closure_queue_rows = int(
+        extra.get("pocket_benchmark_reference_source_audit_case_decision_closure_queue_rows") or 0
+    )
+    if source_audit_case_decision_closure_queue_rows > 0:
+        closure_queue_blockers = int(
+            extra.get("pocket_benchmark_reference_source_audit_case_decision_closure_queue_blocker_rows") or 0
+        )
+        closure_queue_review = int(
+            extra.get("pocket_benchmark_reference_source_audit_case_decision_closure_queue_review_rows") or 0
+        )
+        closure_queue_top_status = str(
+            extra.get("pocket_benchmark_reference_source_audit_case_decision_closure_queue_top_status") or "-"
+        )
+        lines.append(
+            f"Benchmark reference source audit case decision closure queue: {source_audit_case_decision_closure_queue_rows} rows / blockers {closure_queue_blockers} / review {closure_queue_review} / top {closure_queue_top_status}"
+        )
     if bool(extra.get("pocket_benchmark_reference_source_audit_case_decision_closure_checklist_available")):
         lines.append("Benchmark reference source audit case decision closure checklist: available")
     source_audit_case_decision_outcome_rows = int(

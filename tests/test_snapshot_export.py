@@ -91,6 +91,10 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
             "pocket_benchmark_reference_source_audit_case_decision_outcome_summary_rows": 1,
             "pocket_benchmark_reference_source_audit_case_decision_outcome_summary_status": "blocked",
             "pocket_benchmark_reference_source_audit_case_decision_outcome_summary_open_cases": 2,
+            "pocket_benchmark_reference_source_audit_case_decision_closure_queue_rows": 2,
+            "pocket_benchmark_reference_source_audit_case_decision_closure_queue_blocker_rows": 1,
+            "pocket_benchmark_reference_source_audit_case_decision_closure_queue_review_rows": 1,
+            "pocket_benchmark_reference_source_audit_case_decision_closure_queue_top_status": "blocked",
             "pocket_benchmark_reference_source_audit_case_decision_closure_checklist_available": True,
             "pocket_benchmark_reference_source_audit_checklist_available": True,
             "pocket_benchmark_reference_source_claim_status": "blocked-provisional",
@@ -179,6 +183,7 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
     assert any("Benchmark reference source audit case decision template: 2 rows" in line for line in summary_lines)
     assert any("Benchmark reference source audit case decisions: 2 rows / validation blocked 1" in line for line in summary_lines)
     assert any("Benchmark reference source audit case decision outcome summary: 1 rows / status blocked / open 2" in line for line in summary_lines)
+    assert any("Benchmark reference source audit case decision closure queue: 2 rows / blockers 1 / review 1 / top blocked" in line for line in summary_lines)
     assert any("Benchmark reference source audit case decision closure checklist: available" in line for line in summary_lines)
     assert any("Benchmark reference source audit case decision outcomes: 3 rows / blocked 1 / pending 1 / cleared 1" in line for line in summary_lines)
     assert any("Benchmark reference source audit case checklist: available" in line for line in summary_lines)
