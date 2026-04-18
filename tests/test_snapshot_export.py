@@ -82,6 +82,9 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
             "pocket_benchmark_case_interpretation_matrix_rows": 2,
             "pocket_benchmark_case_interpretation_matrix_blocked_rows": 1,
             "pocket_benchmark_case_interpretation_matrix_review_rows": 1,
+            "pocket_benchmark_case_interpretation_matrix_summary_rows": 1,
+            "pocket_benchmark_case_interpretation_matrix_summary_status": "blocked",
+            "pocket_benchmark_case_interpretation_matrix_summary_usable_cases": 1,
             "pocket_benchmark_dataset_interpretation_rows": 3,
             "pocket_benchmark_dataset_interpretation_blocked_rows": 1,
             "pocket_benchmark_dataset_interpretation_review_rows": 1,
@@ -130,6 +133,7 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
     assert any("Benchmark interpretation: 3 rows / Top-1 claim blocked / Top-3 claim blocked" in line for line in summary_lines)
     assert any("Benchmark case interpretation: 6 rows / blocked 2 / review 1" in line for line in summary_lines)
     assert any("Benchmark case interpretation matrix: 2 rows / blocked 1 / review 1" in line for line in summary_lines)
+    assert any("Benchmark case interpretation matrix summary: blocked / usable 1" in line for line in summary_lines)
     assert any("Benchmark dataset interpretation: 3 rows / blocked 1 / review 1" in line for line in summary_lines)
     assert any("Benchmark dataset interpretation queue: 2 rows / blockers 1 / review 1 / checklist available / report available" in line for line in summary_lines)
     assert any("Catalytic benchmark dataset: cases 2 / summary rows 2" in line for line in summary_lines)

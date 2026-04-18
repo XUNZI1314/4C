@@ -3,6 +3,7 @@ import pandas as pd
 from protein_visualizer.services.benchmark import (
     build_pocket_benchmark_case_interpretation_summary,
     build_pocket_benchmark_case_interpretation_matrix,
+    build_pocket_benchmark_case_interpretation_matrix_summary,
     build_pocket_benchmark_dataset_interpretation_checklist_markdown,
     build_pocket_benchmark_dataset_interpretation_report_markdown,
     build_pocket_benchmark_dataset_interpretation,
@@ -325,6 +326,58 @@ def test_build_pocket_benchmark_case_interpretation_matrix_pivots_topn_rows():
     assert bool(enzyme_b["any_blocked"])
     assert str(enzyme_b["case_interpretation_status"]) == "blocked"
     assert int(enzyme_b["top3_best_rank"]) == 0
+
+
+def test_build_pocket_benchmark_case_interpretation_matrix_summary_counts_case_states():
+    matrix = pd.DataFrame(
+        [
+            {
+                "benchmark_id": "enzyme-a",
+                "best_claim_ready_top_n": 1,
+                "best_claim_ready_coverage": 1.0,
+                "best_claim_ready_rank": 1,
+                "any_readiness_unknown": False,
+                "case_interpretation_status": "claim-ready",
+            },
+            {
+                "benchmark_id": "enzyme-b",
+                "best_claim_ready_top_n": 0,
+                "best_claim_ready_coverage": 0.0,
+                "best_claim_ready_rank": 0,
+                "any_readiness_unknown": False,
+                "case_interpretation_status": "blocked",
+            },
+            {
+                "benchmark_id": "enzyme-c",
+                "best_claim_ready_top_n": 0,
+                "best_claim_ready_coverage": 0.0,
+                "best_claim_ready_rank": 0,
+                "any_readiness_unknown": True,
+                "case_interpretation_status": "review-needed",
+            },
+            {
+                "benchmark_id": "enzyme-d",
+                "best_claim_ready_top_n": 0,
+                "best_claim_ready_coverage": 0.0,
+                "best_claim_ready_rank": 0,
+                "any_readiness_unknown": False,
+                "case_interpretation_status": "no-claim-ready",
+            },
+        ]
+    )
+
+    summary = build_pocket_benchmark_case_interpretation_matrix_summary(matrix)
+
+    row = summary.iloc[0]
+    assert int(row["case_count"]) == 4
+    assert int(row["usable_claim_ready_case_count"]) == 1
+    assert int(row["blocked_case_count"]) == 1
+    assert int(row["review_case_count"]) == 1
+    assert int(row["readiness_unknown_case_count"]) == 1
+    assert int(row["no_claim_ready_case_count"]) == 1
+    assert int(row["earliest_top1_claim_ready_case_count"]) == 1
+    assert float(row["mean_usable_claim_ready_coverage"]) == 1.0
+    assert str(row["summary_status"]) == "blocked"
 
 
 def test_build_pocket_benchmark_dataset_interpretation_aggregates_case_claims():

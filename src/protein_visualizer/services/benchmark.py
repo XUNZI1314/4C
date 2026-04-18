@@ -331,6 +331,23 @@ BENCHMARK_CASE_INTERPRETATION_MATRIX_BASE_COLUMNS = [
     "recommended_action",
 ]
 
+BENCHMARK_CASE_INTERPRETATION_MATRIX_SUMMARY_COLUMNS = [
+    "case_count",
+    "usable_claim_ready_case_count",
+    "blocked_case_count",
+    "review_case_count",
+    "readiness_unknown_case_count",
+    "no_claim_ready_case_count",
+    "earliest_top1_claim_ready_case_count",
+    "earliest_top3_claim_ready_case_count",
+    "earliest_top5_claim_ready_case_count",
+    "mean_usable_claim_ready_coverage",
+    "mean_usable_claim_ready_rank",
+    "summary_status",
+    "recommended_action",
+    "summary_warning",
+]
+
 BENCHMARK_DATASET_INTERPRETATION_COLUMNS = [
     "top_n",
     "case_count",
@@ -516,6 +533,10 @@ def _case_interpretation_matrix_columns(top_ns: Sequence[int] = (1, 3, 5)) -> li
 
 def _empty_case_interpretation_matrix_df(top_ns: Sequence[int] = (1, 3, 5)) -> pd.DataFrame:
     return pd.DataFrame(columns=_case_interpretation_matrix_columns(top_ns))
+
+
+def _empty_case_interpretation_matrix_summary_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=BENCHMARK_CASE_INTERPRETATION_MATRIX_SUMMARY_COLUMNS)
 
 
 def _empty_dataset_interpretation_df() -> pd.DataFrame:
@@ -1960,6 +1981,106 @@ def build_pocket_benchmark_case_interpretation_matrix(
     if not rows:
         return _empty_case_interpretation_matrix_df(normalized_top_ns)
     return pd.DataFrame(rows, columns=_case_interpretation_matrix_columns(normalized_top_ns))
+
+
+def _case_matrix_summary_status(
+    case_count: int,
+    blocked_count: int,
+    review_count: int,
+    unknown_count: int,
+    no_claim_ready_count: int,
+    usable_claim_ready_count: int,
+) -> tuple[str, str, str]:
+    if case_count <= 0:
+        return (
+            "no-cases",
+            "Generate case interpretation rows before summarizing benchmark case readiness.",
+            "No benchmark cases are available in the interpretation matrix.",
+        )
+    if blocked_count > 0:
+        return (
+            "blocked",
+            "Fix blocked case interpretation rows before reporting dataset-level benchmark claims.",
+            "One or more benchmark cases are blocked by readiness or reference issues.",
+        )
+    if review_count > 0 or unknown_count > 0:
+        return (
+            "review-needed",
+            "Resolve reviewer-pending or unknown cases before publishing dataset-level benchmark claims.",
+            "One or more benchmark cases still require review.",
+        )
+    if no_claim_ready_count > 0:
+        return (
+            "coverage-review",
+            "Inspect no-claim-ready cases for missed catalytic residues, ranking thresholds or reference issues.",
+            "Some benchmark cases have no claim-ready Top-N interpretation row.",
+        )
+    if usable_claim_ready_count == case_count:
+        return (
+            "claim-ready",
+            "Report usable claim-ready case counts and earliest Top-N distribution.",
+            "All benchmark cases are usable for readiness-aware benchmark claims.",
+        )
+    return (
+        "review-needed",
+        "Review unresolved case interpretation states before reporting benchmark claims.",
+        "Case interpretation matrix summary could not resolve all cases as claim-ready.",
+    )
+
+
+def build_pocket_benchmark_case_interpretation_matrix_summary(matrix_df: Optional[pd.DataFrame]) -> pd.DataFrame:
+    """Summarize the case interpretation matrix into dataset-level case readiness counts."""
+
+    if matrix_df is None or getattr(matrix_df, "empty", True):
+        return _empty_case_interpretation_matrix_summary_df()
+
+    working = matrix_df.copy()
+    for column in BENCHMARK_CASE_INTERPRETATION_MATRIX_BASE_COLUMNS:
+        if column not in working.columns:
+            working[column] = ""
+    working["case_interpretation_status"] = working["case_interpretation_status"].map(_normalized_claim_status)
+    working.loc[working["case_interpretation_status"].eq(""), "case_interpretation_status"] = "readiness-unknown"
+    for column in ("best_claim_ready_top_n", "best_claim_ready_rank"):
+        working[column] = pd.to_numeric(working[column], errors="coerce").fillna(0).astype(int)
+    working["best_claim_ready_coverage"] = pd.to_numeric(working["best_claim_ready_coverage"], errors="coerce").fillna(0.0)
+    if "any_readiness_unknown" not in working.columns:
+        working["any_readiness_unknown"] = False
+    working["any_readiness_unknown"] = working["any_readiness_unknown"].map(_claim_ready_bool)
+
+    case_count = int(len(working))
+    usable_claim_ready = working[working["case_interpretation_status"].eq("claim-ready")]
+    usable_claim_ready_count = int(len(usable_claim_ready))
+    blocked_count = int(working["case_interpretation_status"].eq("blocked").sum())
+    review_count = int(working["case_interpretation_status"].eq("review-needed").sum())
+    unknown_count = int(working["any_readiness_unknown"].sum())
+    no_claim_ready_count = int(working["case_interpretation_status"].eq("no-claim-ready").sum())
+    summary_status, action, warning = _case_matrix_summary_status(
+        case_count,
+        blocked_count,
+        review_count,
+        unknown_count,
+        no_claim_ready_count,
+        usable_claim_ready_count,
+    )
+    usable_ranks = usable_claim_ready.loc[usable_claim_ready["best_claim_ready_rank"] > 0, "best_claim_ready_rank"]
+
+    row = {
+        "case_count": case_count,
+        "usable_claim_ready_case_count": usable_claim_ready_count,
+        "blocked_case_count": blocked_count,
+        "review_case_count": review_count,
+        "readiness_unknown_case_count": unknown_count,
+        "no_claim_ready_case_count": no_claim_ready_count,
+        "earliest_top1_claim_ready_case_count": int(usable_claim_ready["best_claim_ready_top_n"].eq(1).sum()) if not usable_claim_ready.empty else 0,
+        "earliest_top3_claim_ready_case_count": int(usable_claim_ready["best_claim_ready_top_n"].eq(3).sum()) if not usable_claim_ready.empty else 0,
+        "earliest_top5_claim_ready_case_count": int(usable_claim_ready["best_claim_ready_top_n"].eq(5).sum()) if not usable_claim_ready.empty else 0,
+        "mean_usable_claim_ready_coverage": round(float(usable_claim_ready["best_claim_ready_coverage"].mean()), 3) if not usable_claim_ready.empty else 0.0,
+        "mean_usable_claim_ready_rank": round(float(usable_ranks.mean()), 3) if not usable_ranks.empty else 0.0,
+        "summary_status": summary_status,
+        "recommended_action": action,
+        "summary_warning": warning,
+    }
+    return pd.DataFrame([row], columns=BENCHMARK_CASE_INTERPRETATION_MATRIX_SUMMARY_COLUMNS)
 
 
 def _dataset_interpretation_status(
