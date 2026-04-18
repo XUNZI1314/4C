@@ -219,6 +219,42 @@ Current behavior:
 
 This avoids letting broad conserved surfaces overpower precise functional residue evidence.
 
+## Catalytic Pocket Benchmark
+
+`src/protein_visualizer/services/benchmark.py` adds an evaluation-only benchmark layer. It does not change pocket ranking.
+
+### Input
+
+Users can upload a curated catalytic residue table in the pocket page. Accepted columns include:
+
+- `chain`
+- `resid`
+- `resname`
+- `reference_type`
+- `reference_source`
+- `reference_note`
+- `expected_pocket_id`
+
+The parser also accepts residue labels such as `Ser195`, `A:195` or `D123A`. Blank chain is treated as a wildcard, which is useful when the curated source does not specify a PDB chain.
+
+### Metrics
+
+The benchmark exports:
+
+- `pocket_benchmark_reference.csv`
+- `pocket_benchmark_summary.csv`
+- `pocket_benchmark_details.csv`
+
+Current summary metrics:
+
+- Top-1 catalytic residue coverage.
+- Top-3 catalytic residue coverage.
+- Top-5 catalytic residue coverage.
+- Best hit rank and best hit pocket.
+- Matched and missed catalytic residues.
+
+This gives a concrete accuracy check before claiming that the top-ranked pocket is the active-site pocket.
+
 ## P2Rank Integration
 
 P2Rank support is optional and local-only.
@@ -402,7 +438,7 @@ Latest full run:
 
 ## Recommended Next Iterations
 
-1. Build a benchmark set from M-CSA, holo PDB structures and literature-confirmed catalytic residues.
+1. Expand the benchmark set from M-CSA, holo PDB structures and literature-confirmed catalytic residues.
 2. Add snippet-level literature evidence with PMID/PMCID/DOI and manual review flags.
 3. Improve mmCIF and insertion-code mapping.
 4. Add SEQRES/ATOM and UniProt canonical/mature-chain alignment.

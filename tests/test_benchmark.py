@@ -1,0 +1,88 @@
+import pandas as pd
+
+from protein_visualizer.services.benchmark import (
+    build_pocket_benchmark_details,
+    build_pocket_benchmark_summary,
+    parse_benchmark_reference_table,
+)
+
+
+def test_parse_benchmark_reference_table_accepts_catalytic_residue_aliases():
+    text = """case_id,chain,residue_label,type,source,note,validated_pocket_id
+trypsin,A,Ser195,Catalytic residue,M-CSA,nucleophile,Pocket-2
+trypsin,A,His57,Catalytic residue,M-CSA,base,Pocket-2
+trypsin,A,Asp102,Catalytic residue,M-CSA,acid,Pocket-3
+"""
+
+    reference_df, metadata = parse_benchmark_reference_table(text, source_hint="M-CSA benchmark")
+
+    assert metadata["status"] == "ok"
+    assert metadata["reference_rows"] == "3"
+    assert set(reference_df["resid"].astype(int).tolist()) == {57, 102, 195}
+    assert set(reference_df["resname"].astype(str).tolist()) == {"SER", "HIS", "ASP"}
+    assert reference_df["benchmark_id"].eq("trypsin").all()
+    assert reference_df["expected_pocket_id"].isin({"Pocket-2", "Pocket-3"}).all()
+
+
+def test_build_pocket_benchmark_summary_reports_top1_and_top3_coverage():
+    reference_df, _ = parse_benchmark_reference_table(
+        """chain,resid,resname,reference_type
+A,195,SER,Catalytic residue
+A,57,HIS,Catalytic residue
+A,102,ASP,Catalytic residue
+"""
+    )
+    pocket_df = pd.DataFrame(
+        [
+            {"pocket_id": "Pocket-1", "chain": "A", "resid": 30, "resname": "GLY"},
+            {"pocket_id": "Pocket-2", "chain": "A", "resid": 195, "resname": "SER"},
+            {"pocket_id": "Pocket-2", "chain": "A", "resid": 57, "resname": "HIS"},
+            {"pocket_id": "Pocket-3", "chain": "A", "resid": 102, "resname": "ASP"},
+        ]
+    )
+    pocket_summary = pd.DataFrame(
+        [
+            {"pocket_id": "Pocket-1", "smart_rank_order": 1, "smart_rank_score": 0.91},
+            {"pocket_id": "Pocket-2", "smart_rank_order": 2, "smart_rank_score": 0.88},
+            {"pocket_id": "Pocket-3", "smart_rank_order": 3, "smart_rank_score": 0.72},
+        ]
+    )
+
+    summary = build_pocket_benchmark_summary(reference_df, pocket_df, pocket_summary)
+
+    top1 = summary[summary["top_n"] == 1].iloc[0]
+    top3 = summary[summary["top_n"] == 3].iloc[0]
+    assert int(top1["matched_reference_count"]) == 0
+    assert float(top1["coverage_ratio"]) == 0.0
+    assert str(top1["benchmark_status"]) == "top1-miss"
+    assert int(top3["matched_reference_count"]) == 3
+    assert float(top3["coverage_ratio"]) == 1.0
+    assert bool(top3["all_hit"])
+    assert int(top3["best_rank"]) == 2
+    assert str(top3["best_pocket_id"]) == "Pocket-2"
+
+
+def test_build_pocket_benchmark_details_allows_wildcard_reference_chain():
+    reference_df, _ = parse_benchmark_reference_table(
+        """residue_label,reference_type
+Asp102,Catalytic residue
+"""
+    )
+    pocket_df = pd.DataFrame(
+        [
+            {"pocket_id": "Pocket-B", "chain": "B", "resid": 102, "resname": "ASP"},
+        ]
+    )
+
+    details = build_pocket_benchmark_details(reference_df, pocket_df)
+
+    assert len(details) == 1
+    assert bool(details.iloc[0]["matched"])
+    assert str(details.iloc[0]["matched_pocket_id"]) == "Pocket-B"
+    assert bool(details.iloc[0]["matched_top1"])
+
+
+def test_build_pocket_benchmark_summary_handles_missing_reference():
+    summary = build_pocket_benchmark_summary(pd.DataFrame(), pd.DataFrame())
+
+    assert summary.empty

@@ -42,6 +42,11 @@ from protein_visualizer.services.ai_evidence import (
     parse_ai_residue_evidence_payload,
     verify_ai_review_artifact_bundle_zip,
 )
+from protein_visualizer.services.benchmark import (
+    build_pocket_benchmark_details,
+    build_pocket_benchmark_summary,
+    parse_benchmark_reference_table,
+)
 from protein_visualizer.services.candidate_fusion import build_joint_candidate_table, build_pocket_consensus_coverage
 from protein_visualizer.services.comparison import compare_pocket_ranking_summaries
 from protein_visualizer.services.conservation import parse_conservation_evidence_table
@@ -465,6 +470,8 @@ elif use_examples:
 else:
     annotation_text = ""
 
+benchmark_reference_text = _read_uploaded_text(uploaded_benchmark_reference) if uploaded_benchmark_reference is not None else ""
+
 if not use_examples:
     new_pdb_entry = _uploaded_file_entry(uploaded_pdb)
     new_mmpbsa_entry = _uploaded_file_entry(uploaded_mmpbsa)
@@ -756,6 +763,18 @@ with st.sidebar:
         )
         st.caption("Imported conservation scores are kept as an independent rerank-only signal; they do not seed candidate generation.")
 
+    with st.expander("Benchmark Reference (optional)", expanded=False):
+        uploaded_benchmark_reference = st.file_uploader(
+            "Upload curated catalytic residues CSV/TSV",
+            type=["csv", "tsv", "txt"],
+            accept_multiple_files=False,
+        )
+        benchmark_source_name = st.text_input("Benchmark source label", value="Curated catalytic benchmark")
+        st.caption(
+            "Columns can include chain,resid,resname,reference_type,reference_source,reference_note,expected_pocket_id. "
+            "Blank chain is treated as wildcard."
+        )
+
 hotspot_df = (
     identify_hotspots(
         energy_table,
@@ -809,6 +828,10 @@ conservation_site_df = pd.DataFrame()
 conservation_site_meta: dict = {}
 residue_evidence_consensus_df = pd.DataFrame()
 pocket_consensus_coverage_df = pd.DataFrame()
+benchmark_reference_df = pd.DataFrame()
+benchmark_reference_meta: dict = {}
+pocket_benchmark_summary_df = pd.DataFrame()
+pocket_benchmark_details_df = pd.DataFrame()
 consensus_rerank_suggestion_df = pd.DataFrame()
 consensus_rerank_preview_df = pd.DataFrame()
 consensus_rerank_policy_gate_df = pd.DataFrame()
@@ -1135,6 +1158,21 @@ if uploaded_conservation is not None:
                 chain_hint=str(uniprot_chain_hint or "").strip(),
                 source_hint=str(conservation_source_name or "").strip() or "ConSurf",
             )
+if benchmark_reference_text.strip():
+    benchmark_reference_df, benchmark_reference_meta = parse_benchmark_reference_table(
+        benchmark_reference_text,
+        source_hint=str(benchmark_source_name or "").strip() or "Curated catalytic benchmark",
+    )
+    if benchmark_reference_df.empty:
+        st.sidebar.caption(
+            f"Benchmark reference: no usable rows ({benchmark_reference_meta.get('reason') or benchmark_reference_meta.get('status') or '-'})."
+        )
+    else:
+        st.sidebar.caption(
+            f"Benchmark reference: {len(benchmark_reference_df)} residues / "
+            f"chain-specific {benchmark_reference_meta.get('chain_specific_rows') or 0} / "
+            f"wildcard {benchmark_reference_meta.get('wildcard_chain_rows') or 0}."
+        )
 
 residue_evidence_consensus_df = build_residue_evidence_consensus(
     external_site_df,
@@ -1384,6 +1422,28 @@ joint_candidate_df = build_joint_candidate_table(
 )
 top_joint_candidate = joint_candidate_df.iloc[0] if not joint_candidate_df.empty else None
 top_pocket_consensus_coverage = pocket_consensus_coverage_df.iloc[0] if not pocket_consensus_coverage_df.empty else None
+pocket_benchmark_summary_df = build_pocket_benchmark_summary(
+    benchmark_reference_df,
+    effective_pocket_df,
+    effective_pocket_summary,
+    top_ns=(1, 3, 5),
+) if not benchmark_reference_df.empty else pd.DataFrame()
+pocket_benchmark_details_df = build_pocket_benchmark_details(
+    benchmark_reference_df,
+    effective_pocket_df,
+    effective_pocket_summary,
+    top_thresholds=(1, 3, 5),
+) if not benchmark_reference_df.empty else pd.DataFrame()
+top1_benchmark = (
+    pocket_benchmark_summary_df[pocket_benchmark_summary_df["top_n"].astype(int) == 1].iloc[0]
+    if not pocket_benchmark_summary_df.empty and "top_n" in pocket_benchmark_summary_df.columns and (pocket_benchmark_summary_df["top_n"].astype(int) == 1).any()
+    else None
+)
+top3_benchmark = (
+    pocket_benchmark_summary_df[pocket_benchmark_summary_df["top_n"].astype(int) == 3].iloc[0]
+    if not pocket_benchmark_summary_df.empty and "top_n" in pocket_benchmark_summary_df.columns and (pocket_benchmark_summary_df["top_n"].astype(int) == 3).any()
+    else None
+)
 pocket_decision_df = build_pocket_decision_table(
     effective_pocket_summary,
     joint_candidate_df,
@@ -1785,6 +1845,13 @@ try:
             "top_pocket_consensus_label": str(top_pocket_consensus_coverage.get("pocket_consensus_label")) if top_pocket_consensus_coverage is not None and pd.notna(top_pocket_consensus_coverage.get("pocket_consensus_label")) else None,
             "top_pocket_consensus_anchor_count": int(top_pocket_consensus_coverage.get("rank_safe_anchor_count") or 0) if top_pocket_consensus_coverage is not None else 0,
             "top_pocket_consensus_best_score": float(top_pocket_consensus_coverage.get("best_consensus_score")) if top_pocket_consensus_coverage is not None and pd.notna(top_pocket_consensus_coverage.get("best_consensus_score")) else None,
+            "pocket_benchmark_reference_rows": int(len(benchmark_reference_df)),
+            "pocket_benchmark_top1_coverage": float(top1_benchmark.get("coverage_ratio") or 0.0) if top1_benchmark is not None else None,
+            "pocket_benchmark_top1_status": str(top1_benchmark.get("benchmark_status") or "") if top1_benchmark is not None else None,
+            "pocket_benchmark_top3_coverage": float(top3_benchmark.get("coverage_ratio") or 0.0) if top3_benchmark is not None else None,
+            "pocket_benchmark_top3_status": str(top3_benchmark.get("benchmark_status") or "") if top3_benchmark is not None else None,
+            "pocket_benchmark_best_rank": int(top3_benchmark.get("best_rank") or 0) if top3_benchmark is not None else 0,
+            "pocket_benchmark_best_pocket_id": str(top3_benchmark.get("best_pocket_id") or "") if top3_benchmark is not None else None,
             "consensus_rerank_suggestion_rows": int(len(consensus_rerank_suggestion_df)),
             "top_consensus_rerank_pocket_id": str(top_consensus_rerank_suggestion.get("pocket_id")) if top_consensus_rerank_suggestion is not None and pd.notna(top_consensus_rerank_suggestion.get("pocket_id")) else None,
             "top_consensus_rerank_status": str(top_consensus_rerank_suggestion.get("suggestion_status")) if top_consensus_rerank_suggestion is not None and pd.notna(top_consensus_rerank_suggestion.get("suggestion_status")) else None,
@@ -1975,6 +2042,18 @@ snapshot = build_analysis_snapshot(
         "top_pocket_consensus_label": str(top_pocket_consensus_coverage.get("pocket_consensus_label")) if top_pocket_consensus_coverage is not None and pd.notna(top_pocket_consensus_coverage.get("pocket_consensus_label")) else None,
         "top_pocket_consensus_anchor_count": int(top_pocket_consensus_coverage.get("rank_safe_anchor_count") or 0) if top_pocket_consensus_coverage is not None else 0,
         "top_pocket_consensus_best_score": float(top_pocket_consensus_coverage.get("best_consensus_score")) if top_pocket_consensus_coverage is not None and pd.notna(top_pocket_consensus_coverage.get("best_consensus_score")) else None,
+        "pocket_benchmark_reference_rows": int(len(benchmark_reference_df)),
+        "pocket_benchmark_reference": benchmark_reference_df.to_dict(orient="records"),
+        "pocket_benchmark_summary_rows": int(len(pocket_benchmark_summary_df)),
+        "pocket_benchmark_summary": pocket_benchmark_summary_df.to_dict(orient="records"),
+        "pocket_benchmark_details_rows": int(len(pocket_benchmark_details_df)),
+        "pocket_benchmark_details": pocket_benchmark_details_df.to_dict(orient="records"),
+        "pocket_benchmark_top1_coverage": float(top1_benchmark.get("coverage_ratio") or 0.0) if top1_benchmark is not None else None,
+        "pocket_benchmark_top1_status": str(top1_benchmark.get("benchmark_status") or "") if top1_benchmark is not None else None,
+        "pocket_benchmark_top3_coverage": float(top3_benchmark.get("coverage_ratio") or 0.0) if top3_benchmark is not None else None,
+        "pocket_benchmark_top3_status": str(top3_benchmark.get("benchmark_status") or "") if top3_benchmark is not None else None,
+        "pocket_benchmark_best_rank": int(top3_benchmark.get("best_rank") or 0) if top3_benchmark is not None else 0,
+        "pocket_benchmark_best_pocket_id": str(top3_benchmark.get("best_pocket_id") or "") if top3_benchmark is not None else None,
         "consensus_rerank_suggestion_rows": int(len(consensus_rerank_suggestion_df)),
         "consensus_rerank_suggestions": consensus_rerank_suggestion_df.to_dict(orient="records"),
         "top_consensus_rerank_pocket_id": str(top_consensus_rerank_suggestion.get("pocket_id")) if top_consensus_rerank_suggestion is not None and pd.notna(top_consensus_rerank_suggestion.get("pocket_id")) else None,
@@ -2207,6 +2286,30 @@ if not pocket_consensus_coverage_df.empty:
             "Maps residue-level consensus anchors back onto each pocket without changing the pocket ranking."
         )
         st.dataframe(pocket_consensus_coverage_df, use_container_width=True, hide_index=True)
+if not pocket_benchmark_summary_df.empty:
+    with st.expander("Catalytic pocket benchmark", expanded=True):
+        st.caption(
+            "Compares the current ranked pockets against uploaded curated catalytic residues. This is an evaluation layer only and does not change ranking."
+        )
+        metric_cols = st.columns(3)
+        metric_cols[0].metric(
+            "Top-1 coverage",
+            f"{float(top1_benchmark.get('coverage_ratio') or 0.0):.2f}" if top1_benchmark is not None else "-",
+            str(top1_benchmark.get("benchmark_status") or "") if top1_benchmark is not None else "",
+        )
+        metric_cols[1].metric(
+            "Top-3 coverage",
+            f"{float(top3_benchmark.get('coverage_ratio') or 0.0):.2f}" if top3_benchmark is not None else "-",
+            str(top3_benchmark.get("benchmark_status") or "") if top3_benchmark is not None else "",
+        )
+        metric_cols[2].metric(
+            "Best hit rank",
+            str(top3_benchmark.get("best_rank") or "-") if top3_benchmark is not None else "-",
+            str(top3_benchmark.get("best_pocket_id") or "") if top3_benchmark is not None else "",
+        )
+        st.dataframe(pocket_benchmark_summary_df, use_container_width=True, hide_index=True)
+        if not pocket_benchmark_details_df.empty:
+            st.dataframe(pocket_benchmark_details_df, use_container_width=True, hide_index=True)
 if not consensus_rerank_suggestion_df.empty:
     with st.expander("Consensus rerank suggestions", expanded=False):
         st.caption(
@@ -3000,6 +3103,27 @@ with tab_export:
                 file_name="pocket_consensus_coverage.csv",
                 mime="text/csv",
             )
+        if not benchmark_reference_df.empty:
+            st.download_button(
+                "Export benchmark reference CSV",
+                data=_to_csv_bytes(benchmark_reference_df),
+                file_name="pocket_benchmark_reference.csv",
+                mime="text/csv",
+            )
+        if not pocket_benchmark_summary_df.empty:
+            st.download_button(
+                "Export pocket benchmark summary CSV",
+                data=_to_csv_bytes(pocket_benchmark_summary_df),
+                file_name="pocket_benchmark_summary.csv",
+                mime="text/csv",
+            )
+        if not pocket_benchmark_details_df.empty:
+            st.download_button(
+                "Export pocket benchmark details CSV",
+                data=_to_csv_bytes(pocket_benchmark_details_df),
+                file_name="pocket_benchmark_details.csv",
+                mime="text/csv",
+            )
         if not consensus_rerank_suggestion_df.empty:
             st.download_button(
                 "Export consensus rerank suggestions CSV",
@@ -3400,6 +3524,7 @@ with tab_export:
         f"AI evidence used for ranking: {len(rankable_ai_evidence_df)} rows / status {rankable_ai_evidence_meta.get('status') or '-'}",
         f"Residue evidence consensus: {len(residue_evidence_consensus_df)} rows / top {top_residue_consensus.get('residue_anchor') if top_residue_consensus is not None else '-'} / tier {top_residue_consensus.get('consensus_tier') if top_residue_consensus is not None else '-'}",
         f"Pocket consensus coverage: {len(pocket_consensus_coverage_df)} rows / top {top_pocket_consensus_coverage.get('pocket_id') if top_pocket_consensus_coverage is not None else '-'} / label {top_pocket_consensus_coverage.get('pocket_consensus_label') if top_pocket_consensus_coverage is not None else '-'}",
+        f"Catalytic pocket benchmark: references {len(benchmark_reference_df)} / Top-1 {top1_benchmark.get('coverage_ratio') if top1_benchmark is not None else '-'} / Top-3 {top3_benchmark.get('coverage_ratio') if top3_benchmark is not None else '-'} / best rank {top3_benchmark.get('best_rank') if top3_benchmark is not None else '-'}",
         f"Consensus rerank suggestions: {len(consensus_rerank_suggestion_df)} rows / top {top_consensus_rerank_suggestion.get('pocket_id') if top_consensus_rerank_suggestion is not None else '-'} / status {top_consensus_rerank_suggestion.get('suggestion_status') if top_consensus_rerank_suggestion is not None else '-'}",
         f"Consensus rerank preview: {len(consensus_rerank_preview_df)} rows / top {top_consensus_rerank_preview.get('pocket_id') if top_consensus_rerank_preview is not None else '-'} / decision {top_consensus_rerank_preview.get('preview_decision') if top_consensus_rerank_preview is not None else '-'}",
         f"Consensus rerank policy gate: {top_consensus_rerank_policy_gate.get('policy_status') if top_consensus_rerank_policy_gate is not None else '-'} / changed {top_consensus_rerank_policy_gate.get('changed_rows') if top_consensus_rerank_policy_gate is not None else 0} / blocked {top_consensus_rerank_policy_gate.get('blocked_rows') if top_consensus_rerank_policy_gate is not None else 0}",

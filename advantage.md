@@ -198,7 +198,7 @@ ProteinInsight 不追求找出所有可能 druggable pocket，而是优先定位
 
 ### 1. 缺真实 benchmark
 
-目前测试主要证明功能链路正确，尚未证明 Top-1 / Top-3 命中率真实提升。需要建立一批已知 catalytic pocket 的酶数据集。
+目前已经有单结构 catalytic pocket benchmark 框架，可以上传 curated catalytic residues 并输出 Top-1 / Top-3 / Top-5 coverage、best hit rank 和 missed residues。但还缺少批量真实数据集，尚未证明不同算法组合在大样本上的命中率提升。
 
 建议指标：
 
@@ -208,6 +208,13 @@ ProteinInsight 不追求找出所有可能 druggable pocket，而是优先定位
 - direct-anchor pocket precision。
 - evidence route 开启/关闭的 rank delta。
 - 文献证据加入前后的命中率变化。
+
+已落地能力：
+
+- `pocket_benchmark_reference.csv`
+- `pocket_benchmark_summary.csv`
+- `pocket_benchmark_details.csv`
+- 页面中展示 Top-1 / Top-3 coverage 和 best hit rank。
 
 ### 2. 文献抽取仍偏规则驱动
 
@@ -245,7 +252,7 @@ ProteinInsight 不追求找出所有可能 druggable pocket，而是优先定位
 
 ## 下一步优先级
 
-### P0：建立酶口袋 benchmark
+### P0：扩展酶口袋 benchmark 数据集
 
 数据来源建议：
 

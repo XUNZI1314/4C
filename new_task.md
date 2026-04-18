@@ -18,6 +18,7 @@
 - [x] Conservation rerank-only 信号和 A/B 对比。
 - [x] External-evidence route 候选口袋生成。
 - [x] Literature A/B 和 evidence-route A/B。
+- [x] Catalytic pocket benchmark：上传 curated catalytic residues，计算 Top-1 / Top-3 / Top-5 coverage、best hit rank 和 missed residues。
 - [x] Evidence quality label / score / warning。
 - [x] Pocket core / shell / rim 分层。
 - [x] Snapshot、report、history 中记录关键口袋证据。
@@ -50,10 +51,10 @@
 
 ## 下一步建议
 
-### P0：建立真实 benchmark
+### P0：扩展真实 benchmark 数据集
 
-- 收集 M-CSA + PDB + catalytic residue 数据集。
-- 增加 Top-1 / Top-3 catalytic coverage 评估。
+- 已落地单结构 benchmark 评估框架：上传 curated catalytic residues 后可输出 Top-1 / Top-3 / Top-5 catalytic coverage。
+- 下一步收集 M-CSA + PDB + catalytic residue 数据集，形成批量 benchmark。
 - 评估 evidence route、literature route、P2Rank 和 conservation 的独立贡献。
 
 ### P1：继续增强文献证据片段
