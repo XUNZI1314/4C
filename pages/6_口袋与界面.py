@@ -1343,6 +1343,8 @@ MANUAL_KEY_RESIDUE_FOLLOWUP_SUMMARY_COLUMNS = [
     "mapping_review_tasks",
     "open_tasks",
     "manual_evidence_hits",
+    "decision_gap_tasks",
+    "release_gate_status",
     "closure_status",
     "recommended_next_step",
 ]
@@ -1353,6 +1355,8 @@ MANUAL_KEY_RESIDUE_FOLLOWUP_SUMMARY_COLUMN_LABELS = {
     "mapping_review_tasks": "链/编号待确认",
     "open_tasks": "仍需补证",
     "manual_evidence_hits": "人工证据命中数",
+    "decision_gap_tasks": "决策缺口任务数",
+    "release_gate_status": "发布门控",
     "closure_status": "闭环状态",
     "recommended_next_step": "建议下一步",
 }
@@ -1603,21 +1607,27 @@ def _summarize_manual_key_residue_followup_df(followup_df: pd.DataFrame | None) 
     closed_tasks = int(closed_mask.sum())
     mapping_review_tasks = int(mapping_review_mask.sum())
     open_tasks = int(open_mask.sum())
+    decision_gap_tasks = total_tasks
 
     if total_tasks == 0:
         closure_status = "无补证任务"
+        release_gate_status = "可进入验证"
         recommended_next_step = "暂无需要补证的候选口袋。"
     elif open_tasks == 0 and mapping_review_tasks == 0:
-        closure_status = "补证闭环完成"
-        recommended_next_step = "重新运行自动口袋识别，并检查候选口袋是否已转为功能证据锚定。"
+        closure_status = "补证已上传，等待决策缺口复核"
+        release_gate_status = "不可直接作为活性位点"
+        recommended_next_step = "重新运行自动口袋识别；只有精度分层不再是证据缺口，才可进入活性位点验证。"
     elif open_tasks == 0:
         closure_status = "补证已覆盖但需复核映射"
+        release_gate_status = "不可直接作为活性位点"
         recommended_next_step = "先确认链和编号映射，再重新运行自动口袋识别。"
     elif closed_tasks or mapping_review_tasks:
         closure_status = "部分补证"
+        release_gate_status = "不可直接作为活性位点"
         recommended_next_step = "继续补齐未命中的口袋，并复核链/编号待确认的人工证据。"
     else:
         closure_status = "仍需补证"
+        release_gate_status = "不可直接作为活性位点"
         recommended_next_step = "优先补充 UniProt、M-CSA、文献或人工关键残基。"
 
     return pd.DataFrame(
@@ -1628,6 +1638,8 @@ def _summarize_manual_key_residue_followup_df(followup_df: pd.DataFrame | None) 
                 "mapping_review_tasks": mapping_review_tasks,
                 "open_tasks": open_tasks,
                 "manual_evidence_hits": int(evidence_hits.sum()),
+                "decision_gap_tasks": decision_gap_tasks,
+                "release_gate_status": release_gate_status,
                 "closure_status": closure_status,
                 "recommended_next_step": recommended_next_step,
             }
@@ -1755,8 +1767,12 @@ def _render_pocket_decision_panel(
             summary_cols[1].metric("已补证任务", int(summary_row.get("closed_tasks") or 0))
             summary_cols[2].metric("链/编号待确认", int(summary_row.get("mapping_review_tasks") or 0))
             summary_cols[3].metric("仍需补证", int(summary_row.get("open_tasks") or 0))
+            release_gate_status = str(summary_row.get("release_gate_status") or "-")
+            if release_gate_status != "可进入验证":
+                st.error(f"发布门控：{release_gate_status}。任务表仍存在决策缺口时，不要把候选口袋直接作为活性位点。")
             st.caption(
                 f"补证闭环状态：{summary_row.get('closure_status') or '-'}；"
+                f"决策缺口任务数：{summary_row.get('decision_gap_tasks') or 0}；"
                 f"建议下一步：{summary_row.get('recommended_next_step') or '-'}"
             )
             st.download_button(
