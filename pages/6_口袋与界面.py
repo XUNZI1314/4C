@@ -1648,6 +1648,62 @@ def _summarize_manual_key_residue_followup_df(followup_df: pd.DataFrame | None) 
     )
 
 
+def _build_manual_key_residue_followup_checklist_markdown(
+    followup_df: pd.DataFrame | None,
+    summary_df: pd.DataFrame | None = None,
+) -> str:
+    if followup_df is None or getattr(followup_df, "empty", True):
+        return ""
+    if summary_df is None or getattr(summary_df, "empty", True):
+        summary_df = _summarize_manual_key_residue_followup_df(followup_df)
+    summary = summary_df.iloc[0] if summary_df is not None and not getattr(summary_df, "empty", True) else {}
+
+    release_gate = str(summary.get("release_gate_status") or "-")
+    closure_status = str(summary.get("closure_status") or "-")
+    recommended_next_step = str(summary.get("recommended_next_step") or "-")
+    lines = [
+        "# 人工关键残基补证复跑检查清单",
+        "",
+        "## 当前门控",
+        "",
+        f"- 发布门控: {release_gate}",
+        f"- 补证闭环状态: {closure_status}",
+        f"- 补证任务数: {int(summary.get('total_tasks') or 0)}",
+        f"- 已补证任务: {int(summary.get('closed_tasks') or 0)}",
+        f"- 链/编号待确认: {int(summary.get('mapping_review_tasks') or 0)}",
+        f"- 仍需补证: {int(summary.get('open_tasks') or 0)}",
+        f"- 决策缺口任务数: {int(summary.get('decision_gap_tasks') or 0)}",
+        "",
+        "## 必做检查",
+        "",
+        "- [ ] 已补齐仍需补证的口袋，至少包含 UniProt、M-CSA、PMID/DOI 文献或人工关键残基来源。",
+        "- [ ] 每条人工关键残基都确认 chain、resid、resname 和 PDB 编号体系一致。",
+        "- [ ] 对链/编号待确认的记录完成映射复核，再重新运行自动口袋识别。",
+        "- [ ] 重新运行后检查精度分层不再是 evidence-gap、geometry-only 或 no-external-evidence。",
+        "- [ ] 重新运行后检查直接锚点数、锚点残基、可靠性检查表和发布门控。",
+        "- [ ] 导出活性位点决策、可靠性检查、精度处理建议和补证任务，作为本轮审计记录。",
+        "",
+        "## 建议下一步",
+        "",
+        recommended_next_step,
+        "",
+        "## 口袋级闭环动作",
+        "",
+    ]
+
+    for row in followup_df.head(12).itertuples(index=False):
+        pocket_id = str(getattr(row, "pocket_id", "-") or "-")
+        status = str(getattr(row, "manual_evidence_status", "-") or "-")
+        residues = str(getattr(row, "manual_evidence_residues", "-") or "-")
+        action = str(getattr(row, "closure_action", "-") or "-")
+        lines.append(f"- {pocket_id}: {status}; 人工证据残基: {residues}; 闭环动作: {action}")
+
+    if len(followup_df) > 12:
+        lines.append(f"- 其余 {len(followup_df) - 12} 条任务请查看 CSV 明细。")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def _render_pocket_decision_panel(
     decision_df: pd.DataFrame,
     checklist_df: pd.DataFrame | None = None,
@@ -1655,6 +1711,7 @@ def _render_pocket_decision_panel(
     manual_template_df: pd.DataFrame | None = None,
     manual_followup_df: pd.DataFrame | None = None,
     manual_followup_summary_df: pd.DataFrame | None = None,
+    manual_followup_checklist_markdown: str = "",
 ) -> None:
     st.subheader("活性位点决策面板")
     st.caption(
@@ -1760,6 +1817,11 @@ def _render_pocket_decision_panel(
         )
         if manual_followup_summary_df is None:
             manual_followup_summary_df = _summarize_manual_key_residue_followup_df(manual_followup_df)
+        if not manual_followup_checklist_markdown:
+            manual_followup_checklist_markdown = _build_manual_key_residue_followup_checklist_markdown(
+                manual_followup_df,
+                manual_followup_summary_df,
+            )
         if not manual_followup_summary_df.empty:
             summary_row = manual_followup_summary_df.iloc[0]
             summary_cols = st.columns(4)
@@ -1782,6 +1844,16 @@ def _render_pocket_decision_panel(
                 mime="text/csv",
                 key="download_manual_key_residue_followup_summary",
             )
+        if manual_followup_checklist_markdown:
+            with st.expander("补证复跑检查清单", expanded=False):
+                st.markdown(manual_followup_checklist_markdown)
+                st.download_button(
+                    "导出人工关键残基补证复跑检查清单 MD",
+                    data=manual_followup_checklist_markdown.encode("utf-8"),
+                    file_name="manual_key_residue_followup_checklist.md",
+                    mime="text/markdown",
+                    key="download_manual_key_residue_followup_checklist",
+                )
         st.dataframe(
             _localize_pocket_decision_df(manual_followup_df, MANUAL_KEY_RESIDUE_FOLLOWUP_COLUMN_LABELS),
             use_container_width=True,
@@ -3720,6 +3792,10 @@ manual_key_residue_followup_df = _build_manual_key_residue_followup_df(
     manual_key_residue_df,
 )
 manual_key_residue_followup_summary_df = _summarize_manual_key_residue_followup_df(manual_key_residue_followup_df)
+manual_key_residue_followup_checklist_markdown = _build_manual_key_residue_followup_checklist_markdown(
+    manual_key_residue_followup_df,
+    manual_key_residue_followup_summary_df,
+)
 ai_ranking_impact_df = build_ai_ranking_impact_summary(
     ai_evidence_df,
     rankable_ai_evidence_df,
@@ -5439,6 +5515,7 @@ _render_pocket_decision_panel(
     manual_key_residue_template_df,
     manual_key_residue_followup_df,
     manual_key_residue_followup_summary_df,
+    manual_key_residue_followup_checklist_markdown,
 )
 _render_evidence_context_panels()
 _render_consensus_rerank_review_panels()
@@ -5702,6 +5779,14 @@ with tab_export:
                     data=_to_csv_bytes(manual_key_residue_followup_summary_df),
                     file_name="manual_key_residue_followup_summary.csv",
                     mime="text/csv",
+                )
+            if manual_key_residue_followup_checklist_markdown:
+                st.download_button(
+                    "导出人工关键残基补证复跑检查清单 MD",
+                    data=manual_key_residue_followup_checklist_markdown.encode("utf-8"),
+                    file_name="manual_key_residue_followup_checklist.md",
+                    mime="text/markdown",
+                    key="export_manual_key_residue_followup_checklist",
                 )
             st.download_button(
                 "导出人工关键残基补证任务 CSV",
