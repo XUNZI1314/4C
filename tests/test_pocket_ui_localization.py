@@ -105,8 +105,10 @@ def test_pocket_page_keeps_display_localization_hooks_enabled():
         '"上传人工关键残基 CSV/TSV（可选）"',
         '"下载人工关键残基模板 CSV"',
         "manual_key_residue_evidence_template.csv",
+        "manual_key_residue_evidence.csv",
         "parse_manual_key_residue_table",
         "人工关键残基：",
+        '"导出人工关键残基证据 CSV"',
     ]
 
     for snippet in required_snippets:

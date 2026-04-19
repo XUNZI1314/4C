@@ -5303,6 +5303,13 @@ with tab_export:
                 file_name="pocket_precision_triage.csv",
                 mime="text/csv",
             )
+        if not manual_key_residue_df.empty:
+            st.download_button(
+                "导出人工关键残基证据 CSV",
+                data=_to_csv_bytes(manual_key_residue_df),
+                file_name="manual_key_residue_evidence.csv",
+                mime="text/csv",
+            )
         if not ai_evidence_df.empty:
             st.download_button(
                 "导出 AI 残基证据 CSV",

@@ -470,6 +470,11 @@ def snapshot_to_summary_lines(snapshot: dict[str, Any]) -> list[str]:
     if external_rows > 0:
         source_text = str(extra.get("auto_detection_external_sources") or "external").strip()
         lines.append(f"外部位点证据: {external_rows} ({source_text})")
+    manual_key_rows = int(extra.get("manual_key_residue_rows") or 0)
+    if manual_key_rows > 0:
+        manual_meta = extra.get("manual_key_residue_metadata") if isinstance(extra.get("manual_key_residue_metadata"), dict) else {}
+        manual_status = str(extra.get("manual_key_residue_status") or manual_meta.get("status") or "").strip()
+        lines.append(f"人工关键残基: {manual_key_rows} 行 / 状态 {_snapshot_value_label(manual_status)}")
     ai_rows = int(extra.get("ai_evidence_rows") or 0)
     ai_status = str(extra.get("ai_evidence_status") or "").strip()
     if ai_rows > 0 or ai_status:

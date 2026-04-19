@@ -107,6 +107,8 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
             "p2rank_ab_comparison": [{"pocket_id": "Pocket-1", "rank_delta": 1}],
             "auto_detection_external_rows": 2,
             "auto_detection_external_sources": "M-CSA,UniProt",
+            "manual_key_residue_rows": 2,
+            "manual_key_residue_metadata": {"status": "ok", "sources": "manual"},
             "pocket_benchmark_reference_candidate_rows": 2,
             "pocket_benchmark_reference_import_summary_rows": 1,
             "pocket_benchmark_reference_import_status": "review-needed",
@@ -257,6 +259,7 @@ def test_snapshot_extra_preserves_nested_detection_payloads():
     assert any("检测状态: geometry-cluster:已使用; 共识:单方法" in line for line in summary_lines)
     assert any("P2Rank: 正常 / 预测 2 / 残基 7" in line for line in summary_lines)
     assert any("P2Rank A/B: 已启用 / 记录 1" in line for line in summary_lines)
+    assert any("人工关键残基: 2 行 / 状态 正常" in line for line in summary_lines)
     assert any("基准参考候选: 2 行 / 导入 需复核 / 使用临时参考 是" in line for line in summary_lines)
     assert any("基准参考来源: 临时外部证据 / 临时参考 是 / 已复核候选 否" in line for line in summary_lines)
     assert any("基准参考来源审计: 3 行 / 结论状态 临时参考阻断 / 独立结论 否" in line for line in summary_lines)
