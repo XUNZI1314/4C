@@ -108,6 +108,7 @@ def test_pocket_page_keeps_display_localization_hooks_enabled():
         "manual_key_residue_evidence.csv",
         "parse_manual_key_residue_table",
         "人工关键残基：",
+        "覆盖目标口袋",
         '"导出人工关键残基证据 CSV"',
         "def _needs_manual_key_residue_evidence",
         "当前候选口袋仍缺少可审计功能残基证据",

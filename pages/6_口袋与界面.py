@@ -2584,7 +2584,9 @@ if manual_key_residue_text.strip():
             "manual_key_residue_rows": str(len(manual_key_residue_df)),
             "manual_key_residue": manual_key_residue_meta,
         }
-        st.success(f"人工关键残基：{len(manual_key_residue_df)} 条已并入外部位点证据。")
+        target_pocket_count = str(manual_key_residue_meta.get("target_pocket_count") or "0").strip()
+        target_pocket_text = f"，覆盖目标口袋 {target_pocket_count} 个" if target_pocket_count not in {"", "0"} else ""
+        st.success(f"人工关键残基：{len(manual_key_residue_df)} 条已并入外部位点证据{target_pocket_text}。")
     elif str(manual_key_residue_meta.get("status") or "") != "empty":
         st.warning("人工关键残基表未产生可用残基行，请至少提供 resid 或 residue_number 列。")
 literature_manual_text = _read_uploaded_text(uploaded_literature) if uploaded_literature is not None else ""

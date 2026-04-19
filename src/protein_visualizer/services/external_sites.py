@@ -141,6 +141,11 @@ MANUAL_KEY_RESIDUE_COLUMN_ALIASES = {
     "evidence_snippet": "evidence_snippet",
     "requires_manual_review": "requires_manual_review",
     "manual_review": "requires_manual_review",
+    "target_pocket_id": "target_pocket_id",
+    "pocket_id": "target_pocket_id",
+    "expected_pocket_id": "target_pocket_id",
+    "reviewer_note": "reviewer_note",
+    "closure_action": "closure_action",
 }
 
 
@@ -234,6 +239,20 @@ def _as_float(value: object, default: float = 0.0) -> float:
         return float(default)
 
 
+def _append_manual_context_note(evidence_note: str, row: dict[str, object]) -> str:
+    parts = [str(evidence_note or "").strip()]
+    target_pocket_id = str(row.get("target_pocket_id") or "").strip()
+    reviewer_note = str(row.get("reviewer_note") or "").strip()
+    closure_action = str(row.get("closure_action") or "").strip()
+    if target_pocket_id and "target_pocket_id=" not in " ".join(parts):
+        parts.append(f"target_pocket_id={target_pocket_id}")
+    if reviewer_note and "reviewer_note=" not in " ".join(parts):
+        parts.append(f"reviewer_note={reviewer_note}")
+    if closure_action and "closure_action=" not in " ".join(parts):
+        parts.append(f"closure_action={closure_action}")
+    return " ".join(part for part in parts if part).strip()
+
+
 def _read_loose_residue_table(text: str) -> pd.DataFrame:
     payload = str(text or "").strip()
     if not payload:
@@ -294,6 +313,7 @@ def parse_manual_key_residue_table(
         resname = str(row.get("resname") or "").strip()
         if resname and "resname=" not in evidence_note:
             evidence_note = f"{evidence_note} resname={resname}".strip()
+        evidence_note = _append_manual_context_note(evidence_note, row)
         rows.append(
             {
                 "chain": str(row.get("chain") or "").strip(),
@@ -325,10 +345,19 @@ def parse_manual_key_residue_table(
             if source
         )
     )
+    target_pocket_ids = ",".join(
+        dict.fromkeys(
+            str(value).strip()
+            for value in normalized.get("target_pocket_id", pd.Series(dtype=str)).fillna("").astype(str).tolist()
+            if str(value).strip()
+        )
+    )
     return evidence_df, {
         "status": "ok" if not evidence_df.empty else "empty",
         "manual_key_residue_rows": str(len(evidence_df)),
         "sources": sources or cleaned_source_hint,
+        "target_pocket_ids": target_pocket_ids,
+        "target_pocket_count": str(len([value for value in target_pocket_ids.split(",") if value])),
     }
 
 

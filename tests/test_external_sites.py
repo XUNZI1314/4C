@@ -78,6 +78,23 @@ def test_parse_manual_key_residue_table_accepts_minimal_alias_columns():
     assert meta["manual_key_residue_rows"] == "1"
 
 
+def test_parse_manual_key_residue_table_preserves_collection_template_context():
+    text = (
+        "target_pocket_id,chain,resid,resname,evidence_source,evidence_type,evidence_note,reviewer_note,closure_action\n"
+        "Pocket-2,A,195,SER,manual,Catalytic residue,nucleophile,confirmed by curator,rerun auto detection\n"
+    )
+
+    evidence_df, meta = external_sites.parse_manual_key_residue_table(text)
+
+    assert len(evidence_df) == 1
+    note = str(evidence_df.iloc[0]["evidence_note"])
+    assert "target_pocket_id=Pocket-2" in note
+    assert "reviewer_note=confirmed by curator" in note
+    assert "closure_action=rerun auto detection" in note
+    assert meta["target_pocket_ids"] == "Pocket-2"
+    assert meta["target_pocket_count"] == "1"
+
+
 def test_extract_pdb_id_from_text_parses_header_code():
     pdb_text = """HEADER    TEST PDB                                  01-JAN-00   1ABC\nATOM      1  N   ALA A   1      11.111  12.222  13.333  1.00 10.00           N\n"""
 
