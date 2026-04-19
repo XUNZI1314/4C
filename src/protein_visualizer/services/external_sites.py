@@ -32,6 +32,17 @@ MCSA_ROLE_SCORES: Dict[str, float] = {
     "substrate positioning": 0.84,
 }
 
+CD38_CURATED_KEY_RESIDUES = [
+    {"resid": 125, "resname": "TRP", "evidence_type": "CD38 active-site wall", "evidence_score": 0.84, "role": "active-site gate / substrate binding"},
+    {"resid": 127, "resname": "ARG", "evidence_type": "CD38 substrate-binding residue", "evidence_score": 0.82, "role": "substrate / calcium-coupled active-site region"},
+    {"resid": 146, "resname": "GLU", "evidence_type": "CD38 catalytic-region residue", "evidence_score": 0.90, "role": "catalytic-region hydrogen-bond network"},
+    {"resid": 155, "resname": "ASP", "evidence_type": "CD38 active-site residue", "evidence_score": 0.86, "role": "active-site acidic residue"},
+    {"resid": 189, "resname": "TRP", "evidence_type": "CD38 substrate-binding residue", "evidence_score": 0.90, "role": "substrate stacking / binding"},
+    {"resid": 193, "resname": "SER", "evidence_type": "CD38 active-site residue", "evidence_score": 0.84, "role": "active-site pocket residue"},
+    {"resid": 221, "resname": "THR", "evidence_type": "CD38 substrate-binding residue", "evidence_score": 0.82, "role": "diphosphate-contact region"},
+    {"resid": 226, "resname": "GLU", "evidence_type": "CD38 catalytic residue", "evidence_score": 1.00, "role": "principal catalytic residue"},
+]
+
 EVIDENCE_COLUMNS = [
     "chain",
     "resid",
@@ -186,6 +197,105 @@ def build_manual_key_residue_template() -> pd.DataFrame:
         ],
         columns=MANUAL_KEY_RESIDUE_TEMPLATE_COLUMNS,
     )
+
+
+def build_cd38_key_residue_evidence(
+    pdb_text: Optional[str],
+    *,
+    chain_hint: Optional[str] = None,
+    source_hint: str = "CD38 literature preset",
+) -> Tuple[pd.DataFrame, Dict[str, object]]:
+    """Build a review-gated CD38 active-site residue preset for matching structures."""
+
+    residue_map = _extract_structure_residue_map(pdb_text)
+    if not residue_map:
+        return _empty_evidence_df(), {
+            "status": "empty",
+            "source": source_hint,
+            "reason": "structure-residue-map-empty",
+            "evidence_rows": "0",
+        }
+
+    requested_chain = str(chain_hint or "").strip()
+    chain_rankings: list[tuple[int, str, dict[int, str]]] = []
+    for chain, bucket in residue_map.items():
+        entries = bucket.get("entries") if isinstance(bucket, dict) else []
+        residue_names = {
+            int(entry["resid"]): str(entry.get("resname") or "").strip().upper()
+            for entry in entries
+            if isinstance(entry, dict) and entry.get("resid") is not None
+        }
+        match_count = sum(
+            1
+            for preset in CD38_CURATED_KEY_RESIDUES
+            if residue_names.get(int(preset["resid"])) == str(preset["resname"]).upper()
+        )
+        if requested_chain and str(chain) == requested_chain:
+            match_count += 100
+        chain_rankings.append((int(match_count), str(chain), residue_names))
+
+    if not chain_rankings:
+        return _empty_evidence_df(), {
+            "status": "empty",
+            "source": source_hint,
+            "reason": "no-chain-residues",
+            "evidence_rows": "0",
+        }
+
+    chain_rankings.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    _rank_score, selected_chain, selected_residue_names = chain_rankings[0]
+    rows: list[dict] = []
+    for preset in CD38_CURATED_KEY_RESIDUES:
+        resid = int(preset["resid"])
+        expected_resname = str(preset["resname"]).strip().upper()
+        observed_resname = str(selected_residue_names.get(resid) or "").strip().upper()
+        if observed_resname != expected_resname:
+            continue
+        role_text = str(preset["role"])
+        rows.append(
+            {
+                "chain": selected_chain,
+                "resid": resid,
+                "evidence_source": source_hint,
+                "evidence_type": str(preset["evidence_type"]),
+                "evidence_score": float(preset["evidence_score"]),
+                "evidence_note": f"Human CD38 active-site preset; {expected_resname}{resid}; {role_text}. Verify species and numbering before release.",
+                "uniprot_resid": resid,
+                "mapping_level": "exact",
+                "mapping_confidence": 0.86 if requested_chain else 0.78,
+                "mapping_method": "cd38-curated-structure-numbering",
+                "article_title": "Curated CD38 active-site residue preset",
+                "pmid": "",
+                "pmcid": "",
+                "doi": "",
+                "evidence_snippet": "CD38 active site is defined by W125, R127, E146, D155, W189, S193, T221 and E226 in human CD38 numbering.",
+                "sentence_index": "",
+                "extraction_pattern": "curated-cd38-preset",
+                "requires_manual_review": True,
+                "target_pocket_id": "CD38-active-site",
+                "reviewer_note": "Confirm this structure uses human CD38 numbering and the selected chain before treating the pocket as validated.",
+                "closure_action": "Use as active-site seed only after chain and numbering review.",
+            }
+        )
+
+    if not rows:
+        return _empty_evidence_df(), {
+            "status": "empty",
+            "source": source_hint,
+            "reason": "no-cd38-residue-name-match",
+            "selected_chain": selected_chain,
+            "evidence_rows": "0",
+        }
+
+    evidence_df = ensure_evidence_columns(pd.DataFrame(rows))
+    return evidence_df, {
+        "status": "ok",
+        "source": source_hint,
+        "selected_chain": selected_chain,
+        "evidence_rows": str(len(evidence_df)),
+        "requires_manual_review": "true",
+        "target_pocket_id": "CD38-active-site",
+    }
 
 
 def _coerce_bool(value: object) -> bool:

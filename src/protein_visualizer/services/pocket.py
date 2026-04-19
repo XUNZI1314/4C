@@ -2460,6 +2460,137 @@ def _select_ranked_candidate_rows(
     return selected.reset_index(drop=True)
 
 
+def _rank_cluster_indices_by_score(
+    candidate_df: pd.DataFrame,
+    cluster_indices: Sequence[Sequence[int]],
+    *,
+    score_column: str,
+) -> list[list[int]]:
+    if candidate_df is None or candidate_df.empty:
+        return []
+
+    scores = pd.to_numeric(candidate_df.get(score_column), errors="coerce").fillna(0.0).reset_index(drop=True)
+    ranked_clusters: list[tuple[float, int, list[int]]] = []
+    for indices in cluster_indices:
+        cleaned_indices = sorted({int(index) for index in indices if 0 <= int(index) < len(candidate_df)})
+        if not cleaned_indices:
+            continue
+        cluster_score = float(scores.iloc[cleaned_indices].mean())
+        ranked_clusters.append((cluster_score, len(cleaned_indices), cleaned_indices))
+
+    ranked_clusters.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return [indices for _, _, indices in ranked_clusters]
+
+
+def _spatially_diversify_cluster_indices(
+    candidate_df: pd.DataFrame,
+    cluster_indices: Sequence[Sequence[int]],
+    *,
+    max_pockets: int,
+    cluster_cutoff: float,
+    score_column: str,
+    min_group_size: int = 2,
+) -> list[list[int]]:
+    ranked_clusters = _rank_cluster_indices_by_score(candidate_df, cluster_indices, score_column=score_column)
+    if candidate_df is None or candidate_df.empty or not ranked_clusters:
+        return []
+
+    pocket_limit = max(1, int(max_pockets))
+    if len(ranked_clusters) >= min(pocket_limit, len(candidate_df)):
+        return ranked_clusters[:pocket_limit]
+    if len(candidate_df) < max(4, int(min_group_size) * 2):
+        return ranked_clusters[:pocket_limit]
+    if not {"x", "y", "z"}.issubset(candidate_df.columns):
+        return ranked_clusters[:pocket_limit]
+
+    coords = candidate_df[["x", "y", "z"]].to_numpy(dtype=float)
+    if not np.isfinite(coords).all():
+        return ranked_clusters[:pocket_limit]
+
+    score_values = pd.to_numeric(candidate_df.get(score_column), errors="coerce").fillna(0.0)
+    seed_support = pd.to_numeric(candidate_df.get("seed_support"), errors="coerce").fillna(0.0)
+    confidence_score = pd.to_numeric(candidate_df.get("confidence_score"), errors="coerce").fillna(0.0)
+    contact_density = (
+        _normalize_numeric_series(candidate_df["contact_count"])
+        if "contact_count" in candidate_df.columns
+        else pd.Series(np.zeros(len(candidate_df)), index=candidate_df.index)
+    )
+    anchor_flags = (
+        _boolean_frame_series(candidate_df, "is_hotspot", False)
+        | _boolean_frame_series(candidate_df, "external_exact_match", False)
+        | _boolean_frame_series(candidate_df, "external_direct_anchor", False)
+        | _boolean_frame_series(candidate_df, "evidence_route_anchor", False)
+    )
+    priority_score = (
+        score_values
+        + 0.16 * seed_support
+        + 0.08 * confidence_score
+        + 0.06 * contact_density
+        + 0.22 * anchor_flags.astype(float)
+    ).reset_index(drop=True)
+    anchor_values = anchor_flags.reset_index(drop=True).to_numpy(dtype=bool)
+
+    min_seed_distance = _clamp_float(float(cluster_cutoff) * 0.78, 5.0, 10.0)
+    assignment_radius = _clamp_float(float(cluster_cutoff) * 0.82, 4.8, 10.5)
+    seed_positions: list[int] = []
+    ordered_positions = sorted(
+        range(len(candidate_df)),
+        key=lambda position: (float(priority_score.iloc[position]), bool(anchor_values[position])),
+        reverse=True,
+    )
+
+    for position in ordered_positions:
+        if len(seed_positions) >= pocket_limit:
+            break
+        if not seed_positions:
+            seed_positions.append(int(position))
+            continue
+        distances_to_existing = np.sqrt(np.sum((coords[seed_positions] - coords[position]) ** 2, axis=1))
+        if float(distances_to_existing.min()) >= min_seed_distance:
+            seed_positions.append(int(position))
+
+    if len(seed_positions) < min(2, pocket_limit):
+        relaxed_distance = max(3.8, min_seed_distance * 0.65)
+        for position in ordered_positions:
+            if len(seed_positions) >= pocket_limit:
+                break
+            if int(position) in seed_positions:
+                continue
+            distances_to_existing = np.sqrt(np.sum((coords[seed_positions] - coords[position]) ** 2, axis=1))
+            if float(distances_to_existing.min()) >= relaxed_distance:
+                seed_positions.append(int(position))
+
+    if len(seed_positions) <= len(ranked_clusters):
+        return ranked_clusters[:pocket_limit]
+
+    seed_coords = coords[seed_positions]
+    distance_to_seeds = np.sqrt(np.sum((coords[:, None, :] - seed_coords[None, :, :]) ** 2, axis=2))
+    nearest_seed_positions = distance_to_seeds.argmin(axis=1)
+    nearest_seed_distances = distance_to_seeds.min(axis=1)
+    grouped_positions: dict[int, list[int]] = {int(seed): [int(seed)] for seed in seed_positions}
+
+    for position in range(len(candidate_df)):
+        if int(position) in seed_positions:
+            continue
+        nearest_seed = int(seed_positions[int(nearest_seed_positions[position])])
+        current_group = grouped_positions.setdefault(nearest_seed, [nearest_seed])
+        if float(nearest_seed_distances[position]) <= assignment_radius or len(current_group) < int(min_group_size):
+            current_group.append(int(position))
+
+    diversified_groups: list[list[int]] = []
+    for seed_position, group_positions in grouped_positions.items():
+        cleaned_group = sorted({int(position) for position in group_positions if 0 <= int(position) < len(candidate_df)})
+        if not cleaned_group:
+            continue
+        has_anchor = bool(anchor_values[cleaned_group].any())
+        if len(cleaned_group) >= int(min_group_size) or has_anchor:
+            diversified_groups.append(cleaned_group)
+
+    if len(diversified_groups) <= len(ranked_clusters):
+        return ranked_clusters[:pocket_limit]
+    return _rank_cluster_indices_by_score(candidate_df, diversified_groups, score_column=score_column)[:pocket_limit]
+
+
 def _build_precision_method_table(
     residue_df: pd.DataFrame,
     hotspot_set: set[Tuple[str, int]],
@@ -2564,6 +2695,13 @@ def _build_precision_method_table(
         return _empty_auto_pocket_table()
 
     cluster_indices = _cluster_residue_indices(candidate_df, cluster_cutoff)
+    cluster_indices = _spatially_diversify_cluster_indices(
+        candidate_df,
+        cluster_indices,
+        max_pockets=max_pockets,
+        cluster_cutoff=cluster_cutoff,
+        score_column="method_score",
+    )
     if not cluster_indices:
         return _empty_auto_pocket_table()
 
@@ -2803,6 +2941,13 @@ def _merge_multiscale_method_tables(
         return _empty_auto_pocket_table()
 
     cluster_indices = _cluster_residue_indices(candidate_df, cluster_cutoff)
+    cluster_indices = _spatially_diversify_cluster_indices(
+        candidate_df,
+        cluster_indices,
+        max_pockets=max_pockets,
+        cluster_cutoff=cluster_cutoff,
+        score_column="consensus_score",
+    )
     if not cluster_indices:
         return _empty_auto_pocket_table()
 
@@ -3433,6 +3578,13 @@ def _build_consensus_pocket_table(
         return _empty_auto_pocket_table()
 
     cluster_indices = _cluster_residue_indices(candidate_df, cluster_cutoff)
+    cluster_indices = _spatially_diversify_cluster_indices(
+        candidate_df,
+        cluster_indices,
+        max_pockets=max_pockets,
+        cluster_cutoff=cluster_cutoff,
+        score_column="consensus_score",
+    )
     if not cluster_indices:
         return _empty_auto_pocket_table()
 

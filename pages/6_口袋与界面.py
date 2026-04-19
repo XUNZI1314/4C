@@ -115,6 +115,7 @@ from protein_visualizer.services.conservation import parse_conservation_evidence
 from protein_visualizer.services.energy import prepare_energy_table
 from protein_visualizer.services.external_sites import (
     build_manual_key_residue_template,
+    build_cd38_key_residue_evidence,
     extract_pdb_id_from_text,
     fetch_combined_functional_sites_for_structure,
     merge_external_evidence_tables,
@@ -2137,11 +2138,13 @@ with st.sidebar:
         auto_max_pockets = st.slider("最多口袋数", 1, 8, 6, 1)
 
     with st.expander("外部关键位点证据（可选）", expanded=False):
-        enable_uniprot_evidence = st.checkbox("启用 UniProt 功能位点增强", value=False)
-        enable_mcsa_evidence = st.checkbox("启用 M-CSA 催化位点增强", value=False)
+        enable_uniprot_evidence = st.checkbox("启用 UniProt 功能位点增强", value=True)
+        enable_mcsa_evidence = st.checkbox("启用 M-CSA 催化位点增强", value=True)
         uniprot_accession = st.text_input("UniProt 编号", value="", placeholder="例如: P00533")
         enzyme_ec_number = st.text_input("EC 编号（可选）", value="", placeholder="例如: 3.2.1.4")
         uniprot_chain_hint = st.text_input("链提示（可选）", value="", placeholder="例如: A")
+        enable_cd38_preset = st.checkbox("检测到 CD38/P28907 时加入 CD38 活性位点模板", value=True)
+        st.caption("CD38 模板会先检查结构中 W125/R127/E146/D155/W189/S193/T221/E226 是否按当前编号存在；命中后作为需复核证据锚点参与口袋识别。")
         enable_literature_evidence = st.checkbox("启用文献残基挖掘", value=False)
         literature_query = st.text_input("文献检索词覆盖（可选）", value="", placeholder="例如: enzyme name catalytic residue")
         literature_protein_name = st.text_input("用于文献检索的蛋白名称（可选）", value="")
@@ -2410,6 +2413,8 @@ external_site_df = pd.DataFrame()
 external_site_meta: dict = {}
 manual_key_residue_df = pd.DataFrame()
 manual_key_residue_meta: dict = {}
+cd38_key_residue_df = pd.DataFrame()
+cd38_key_residue_meta: dict = {}
 literature_site_df = pd.DataFrame()
 literature_site_meta: dict = {}
 ai_evidence_df = pd.DataFrame()
@@ -2556,6 +2561,43 @@ if (enable_uniprot_evidence and str(uniprot_accession or "").strip()) or (
             bool(enable_uniprot_evidence),
             bool(enable_mcsa_evidence),
         )
+cd38_context_text = " ".join(
+    [
+        str(uniprot_accession or ""),
+        str(enzyme_ec_number or ""),
+        str(literature_query or ""),
+        str(literature_protein_name or ""),
+    ]
+).upper()
+cd38_context_requested = any(token in cd38_context_text for token in ("CD38", "P28907", "ADP-RIBOSYL CYCLASE"))
+if bool(enable_cd38_preset) and cd38_context_requested:
+    cd38_key_residue_df, cd38_key_residue_meta = build_cd38_key_residue_evidence(
+        pdb_text,
+        chain_hint=str(uniprot_chain_hint or "").strip() or None,
+    )
+    if not cd38_key_residue_df.empty:
+        external_site_df = merge_external_evidence_tables(external_site_df, cd38_key_residue_df)
+        counts = _external_evidence_counts(external_site_df)
+        source_values = []
+        if str(external_site_meta.get("sources") or "").strip():
+            source_values.extend(str(external_site_meta.get("sources")).split(","))
+        source_values.append("cd38-curated-preset")
+        external_site_meta = {
+            **external_site_meta,
+            "status": "ok",
+            "sources": ",".join(dict.fromkeys(source.strip() for source in source_values if source.strip())),
+            "evidence_rows": str(counts["rows"]),
+            "exact_rows": str(counts["exact"]),
+            "weak_rows": str(counts["weak"]),
+            "cd38_key_residue_rows": str(len(cd38_key_residue_df)),
+            "cd38_key_residue": cd38_key_residue_meta,
+        }
+        st.success(
+            f"CD38 活性位点模板：{len(cd38_key_residue_df)} 条已并入外部位点证据，"
+            f"链 {cd38_key_residue_meta.get('selected_chain') or '-'}。发布前仍需复核物种、链和编号。"
+        )
+    else:
+        st.warning("已检测到 CD38/P28907，但当前结构没有匹配到 CD38 模板残基；请检查链、物种或 PDB 编号。")
 manual_key_residue_text = _read_uploaded_text(uploaded_manual_key_residues) if uploaded_manual_key_residues is not None else ""
 if manual_key_residue_text.strip():
     try:
@@ -3974,6 +4016,8 @@ try:
             "top_joint_reason": str(top_joint_candidate.get("recommendation_reason")) if top_joint_candidate is not None and pd.notna(top_joint_candidate.get("recommendation_reason")) else None,
             "manual_key_residue_rows": int(len(manual_key_residue_df)),
             "manual_key_residue_status": str(manual_key_residue_meta.get("status") or ""),
+            "cd38_key_residue_rows": int(len(cd38_key_residue_df)),
+            "cd38_key_residue_status": str(cd38_key_residue_meta.get("status") or ""),
             "literature_site_rows": int(len(literature_site_df)),
             "literature_status": str(literature_site_meta.get("status") or ""),
             "literature_query": str(literature_site_meta.get("query") or ""),
@@ -4287,6 +4331,8 @@ snapshot = build_analysis_snapshot(
         "external_site_rows": int(len(external_site_df)),
         "manual_key_residue_rows": int(len(manual_key_residue_df)),
         "manual_key_residue_metadata": manual_key_residue_meta,
+        "cd38_key_residue_rows": int(len(cd38_key_residue_df)),
+        "cd38_key_residue_metadata": cd38_key_residue_meta,
         "external_site_accession": str(external_site_meta.get("accession") or ""),
         "external_site_pdb_id": str(external_site_meta.get("pdb_id") or structure_pdb_id),
         "external_mapping_status": str(external_site_meta.get("mapping_status") or ""),

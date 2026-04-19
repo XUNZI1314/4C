@@ -64,6 +64,37 @@ def test_manual_key_residue_template_is_parseable_external_evidence():
     assert meta["status"] == "ok"
 
 
+def test_build_cd38_key_residue_evidence_matches_structure_numbering():
+    pdb_text = "\n".join(
+        [
+            f"ATOM  {index:5d}  CA  {resname:>3s} A{resid:4d}    {float(index):8.3f}{0.0:8.3f}{0.0:8.3f}  1.00 20.00           C"
+            for index, (resid, resname) in enumerate(
+                [
+                    (125, "TRP"),
+                    (127, "ARG"),
+                    (146, "GLU"),
+                    (155, "ASP"),
+                    (189, "TRP"),
+                    (193, "SER"),
+                    (221, "THR"),
+                    (226, "GLU"),
+                ],
+                start=1,
+            )
+        ]
+    )
+
+    evidence_df, meta = external_sites.build_cd38_key_residue_evidence(pdb_text, chain_hint="A")
+
+    assert meta["status"] == "ok"
+    assert meta["selected_chain"] == "A"
+    assert len(evidence_df) == 8
+    assert set(evidence_df["resid"].astype(int).tolist()) == {125, 127, 146, 155, 189, 193, 221, 226}
+    assert evidence_df["mapping_level"].astype(str).eq("exact").all()
+    assert evidence_df["requires_manual_review"].astype(bool).all()
+    assert "CD38-active-site" in set(evidence_df["target_pocket_id"].astype(str).tolist())
+
+
 def test_parse_manual_key_residue_table_accepts_minimal_alias_columns():
     text = "chain,residue_number,reference_type,reference_source,reference_note,pmid\nA,57,Catalytic residue,PMID,His57 catalytic triad,12345\n"
 

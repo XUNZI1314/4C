@@ -7,6 +7,7 @@ from protein_visualizer.services.literature_sites import fetch_literature_residu
 from protein_visualizer.services.parsers import parse_pdb_atoms
 from protein_visualizer.services.pocket import (
     _build_consensus_pocket_table,
+    _build_precision_method_table,
     _build_precision_residue_table,
     _infer_adaptive_detection_profile,
     _infer_structure_confidence_signal,
@@ -234,6 +235,59 @@ def test_detect_auto_pocket_table_keeps_hotspot_supported_residues_during_trunca
     assert ("A", 1) in residue_keys
     assert ("A", 2) in residue_keys
     assert ("A", 4) not in residue_keys
+
+
+def test_geometry_route_splits_large_connected_candidate_cluster_into_alternatives():
+    residue_df = pd.DataFrame(
+        [
+            {"chain": "A", "resid": 1, "resname": "ALA", "x": 0.0, "y": 0.0, "z": 0.0, "precision_score": 0.88, "contact_count": 8, "center_distance": 2.0},
+            {"chain": "A", "resid": 2, "resname": "GLY", "x": 2.4, "y": 0.2, "z": 0.0, "precision_score": 0.82, "contact_count": 7, "center_distance": 2.5},
+            {"chain": "A", "resid": 3, "resname": "SER", "x": 4.8, "y": 0.1, "z": 0.0, "precision_score": 0.74, "contact_count": 6, "center_distance": 3.0},
+            {"chain": "A", "resid": 4, "resname": "THR", "x": 7.2, "y": 0.0, "z": 0.0, "precision_score": 0.34, "contact_count": 3, "center_distance": 5.5},
+            {"chain": "A", "resid": 5, "resname": "VAL", "x": 9.6, "y": 0.0, "z": 0.0, "precision_score": 0.36, "contact_count": 3, "center_distance": 5.4},
+            {"chain": "A", "resid": 6, "resname": "TYR", "x": 12.0, "y": 0.0, "z": 0.0, "precision_score": 0.78, "contact_count": 6, "center_distance": 3.2},
+            {"chain": "A", "resid": 7, "resname": "ASP", "x": 14.4, "y": 0.1, "z": 0.0, "precision_score": 0.86, "contact_count": 8, "center_distance": 2.3},
+            {"chain": "A", "resid": 8, "resname": "GLU", "x": 16.8, "y": 0.0, "z": 0.0, "precision_score": 0.84, "contact_count": 7, "center_distance": 2.1},
+        ]
+    )
+    for column, value in {
+        "ligand_contact_count": 0,
+        "seed_support": 0.0,
+        "confidence_score": 0.6,
+        "external_support": 0.0,
+        "external_confidence": 0.0,
+        "external_evidence_count": 0,
+        "external_exact_match": False,
+        "external_structure_verified": False,
+        "external_mapping_quality": 0.0,
+        "external_direct_anchor": False,
+        "is_hotspot": False,
+        "conservation_support": 0.0,
+        "conservation_confidence": 0.0,
+        "conservation_evidence_count": 0,
+    }.items():
+        residue_df[column] = value
+
+    pocket_df = _build_precision_method_table(
+        residue_df,
+        set(),
+        method_kind="geometry",
+        detection_method="geometry-cluster",
+        route_suffix="geometry",
+        cluster_cutoff=8.5,
+        top_fraction=1.0,
+        min_candidates=6,
+        max_candidates=8,
+        max_pockets=4,
+    )
+
+    assert pocket_df["pocket_id"].nunique() >= 2
+    pocket_residue_sets = [
+        set(group["resid"].astype(int).tolist())
+        for _, group in pocket_df.groupby("pocket_id")
+    ]
+    assert any({1, 2}.issubset(residues) for residues in pocket_residue_sets)
+    assert any({7, 8}.issubset(residues) for residues in pocket_residue_sets)
 
 
 def test_detect_auto_pocket_table_uses_external_site_evidence_during_detection():

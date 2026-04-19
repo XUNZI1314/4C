@@ -1,6 +1,6 @@
 # Pocket Detection Enhancement Notes
 
-更新时间：2026-04-18
+更新时间：2026-04-19
 
 本文档记录 ProteinInsight 口袋检测、外部证据融合、文献残基抽取、P2Rank 接入、consensus rerank 和 release closure 审计链路，方便后续继续迭代。
 
@@ -55,6 +55,25 @@
 5. Merge method outputs through consensus pocket construction.
 6. Rank detected pockets with structural, evidence, hotspot, ligand, interface and conservation signals.
 7. Build summary tables, A/B comparison tables, reliability checks and export artifacts.
+
+## 2026-04-19 CD38 Failure Fix
+
+CD38 暴露出两个真实问题：
+
+- 只有 geometry / weak consensus 时，一个大连通残基簇可能吞掉多个空间候选，最终只给出 1 个口袋。
+- 若未加载 UniProt、M-CSA、文献或人工关键残基，系统可能把几何最高分误当成酶活性口袋。
+
+已完成修复：
+
+- 在 geometry、multiscale 和 consensus 阶段加入空间多样性拆分：当候选残基被单一连通簇吞掉时，按局部得分、seed support、confidence、contact density 和 anchor 状态选择相距足够远的多个种子，再生成多个候选口袋。
+- External-evidence route 已改为 `external-evidence-seeded`，高置信关键残基不再只是加分项，而是会生成局部邻域口袋。
+- 页面检测到 `CD38`、`P28907` 或 ADP-ribosyl cyclase 语境时，可自动尝试 CD38 活性位点模板；只有结构中实际匹配到 W125、R127、E146、D155、W189、S193、T221、E226 等人 CD38 编号残基时才并入外部证据。
+- CD38 模板证据全部标记为 `requires_manual_review=True`，发布前必须复核物种、链 ID、PDB 作者编号和 UniProt/PDB offset。
+
+限制：
+
+- 如果 CD38 结构是突变体、非人源、重新编号 construct、缺失活性位点片段或 mmCIF author numbering 未被当前 PDB 文本保留，模板不会强行命中。
+- 当前仍不是 fpocket/P2Rank/DoGSiteScorer 的完整替代；推荐启用 P2Rank 或 pyKVFinder，并用 CD38 关键残基做 benchmark coverage 检查。
 
 ## External Evidence Integration
 
@@ -121,7 +140,7 @@ Current behavior:
 - Requires strong anchors such as exact mapped UniProt/M-CSA/literature residues or high-confidence structure-verified evidence.
 - Expands a local residue neighborhood around anchors.
 - Scores residues by external support, mapping confidence, mapping quality, anchor proximity, local structure score, contact density, ligand contact and hotspot overlap.
-- Emits `EvidencePocket-*` rows with `detection_route = precision-external-evidence`.
+- Emits `EvidencePocket-*` rows with `detection_route = precision-external-evidence-seeded`.
 - Participates in consensus merge alongside P2Rank, pyKVFinder, ligand and geometry routes.
 
 The route is controllable in `detect_auto_pocket_table()` and the Streamlit sidebar:
