@@ -1337,6 +1337,26 @@ MANUAL_KEY_RESIDUE_FOLLOWUP_COLUMN_LABELS = {
     "next_step": "下一步",
 }
 
+MANUAL_KEY_RESIDUE_FOLLOWUP_SUMMARY_COLUMNS = [
+    "total_tasks",
+    "closed_tasks",
+    "mapping_review_tasks",
+    "open_tasks",
+    "manual_evidence_hits",
+    "closure_status",
+    "recommended_next_step",
+]
+
+MANUAL_KEY_RESIDUE_FOLLOWUP_SUMMARY_COLUMN_LABELS = {
+    "total_tasks": "补证任务数",
+    "closed_tasks": "已补证任务",
+    "mapping_review_tasks": "链/编号待确认",
+    "open_tasks": "仍需补证",
+    "manual_evidence_hits": "人工证据命中数",
+    "closure_status": "闭环状态",
+    "recommended_next_step": "建议下一步",
+}
+
 
 def _localize_pocket_decision_text(value: object) -> object:
     if value is None:
@@ -1564,12 +1584,65 @@ def _build_manual_key_residue_followup_df(
     return pd.DataFrame(records, columns=MANUAL_KEY_RESIDUE_FOLLOWUP_COLUMNS)
 
 
+def _summarize_manual_key_residue_followup_df(followup_df: pd.DataFrame | None) -> pd.DataFrame:
+    if followup_df is None or getattr(followup_df, "empty", True):
+        return pd.DataFrame(columns=MANUAL_KEY_RESIDUE_FOLLOWUP_SUMMARY_COLUMNS)
+
+    table = followup_df.copy()
+    status_series = table.get("manual_evidence_status", pd.Series(["仍需补证"] * len(table), index=table.index))
+    status_text = status_series.fillna("").astype(str)
+    closed_mask = status_text.eq("已补人工证据")
+    mapping_review_mask = status_text.str.contains("需确认链/编号", na=False)
+    open_mask = ~(closed_mask | mapping_review_mask)
+    evidence_hits = (
+        pd.to_numeric(table.get("manual_evidence_count", pd.Series([0] * len(table), index=table.index)), errors="coerce")
+        .fillna(0)
+        .astype(int)
+    )
+    total_tasks = int(len(table))
+    closed_tasks = int(closed_mask.sum())
+    mapping_review_tasks = int(mapping_review_mask.sum())
+    open_tasks = int(open_mask.sum())
+
+    if total_tasks == 0:
+        closure_status = "无补证任务"
+        recommended_next_step = "暂无需要补证的候选口袋。"
+    elif open_tasks == 0 and mapping_review_tasks == 0:
+        closure_status = "补证闭环完成"
+        recommended_next_step = "重新运行自动口袋识别，并检查候选口袋是否已转为功能证据锚定。"
+    elif open_tasks == 0:
+        closure_status = "补证已覆盖但需复核映射"
+        recommended_next_step = "先确认链和编号映射，再重新运行自动口袋识别。"
+    elif closed_tasks or mapping_review_tasks:
+        closure_status = "部分补证"
+        recommended_next_step = "继续补齐未命中的口袋，并复核链/编号待确认的人工证据。"
+    else:
+        closure_status = "仍需补证"
+        recommended_next_step = "优先补充 UniProt、M-CSA、文献或人工关键残基。"
+
+    return pd.DataFrame(
+        [
+            {
+                "total_tasks": total_tasks,
+                "closed_tasks": closed_tasks,
+                "mapping_review_tasks": mapping_review_tasks,
+                "open_tasks": open_tasks,
+                "manual_evidence_hits": int(evidence_hits.sum()),
+                "closure_status": closure_status,
+                "recommended_next_step": recommended_next_step,
+            }
+        ],
+        columns=MANUAL_KEY_RESIDUE_FOLLOWUP_SUMMARY_COLUMNS,
+    )
+
+
 def _render_pocket_decision_panel(
     decision_df: pd.DataFrame,
     checklist_df: pd.DataFrame | None = None,
     triage_df: pd.DataFrame | None = None,
     manual_template_df: pd.DataFrame | None = None,
     manual_followup_df: pd.DataFrame | None = None,
+    manual_followup_summary_df: pd.DataFrame | None = None,
 ) -> None:
     st.subheader("活性位点决策面板")
     st.caption(
@@ -1673,6 +1746,26 @@ def _render_pocket_decision_panel(
         st.caption(
             "只列出缺少功能残基证据或仍主要依赖几何排名的候选口袋，并自动标记上传的人工残基是否已经命中该口袋。"
         )
+        if manual_followup_summary_df is None:
+            manual_followup_summary_df = _summarize_manual_key_residue_followup_df(manual_followup_df)
+        if not manual_followup_summary_df.empty:
+            summary_row = manual_followup_summary_df.iloc[0]
+            summary_cols = st.columns(4)
+            summary_cols[0].metric("补证任务数", int(summary_row.get("total_tasks") or 0))
+            summary_cols[1].metric("已补证任务", int(summary_row.get("closed_tasks") or 0))
+            summary_cols[2].metric("链/编号待确认", int(summary_row.get("mapping_review_tasks") or 0))
+            summary_cols[3].metric("仍需补证", int(summary_row.get("open_tasks") or 0))
+            st.caption(
+                f"补证闭环状态：{summary_row.get('closure_status') or '-'}；"
+                f"建议下一步：{summary_row.get('recommended_next_step') or '-'}"
+            )
+            st.download_button(
+                "导出人工关键残基补证闭环总览 CSV",
+                data=_to_csv_bytes(manual_followup_summary_df),
+                file_name="manual_key_residue_followup_summary.csv",
+                mime="text/csv",
+                key="download_manual_key_residue_followup_summary",
+            )
         st.dataframe(
             _localize_pocket_decision_df(manual_followup_df, MANUAL_KEY_RESIDUE_FOLLOWUP_COLUMN_LABELS),
             use_container_width=True,
@@ -3610,6 +3703,7 @@ manual_key_residue_followup_df = _build_manual_key_residue_followup_df(
     effective_pocket_df,
     manual_key_residue_df,
 )
+manual_key_residue_followup_summary_df = _summarize_manual_key_residue_followup_df(manual_key_residue_followup_df)
 ai_ranking_impact_df = build_ai_ranking_impact_summary(
     ai_evidence_df,
     rankable_ai_evidence_df,
@@ -5328,6 +5422,7 @@ _render_pocket_decision_panel(
     pocket_triage_df,
     manual_key_residue_template_df,
     manual_key_residue_followup_df,
+    manual_key_residue_followup_summary_df,
 )
 _render_evidence_context_panels()
 _render_consensus_rerank_review_panels()
@@ -5585,6 +5680,13 @@ with tab_export:
                 mime="text/csv",
             )
         if not manual_key_residue_followup_df.empty:
+            if not manual_key_residue_followup_summary_df.empty:
+                st.download_button(
+                    "导出人工关键残基补证闭环总览 CSV",
+                    data=_to_csv_bytes(manual_key_residue_followup_summary_df),
+                    file_name="manual_key_residue_followup_summary.csv",
+                    mime="text/csv",
+                )
             st.download_button(
                 "导出人工关键残基补证任务 CSV",
                 data=_to_csv_bytes(manual_key_residue_followup_df),
