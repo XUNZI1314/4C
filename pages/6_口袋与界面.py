@@ -1308,8 +1308,12 @@ MANUAL_KEY_RESIDUE_FOLLOWUP_COLUMNS = [
     "risk_flags",
     "blocking_checks",
     "review_checks",
+    "manual_evidence_status",
+    "manual_evidence_count",
+    "manual_evidence_residues",
     "suggested_sources",
     "manual_template_columns",
+    "closure_action",
     "recommended_action",
     "next_step",
 ]
@@ -1323,8 +1327,12 @@ MANUAL_KEY_RESIDUE_FOLLOWUP_COLUMN_LABELS = {
     "risk_flags": "风险标签",
     "blocking_checks": "阻断项",
     "review_checks": "需复核项",
+    "manual_evidence_status": "人工证据状态",
+    "manual_evidence_count": "人工证据命中数",
+    "manual_evidence_residues": "人工证据残基",
     "suggested_sources": "建议补证来源",
     "manual_template_columns": "人工证据模板列",
+    "closure_action": "闭环动作",
     "recommended_action": "建议动作",
     "next_step": "下一步",
 }
@@ -1396,6 +1404,74 @@ def _pocket_row_text(row: pd.Series | None, column: str, default: str = "-") -> 
     return text if text else default
 
 
+def _residue_key_from_row(row: pd.Series) -> tuple[str, int] | None:
+    if "resid" not in row.index:
+        return None
+    try:
+        resid = int(float(row.get("resid")))
+    except (TypeError, ValueError):
+        return None
+    chain = str(row.get("chain") or "").strip()
+    return chain, resid
+
+
+def _format_residue_key(chain: str, resid: int) -> str:
+    return f"{chain}:{int(resid)}" if str(chain or "").strip() else str(int(resid))
+
+
+def _manual_evidence_overlap_for_pocket(
+    pocket_id: str,
+    pocket_residue_df: pd.DataFrame | None,
+    manual_evidence_df: pd.DataFrame | None,
+) -> tuple[str, int, str]:
+    if (
+        pocket_residue_df is None
+        or getattr(pocket_residue_df, "empty", True)
+        or manual_evidence_df is None
+        or getattr(manual_evidence_df, "empty", True)
+        or "pocket_id" not in pocket_residue_df.columns
+    ):
+        return "仍需补证", 0, "none"
+
+    pocket_rows = pocket_residue_df[pocket_residue_df["pocket_id"].astype(str) == str(pocket_id)]
+    if pocket_rows.empty:
+        return "仍需补证", 0, "none"
+
+    pocket_keys = {
+        key
+        for _, row in pocket_rows.iterrows()
+        for key in [_residue_key_from_row(row)]
+        if key is not None
+    }
+    manual_keys = {
+        key
+        for _, row in manual_evidence_df.iterrows()
+        for key in [_residue_key_from_row(row)]
+        if key is not None
+    }
+    if not pocket_keys or not manual_keys:
+        return "仍需补证", 0, "none"
+
+    exact_matches = pocket_keys & manual_keys
+    if exact_matches:
+        residues = ", ".join(
+            _format_residue_key(chain, resid)
+            for chain, resid in sorted(exact_matches, key=lambda item: (item[0], item[1]))
+        )
+        return "已补人工证据", len(exact_matches), residues
+
+    pocket_resids = {resid for _chain, resid in pocket_keys}
+    residue_only_matches = {key for key in manual_keys if key[1] in pocket_resids}
+    if residue_only_matches:
+        residues = ", ".join(
+            _format_residue_key(chain, resid)
+            for chain, resid in sorted(residue_only_matches, key=lambda item: (item[0], item[1]))
+        )
+        return "已补人工证据（需确认链/编号）", len(residue_only_matches), residues
+
+    return "仍需补证", 0, "none"
+
+
 def _needs_manual_key_residue_evidence(decision_df: pd.DataFrame | None, triage_df: pd.DataFrame | None) -> bool:
     text_parts: list[str] = []
     for table, columns in [
@@ -1413,6 +1489,8 @@ def _needs_manual_key_residue_evidence(decision_df: pd.DataFrame | None, triage_
 def _build_manual_key_residue_followup_df(
     decision_df: pd.DataFrame | None,
     triage_df: pd.DataFrame | None,
+    pocket_residue_df: pd.DataFrame | None = None,
+    manual_evidence_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     decision_rows: dict[str, pd.Series] = {}
     triage_rows: dict[str, pd.Series] = {}
@@ -1448,6 +1526,20 @@ def _build_manual_key_residue_followup_df(
         ]
         if not _has_manual_key_residue_gap_text(gap_text):
             continue
+        manual_status, manual_count, manual_residues = _manual_evidence_overlap_for_pocket(
+            pocket_id,
+            pocket_residue_df,
+            manual_evidence_df,
+        )
+        closure_action = (
+            "重新运行自动口袋识别，并检查该口袋是否转为功能证据锚定。"
+            if manual_status == "已补人工证据"
+            else (
+                "确认链和编号映射后重新运行自动口袋识别。"
+                if manual_status.startswith("已补人工证据")
+                else "补充 UniProt、M-CSA、文献或人工关键残基后重新运行自动口袋识别。"
+            )
+        )
         records.append(
             {
                 "pocket_id": pocket_id,
@@ -1458,8 +1550,12 @@ def _build_manual_key_residue_followup_df(
                 "risk_flags": _pocket_row_text(decision_row, "risk_flags"),
                 "blocking_checks": _pocket_row_text(triage_row, "blocking_checks"),
                 "review_checks": _pocket_row_text(triage_row, "review_checks"),
+                "manual_evidence_status": manual_status,
+                "manual_evidence_count": manual_count,
+                "manual_evidence_residues": manual_residues,
                 "suggested_sources": "UniProt 活性/结合位点；M-CSA 催化残基；PMID/DOI 文献；人工关键残基 CSV",
                 "manual_template_columns": "chain,resid,resname,evidence_type,evidence_source,evidence_note,pmid,doi,evidence_snippet",
+                "closure_action": closure_action,
                 "recommended_action": _pocket_row_text(decision_row, "recommended_action"),
                 "next_step": _pocket_row_text(decision_row, "next_step", _pocket_row_text(triage_row, "next_data_to_add")),
             }
@@ -1574,7 +1670,9 @@ def _render_pocket_decision_panel(
 
     if not manual_followup_df.empty:
         st.markdown("##### 人工关键残基补证任务")
-        st.caption("只列出缺少功能残基证据或仍主要依赖几何排名的候选口袋，便于逐项补 UniProt、M-CSA、文献或人工残基证据。")
+        st.caption(
+            "只列出缺少功能残基证据或仍主要依赖几何排名的候选口袋，并自动标记上传的人工残基是否已经命中该口袋。"
+        )
         st.dataframe(
             _localize_pocket_decision_df(manual_followup_df, MANUAL_KEY_RESIDUE_FOLLOWUP_COLUMN_LABELS),
             use_container_width=True,
@@ -3506,7 +3604,12 @@ top_consensus_rerank_release_closure_summary = (
 )
 pocket_reliability_df = build_pocket_reliability_checklist(pocket_decision_df, max_pockets=3)
 pocket_triage_df = build_pocket_precision_triage(pocket_decision_df, pocket_reliability_df, max_pockets=3)
-manual_key_residue_followup_df = _build_manual_key_residue_followup_df(pocket_decision_df, pocket_triage_df)
+manual_key_residue_followup_df = _build_manual_key_residue_followup_df(
+    pocket_decision_df,
+    pocket_triage_df,
+    effective_pocket_df,
+    manual_key_residue_df,
+)
 ai_ranking_impact_df = build_ai_ranking_impact_summary(
     ai_evidence_df,
     rankable_ai_evidence_df,
