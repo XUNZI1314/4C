@@ -1299,6 +1299,36 @@ POCKET_TRIAGE_COLUMN_LABELS = {
     "next_data_to_add": "建议补充数据",
 }
 
+MANUAL_KEY_RESIDUE_FOLLOWUP_COLUMNS = [
+    "pocket_id",
+    "decision_rank",
+    "triage_priority",
+    "precision_tier",
+    "evidence_quality_label",
+    "risk_flags",
+    "blocking_checks",
+    "review_checks",
+    "suggested_sources",
+    "manual_template_columns",
+    "recommended_action",
+    "next_step",
+]
+
+MANUAL_KEY_RESIDUE_FOLLOWUP_COLUMN_LABELS = {
+    "pocket_id": "口袋 ID",
+    "decision_rank": "决策排名",
+    "triage_priority": "补证优先级",
+    "precision_tier": "精度分层",
+    "evidence_quality_label": "证据质量",
+    "risk_flags": "风险标签",
+    "blocking_checks": "阻断项",
+    "review_checks": "需复核项",
+    "suggested_sources": "建议补证来源",
+    "manual_template_columns": "人工证据模板列",
+    "recommended_action": "建议动作",
+    "next_step": "下一步",
+}
+
 
 def _localize_pocket_decision_text(value: object) -> object:
     if value is None:
@@ -1336,6 +1366,36 @@ def _localize_pocket_decision_df(table: pd.DataFrame, column_labels: dict[str, s
     return display.rename(columns=column_labels)
 
 
+MANUAL_KEY_RESIDUE_GAP_MARKERS = [
+    "evidence-gap",
+    "functional-evidence-gap",
+    "needs-functional-evidence",
+    "geometry-only",
+    "no-external-evidence",
+    "manual key residues",
+    "manual-key-residue",
+    "add uniprot",
+    "fetch or upload external residue evidence",
+]
+
+
+def _has_manual_key_residue_gap_text(text_parts: list[str]) -> bool:
+    combined = " ".join(str(part or "") for part in text_parts).lower()
+    return any(marker in combined for marker in MANUAL_KEY_RESIDUE_GAP_MARKERS)
+
+
+def _pocket_row_text(row: pd.Series | None, column: str, default: str = "-") -> str:
+    if row is None or column not in row.index:
+        return default
+    value = row.get(column)
+    if value is None:
+        return default
+    if pd.api.types.is_scalar(value) and pd.isna(value):
+        return default
+    text = str(value).strip()
+    return text if text else default
+
+
 def _needs_manual_key_residue_evidence(decision_df: pd.DataFrame | None, triage_df: pd.DataFrame | None) -> bool:
     text_parts: list[str] = []
     for table, columns in [
@@ -1347,21 +1407,65 @@ def _needs_manual_key_residue_evidence(decision_df: pd.DataFrame | None, triage_
         for column in columns:
             if column in table.columns:
                 text_parts.extend(table[column].dropna().astype(str).tolist())
-    combined = " ".join(text_parts).lower()
-    return any(
-        marker in combined
-        for marker in [
-            "evidence-gap",
-            "functional-evidence-gap",
-            "needs-functional-evidence",
-            "geometry-only",
-            "no-external-evidence",
-            "manual key residues",
-            "manual-key-residue",
-            "add uniprot",
-            "fetch or upload external residue evidence",
+    return _has_manual_key_residue_gap_text(text_parts)
+
+
+def _build_manual_key_residue_followup_df(
+    decision_df: pd.DataFrame | None,
+    triage_df: pd.DataFrame | None,
+) -> pd.DataFrame:
+    decision_rows: dict[str, pd.Series] = {}
+    triage_rows: dict[str, pd.Series] = {}
+    pocket_order: list[str] = []
+
+    for table, target in [(decision_df, decision_rows), (triage_df, triage_rows)]:
+        if table is None or getattr(table, "empty", True) or "pocket_id" not in table.columns:
+            continue
+        for _, row in table.iterrows():
+            pocket_id = _pocket_row_text(row, "pocket_id", "")
+            if not pocket_id:
+                continue
+            target[pocket_id] = row
+            if pocket_id not in pocket_order:
+                pocket_order.append(pocket_id)
+
+    records = []
+    for pocket_id in pocket_order:
+        decision_row = decision_rows.get(pocket_id)
+        triage_row = triage_rows.get(pocket_id)
+        gap_text = [
+            _pocket_row_text(decision_row, "decision_label", ""),
+            _pocket_row_text(decision_row, "evidence_quality_label", ""),
+            _pocket_row_text(decision_row, "recommended_action", ""),
+            _pocket_row_text(decision_row, "next_step", ""),
+            _pocket_row_text(decision_row, "risk_flags", ""),
+            _pocket_row_text(triage_row, "precision_tier", ""),
+            _pocket_row_text(triage_row, "triage_action", ""),
+            _pocket_row_text(triage_row, "triage_reason", ""),
+            _pocket_row_text(triage_row, "blocking_checks", ""),
+            _pocket_row_text(triage_row, "review_checks", ""),
+            _pocket_row_text(triage_row, "next_data_to_add", ""),
         ]
-    )
+        if not _has_manual_key_residue_gap_text(gap_text):
+            continue
+        records.append(
+            {
+                "pocket_id": pocket_id,
+                "decision_rank": _pocket_row_text(decision_row, "decision_rank", _pocket_row_text(triage_row, "decision_rank")),
+                "triage_priority": _pocket_row_text(triage_row, "triage_priority"),
+                "precision_tier": _pocket_row_text(triage_row, "precision_tier"),
+                "evidence_quality_label": _pocket_row_text(decision_row, "evidence_quality_label"),
+                "risk_flags": _pocket_row_text(decision_row, "risk_flags"),
+                "blocking_checks": _pocket_row_text(triage_row, "blocking_checks"),
+                "review_checks": _pocket_row_text(triage_row, "review_checks"),
+                "suggested_sources": "UniProt 活性/结合位点；M-CSA 催化残基；PMID/DOI 文献；人工关键残基 CSV",
+                "manual_template_columns": "chain,resid,resname,evidence_type,evidence_source,evidence_note,pmid,doi,evidence_snippet",
+                "recommended_action": _pocket_row_text(decision_row, "recommended_action"),
+                "next_step": _pocket_row_text(decision_row, "next_step", _pocket_row_text(triage_row, "next_data_to_add")),
+            }
+        )
+
+    return pd.DataFrame(records, columns=MANUAL_KEY_RESIDUE_FOLLOWUP_COLUMNS)
 
 
 def _render_pocket_decision_panel(
@@ -1369,6 +1473,7 @@ def _render_pocket_decision_panel(
     checklist_df: pd.DataFrame | None = None,
     triage_df: pd.DataFrame | None = None,
     manual_template_df: pd.DataFrame | None = None,
+    manual_followup_df: pd.DataFrame | None = None,
 ) -> None:
     st.subheader("活性位点决策面板")
     st.caption(
@@ -1446,7 +1551,10 @@ def _render_pocket_decision_panel(
             hide_index=True,
         )
 
-    if _needs_manual_key_residue_evidence(decision_df, triage_df):
+    needs_manual_key_residue_evidence = _needs_manual_key_residue_evidence(decision_df, triage_df)
+    if manual_followup_df is None:
+        manual_followup_df = _build_manual_key_residue_followup_df(decision_df, triage_df)
+    if needs_manual_key_residue_evidence:
         st.warning(
             "当前候选口袋仍缺少可审计功能残基证据。请先补充 UniProt、M-CSA、文献或人工关键残基，"
             "再把它作为活性位点。"
@@ -1463,6 +1571,22 @@ def _render_pocket_decision_panel(
                 mime="text/csv",
                 key="decision_manual_key_residue_template",
             )
+
+    if not manual_followup_df.empty:
+        st.markdown("##### 人工关键残基补证任务")
+        st.caption("只列出缺少功能残基证据或仍主要依赖几何排名的候选口袋，便于逐项补 UniProt、M-CSA、文献或人工残基证据。")
+        st.dataframe(
+            _localize_pocket_decision_df(manual_followup_df, MANUAL_KEY_RESIDUE_FOLLOWUP_COLUMN_LABELS),
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.download_button(
+            "导出人工关键残基补证任务 CSV",
+            data=_to_csv_bytes(manual_followup_df),
+            file_name="manual_key_residue_followup_tasks.csv",
+            mime="text/csv",
+            key="download_manual_key_residue_followup_tasks",
+        )
 
     with st.expander("决策审计明细", expanded=False):
         st.dataframe(
@@ -3382,6 +3506,7 @@ top_consensus_rerank_release_closure_summary = (
 )
 pocket_reliability_df = build_pocket_reliability_checklist(pocket_decision_df, max_pockets=3)
 pocket_triage_df = build_pocket_precision_triage(pocket_decision_df, pocket_reliability_df, max_pockets=3)
+manual_key_residue_followup_df = _build_manual_key_residue_followup_df(pocket_decision_df, pocket_triage_df)
 ai_ranking_impact_df = build_ai_ranking_impact_summary(
     ai_evidence_df,
     rankable_ai_evidence_df,
@@ -5099,6 +5224,7 @@ _render_pocket_decision_panel(
     pocket_reliability_df,
     pocket_triage_df,
     manual_key_residue_template_df,
+    manual_key_residue_followup_df,
 )
 _render_evidence_context_panels()
 _render_consensus_rerank_review_panels()
@@ -5353,6 +5479,13 @@ with tab_export:
                 "导出精度处理建议 CSV",
                 data=_to_csv_bytes(pocket_triage_df),
                 file_name="pocket_precision_triage.csv",
+                mime="text/csv",
+            )
+        if not manual_key_residue_followup_df.empty:
+            st.download_button(
+                "导出人工关键残基补证任务 CSV",
+                data=_to_csv_bytes(manual_key_residue_followup_df),
+                file_name="manual_key_residue_followup_tasks.csv",
                 mime="text/csv",
             )
         if not manual_key_residue_df.empty:

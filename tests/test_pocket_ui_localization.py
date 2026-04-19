@@ -113,6 +113,12 @@ def test_pocket_page_keeps_display_localization_hooks_enabled():
         "当前候选口袋仍缺少可审计功能残基证据",
         "下载人工关键残基补证模板 CSV",
         "decision_manual_key_residue_template",
+        "def _build_manual_key_residue_followup_df",
+        "人工关键残基补证任务",
+        "导出人工关键残基补证任务 CSV",
+        "manual_key_residue_followup_df",
+        "manual_key_residue_followup_tasks.csv",
+        "download_manual_key_residue_followup_tasks",
     ]
 
     for snippet in required_snippets:
