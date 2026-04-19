@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from io import StringIO
 import json
 import re
 from typing import Dict, List, Optional, Tuple
@@ -84,9 +85,93 @@ EVIDENCE_COLUMN_DEFAULTS: Dict[str, object] = {
     "requires_manual_review": False,
 }
 
+MANUAL_KEY_RESIDUE_TEMPLATE_COLUMNS = [
+    "chain",
+    "resid",
+    "resname",
+    "evidence_source",
+    "evidence_type",
+    "evidence_score",
+    "evidence_note",
+    "uniprot_resid",
+    "mapping_level",
+    "mapping_confidence",
+    "pmid",
+    "doi",
+    "evidence_snippet",
+    "requires_manual_review",
+]
+
+MANUAL_KEY_RESIDUE_COLUMN_ALIASES = {
+    "chain": "chain",
+    "chain_id": "chain",
+    "auth_asym_id": "chain",
+    "resid": "resid",
+    "residue_id": "resid",
+    "residue_number": "resid",
+    "position": "resid",
+    "pdb_resid": "resid",
+    "resname": "resname",
+    "residue_name": "resname",
+    "aa": "resname",
+    "source": "evidence_source",
+    "reference_source": "evidence_source",
+    "evidence_source": "evidence_source",
+    "type": "evidence_type",
+    "site_type": "evidence_type",
+    "reference_type": "evidence_type",
+    "evidence_type": "evidence_type",
+    "score": "evidence_score",
+    "confidence": "evidence_score",
+    "evidence_score": "evidence_score",
+    "note": "evidence_note",
+    "notes": "evidence_note",
+    "reference_note": "evidence_note",
+    "evidence_note": "evidence_note",
+    "uniprot_position": "uniprot_resid",
+    "uniprot_resid": "uniprot_resid",
+    "mapping_level": "mapping_level",
+    "mapping_confidence": "mapping_confidence",
+    "mapping_method": "mapping_method",
+    "pmid": "pmid",
+    "pmcid": "pmcid",
+    "doi": "doi",
+    "article_title": "article_title",
+    "snippet": "evidence_snippet",
+    "evidence_snippet": "evidence_snippet",
+    "requires_manual_review": "requires_manual_review",
+    "manual_review": "requires_manual_review",
+}
+
 
 def _empty_evidence_df() -> pd.DataFrame:
     return pd.DataFrame(columns=EVIDENCE_COLUMNS)
+
+
+def build_manual_key_residue_template() -> pd.DataFrame:
+    """Return a CSV template for manually curated enzyme key residues."""
+
+    return pd.DataFrame(
+        [
+            {
+                "chain": "A",
+                "resid": 195,
+                "resname": "SER",
+                "evidence_source": "manual",
+                "evidence_type": "Catalytic residue",
+                "evidence_score": 0.95,
+                "evidence_note": "Example catalytic residue; replace with your curated note.",
+                "uniprot_resid": 195,
+                "mapping_level": "exact",
+                "mapping_confidence": 0.95,
+                "pmid": "",
+                "doi": "",
+                "evidence_snippet": "Paste the sentence or curator note supporting this residue.",
+                "requires_manual_review": False,
+            }
+        ],
+        columns=MANUAL_KEY_RESIDUE_TEMPLATE_COLUMNS,
+    )
 
 
 def _coerce_bool(value: object) -> bool:
@@ -147,6 +232,104 @@ def _as_float(value: object, default: float = 0.0) -> float:
         return float(text)
     except Exception:
         return float(default)
+
+
+def _read_loose_residue_table(text: str) -> pd.DataFrame:
+    payload = str(text or "").strip()
+    if not payload:
+        return pd.DataFrame()
+    try:
+        return pd.read_csv(StringIO(payload), sep=None, engine="python", comment="#")
+    except Exception:
+        return pd.read_csv(StringIO(payload), comment="#")
+
+
+def parse_manual_key_residue_table(
+    text: str | bytes | None,
+    *,
+    source_hint: str = "manual",
+) -> tuple[pd.DataFrame, dict[str, str]]:
+    """Parse manually supplied catalytic/key residues into external evidence rows.
+
+    The parser intentionally accepts both the exported template and common
+    minimal tables such as `chain,resid,evidence_note`.
+    """
+
+    raw_text = text.decode("utf-8", errors="ignore") if isinstance(text, bytes) else str(text or "")
+    if not raw_text.strip():
+        return _empty_evidence_df(), {"status": "empty", "manual_key_residue_rows": "0"}
+
+    raw = _read_loose_residue_table(raw_text)
+    if raw.empty:
+        return _empty_evidence_df(), {"status": "empty", "manual_key_residue_rows": "0"}
+
+    normalized = raw.copy()
+    normalized.columns = [
+        MANUAL_KEY_RESIDUE_COLUMN_ALIASES.get(str(column).strip().lower().replace(" ", "_"), str(column).strip())
+        for column in normalized.columns
+    ]
+    if "resid" not in normalized.columns:
+        return _empty_evidence_df(), {"status": "missing-resid", "manual_key_residue_rows": "0"}
+
+    normalized["resid"] = pd.to_numeric(normalized["resid"], errors="coerce")
+    normalized = normalized[normalized["resid"].notna()].copy()
+    if normalized.empty:
+        return _empty_evidence_df(), {"status": "empty", "manual_key_residue_rows": "0"}
+
+    rows: list[dict[str, object]] = []
+    cleaned_source_hint = str(source_hint or "manual").strip() or "manual"
+    for row in normalized.to_dict(orient="records"):
+        resid = _as_int(row.get("resid"))
+        if resid is None:
+            continue
+        mapping_level = str(row.get("mapping_level") or "exact").strip().lower()
+        if mapping_level not in {"exact", "weak"}:
+            mapping_level = "exact"
+        mapping_confidence_default = 0.95 if mapping_level == "exact" else 0.35
+        evidence_score = _as_float(row.get("evidence_score"), 0.95)
+        uniprot_resid = _as_int(row.get("uniprot_resid"))
+        if uniprot_resid is None:
+            uniprot_resid = int(resid)
+        evidence_note = str(row.get("evidence_note") or "").strip()
+        resname = str(row.get("resname") or "").strip()
+        if resname and "resname=" not in evidence_note:
+            evidence_note = f"{evidence_note} resname={resname}".strip()
+        rows.append(
+            {
+                "chain": str(row.get("chain") or "").strip(),
+                "resid": int(resid),
+                "evidence_source": str(row.get("evidence_source") or cleaned_source_hint).strip() or cleaned_source_hint,
+                "evidence_type": str(row.get("evidence_type") or "Manual key residue").strip() or "Manual key residue",
+                "evidence_score": max(0.0, min(1.0, evidence_score)),
+                "evidence_note": evidence_note,
+                "uniprot_resid": int(uniprot_resid),
+                "mapping_level": mapping_level,
+                "mapping_confidence": max(0.0, min(1.0, _as_float(row.get("mapping_confidence"), mapping_confidence_default))),
+                "mapping_method": str(row.get("mapping_method") or "manual-structure-numbering").strip(),
+                "article_title": str(row.get("article_title") or "").strip(),
+                "pmid": str(row.get("pmid") or "").strip(),
+                "pmcid": str(row.get("pmcid") or "").strip(),
+                "doi": str(row.get("doi") or "").strip(),
+                "evidence_snippet": str(row.get("evidence_snippet") or "").strip(),
+                "sentence_index": str(row.get("sentence_index") or "").strip(),
+                "extraction_pattern": str(row.get("extraction_pattern") or "manual").strip(),
+                "requires_manual_review": _coerce_bool(row.get("requires_manual_review")),
+            }
+        )
+
+    evidence_df = ensure_evidence_columns(pd.DataFrame(rows))
+    sources = ",".join(
+        dict.fromkeys(
+            source
+            for source in evidence_df["evidence_source"].astype(str).str.strip().tolist()
+            if source
+        )
+    )
+    return evidence_df, {
+        "status": "ok" if not evidence_df.empty else "empty",
+        "manual_key_residue_rows": str(len(evidence_df)),
+        "sources": sources or cleaned_source_hint,
+    }
 
 
 def _first_text(payload: dict, *keys: str) -> str:

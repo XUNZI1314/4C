@@ -114,9 +114,11 @@ from protein_visualizer.services.comparison import compare_pocket_ranking_summar
 from protein_visualizer.services.conservation import parse_conservation_evidence_table
 from protein_visualizer.services.energy import prepare_energy_table
 from protein_visualizer.services.external_sites import (
+    build_manual_key_residue_template,
     extract_pdb_id_from_text,
     fetch_combined_functional_sites_for_structure,
     merge_external_evidence_tables,
+    parse_manual_key_residue_table,
 )
 from protein_visualizer.services.explainer import explain_analysis
 from protein_visualizer.services.hotspot import identify_hotspots
@@ -999,6 +1001,7 @@ def _localize_json_for_display(value):
 
 benchmark_reference_template_df = build_pocket_benchmark_reference_template()
 benchmark_reference_template_markdown = build_pocket_benchmark_reference_template_markdown()
+manual_key_residue_template_df = build_manual_key_residue_template()
 
 
 def _external_evidence_counts(table: pd.DataFrame) -> dict[str, int]:
@@ -1651,6 +1654,21 @@ with st.sidebar:
             type=["txt", "md", "xml"],
             accept_multiple_files=False,
         )
+        uploaded_manual_key_residues = st.file_uploader(
+            "上传人工关键残基 CSV/TSV（可选）",
+            type=["csv", "tsv", "txt"],
+            accept_multiple_files=False,
+        )
+        st.caption(
+            "人工关键残基列建议：chain,resid,resname,evidence_type,evidence_source,evidence_note,pmid,doi,evidence_snippet。"
+            "这些行会并入外部位点证据，参与自动口袋识别、证据路径和最终重排。"
+        )
+        st.download_button(
+            "下载人工关键残基模板 CSV",
+            data=_to_csv_bytes(manual_key_residue_template_df),
+            file_name="manual_key_residue_evidence_template.csv",
+            mime="text/csv",
+        )
         literature_assume_structure_numbering = st.checkbox(
             "假设文献残基编号与上传 PDB 链编号一致",
             value=False,
@@ -1868,6 +1886,8 @@ hotspot_residues = _residue_pairs(hotspot_df)
 
 external_site_df = pd.DataFrame()
 external_site_meta: dict = {}
+manual_key_residue_df = pd.DataFrame()
+manual_key_residue_meta: dict = {}
 literature_site_df = pd.DataFrame()
 literature_site_meta: dict = {}
 ai_evidence_df = pd.DataFrame()
@@ -2014,6 +2034,37 @@ if (enable_uniprot_evidence and str(uniprot_accession or "").strip()) or (
             bool(enable_uniprot_evidence),
             bool(enable_mcsa_evidence),
         )
+manual_key_residue_text = _read_uploaded_text(uploaded_manual_key_residues) if uploaded_manual_key_residues is not None else ""
+if manual_key_residue_text.strip():
+    try:
+        manual_key_residue_df, manual_key_residue_meta = parse_manual_key_residue_table(
+            manual_key_residue_text,
+            source_hint="manual",
+        )
+    except Exception as exc:
+        st.warning(f"人工关键残基解析失败：{exc}")
+        manual_key_residue_df = pd.DataFrame()
+        manual_key_residue_meta = {"status": "parse-error", "error": str(exc)}
+    if not manual_key_residue_df.empty:
+        external_site_df = merge_external_evidence_tables(external_site_df, manual_key_residue_df)
+        counts = _external_evidence_counts(external_site_df)
+        source_values = []
+        if str(external_site_meta.get("sources") or "").strip():
+            source_values.extend(str(external_site_meta.get("sources")).split(","))
+        source_values.extend(str(manual_key_residue_meta.get("sources") or "manual").split(","))
+        external_site_meta = {
+            **external_site_meta,
+            "status": "ok",
+            "sources": ",".join(dict.fromkeys(source.strip() for source in source_values if source.strip())),
+            "evidence_rows": str(counts["rows"]),
+            "exact_rows": str(counts["exact"]),
+            "weak_rows": str(counts["weak"]),
+            "manual_key_residue_rows": str(len(manual_key_residue_df)),
+            "manual_key_residue": manual_key_residue_meta,
+        }
+        st.success(f"人工关键残基：{len(manual_key_residue_df)} 条已并入外部位点证据。")
+    elif str(manual_key_residue_meta.get("status") or "") != "empty":
+        st.warning("人工关键残基表未产生可用残基行，请至少提供 resid 或 residue_number 列。")
 literature_manual_text = _read_uploaded_text(uploaded_literature) if uploaded_literature is not None else ""
 if bool(enable_literature_evidence) or literature_manual_text.strip():
     with st.spinner("正在加载文献残基证据..."):
@@ -3385,6 +3436,8 @@ try:
             "top_joint_recommendation_label": str(top_joint_candidate.get("recommendation_label")) if top_joint_candidate is not None and pd.notna(top_joint_candidate.get("recommendation_label")) else None,
             "top_joint_recommendation_score": float(top_joint_candidate.get("recommendation_score")) if top_joint_candidate is not None and pd.notna(top_joint_candidate.get("recommendation_score")) else None,
             "top_joint_reason": str(top_joint_candidate.get("recommendation_reason")) if top_joint_candidate is not None and pd.notna(top_joint_candidate.get("recommendation_reason")) else None,
+            "manual_key_residue_rows": int(len(manual_key_residue_df)),
+            "manual_key_residue_status": str(manual_key_residue_meta.get("status") or ""),
             "literature_site_rows": int(len(literature_site_df)),
             "literature_status": str(literature_site_meta.get("status") or ""),
             "literature_query": str(literature_site_meta.get("query") or ""),
@@ -3696,6 +3749,8 @@ snapshot = build_analysis_snapshot(
         "effective_pocket_source": effective_pocket_mode,
         "effective_annotation_source": effective_annotation_mode,
         "external_site_rows": int(len(external_site_df)),
+        "manual_key_residue_rows": int(len(manual_key_residue_df)),
+        "manual_key_residue_metadata": manual_key_residue_meta,
         "external_site_accession": str(external_site_meta.get("accession") or ""),
         "external_site_pdb_id": str(external_site_meta.get("pdb_id") or structure_pdb_id),
         "external_mapping_status": str(external_site_meta.get("mapping_status") or ""),

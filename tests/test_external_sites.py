@@ -50,6 +50,34 @@ def test_fetch_uniprot_functional_sites_returns_empty_when_unavailable(monkeypat
     assert meta.get("status") == "unavailable"
 
 
+def test_manual_key_residue_template_is_parseable_external_evidence():
+    template = external_sites.build_manual_key_residue_template()
+
+    evidence_df, meta = external_sites.parse_manual_key_residue_table(template.to_csv(index=False))
+
+    assert not evidence_df.empty
+    assert set(external_sites.EVIDENCE_COLUMNS).issubset(evidence_df.columns)
+    assert evidence_df.iloc[0]["evidence_source"] == "manual"
+    assert evidence_df.iloc[0]["evidence_type"] == "Catalytic residue"
+    assert evidence_df.iloc[0]["mapping_level"] == "exact"
+    assert float(evidence_df.iloc[0]["mapping_confidence"]) >= 0.9
+    assert meta["status"] == "ok"
+
+
+def test_parse_manual_key_residue_table_accepts_minimal_alias_columns():
+    text = "chain,residue_number,reference_type,reference_source,reference_note,pmid\nA,57,Catalytic residue,PMID,His57 catalytic triad,12345\n"
+
+    evidence_df, meta = external_sites.parse_manual_key_residue_table(text)
+
+    assert len(evidence_df) == 1
+    assert int(evidence_df.iloc[0]["resid"]) == 57
+    assert evidence_df.iloc[0]["evidence_source"] == "PMID"
+    assert evidence_df.iloc[0]["evidence_type"] == "Catalytic residue"
+    assert "His57 catalytic triad" in evidence_df.iloc[0]["evidence_note"]
+    assert evidence_df.iloc[0]["pmid"] == "12345"
+    assert meta["manual_key_residue_rows"] == "1"
+
+
 def test_extract_pdb_id_from_text_parses_header_code():
     pdb_text = """HEADER    TEST PDB                                  01-JAN-00   1ABC\nATOM      1  N   ALA A   1      11.111  12.222  13.333  1.00 10.00           N\n"""
 
