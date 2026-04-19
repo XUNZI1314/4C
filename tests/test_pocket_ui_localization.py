@@ -109,6 +109,10 @@ def test_pocket_page_keeps_display_localization_hooks_enabled():
         "parse_manual_key_residue_table",
         "人工关键残基：",
         '"导出人工关键残基证据 CSV"',
+        "def _needs_manual_key_residue_evidence",
+        "当前候选口袋仍缺少可审计功能残基证据",
+        "下载人工关键残基补证模板 CSV",
+        "decision_manual_key_residue_template",
     ]
 
     for snippet in required_snippets:

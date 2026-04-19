@@ -1336,10 +1336,39 @@ def _localize_pocket_decision_df(table: pd.DataFrame, column_labels: dict[str, s
     return display.rename(columns=column_labels)
 
 
+def _needs_manual_key_residue_evidence(decision_df: pd.DataFrame | None, triage_df: pd.DataFrame | None) -> bool:
+    text_parts: list[str] = []
+    for table, columns in [
+        (decision_df, ["decision_label", "evidence_quality_label", "recommended_action", "next_step", "risk_flags"]),
+        (triage_df, ["precision_tier", "triage_action", "triage_reason", "blocking_checks", "review_checks"]),
+    ]:
+        if table is None or getattr(table, "empty", True):
+            continue
+        for column in columns:
+            if column in table.columns:
+                text_parts.extend(table[column].dropna().astype(str).tolist())
+    combined = " ".join(text_parts).lower()
+    return any(
+        marker in combined
+        for marker in [
+            "evidence-gap",
+            "functional-evidence-gap",
+            "needs-functional-evidence",
+            "geometry-only",
+            "no-external-evidence",
+            "manual key residues",
+            "manual-key-residue",
+            "add uniprot",
+            "fetch or upload external residue evidence",
+        ]
+    )
+
+
 def _render_pocket_decision_panel(
     decision_df: pd.DataFrame,
     checklist_df: pd.DataFrame | None = None,
     triage_df: pd.DataFrame | None = None,
+    manual_template_df: pd.DataFrame | None = None,
 ) -> None:
     st.subheader("活性位点决策面板")
     st.caption(
@@ -1416,6 +1445,24 @@ def _render_pocket_decision_panel(
             use_container_width=True,
             hide_index=True,
         )
+
+    if _needs_manual_key_residue_evidence(decision_df, triage_df):
+        st.warning(
+            "当前候选口袋仍缺少可审计功能残基证据。请先补充 UniProt、M-CSA、文献或人工关键残基，"
+            "再把它作为活性位点。"
+        )
+        st.caption(
+            "推荐列：chain、resid、resname、evidence_type、evidence_source、evidence_note、pmid、doi、"
+            "evidence_snippet。上传后会并入外部位点证据，参与自动口袋识别、证据路径和最终重排。"
+        )
+        if manual_template_df is not None and not getattr(manual_template_df, "empty", True):
+            st.download_button(
+                "下载人工关键残基补证模板 CSV",
+                data=_to_csv_bytes(manual_template_df),
+                file_name="manual_key_residue_evidence_template.csv",
+                mime="text/csv",
+                key="decision_manual_key_residue_template",
+            )
 
     with st.expander("决策审计明细", expanded=False):
         st.dataframe(
@@ -5047,7 +5094,12 @@ with tab_auto:
             elif auto_detection_meta:
                 st.json(_localize_json_for_display(auto_detection_meta))
 
-_render_pocket_decision_panel(pocket_decision_df, pocket_reliability_df, pocket_triage_df)
+_render_pocket_decision_panel(
+    pocket_decision_df,
+    pocket_reliability_df,
+    pocket_triage_df,
+    manual_key_residue_template_df,
+)
 _render_evidence_context_panels()
 _render_consensus_rerank_review_panels()
 _render_ai_review_panels()
