@@ -348,6 +348,50 @@ def test_detect_auto_pocket_table_adds_external_evidence_guided_route():
     assert "A:1" in str(pocket_summary.iloc[0]["evidence_anchor_residues"])
 
 
+def test_detect_auto_pocket_table_builds_external_evidence_seed_neighborhood():
+    external_site_df = pd.DataFrame(
+        [
+            {
+                "chain": "A",
+                "resid": 1,
+                "evidence_source": "M-CSA",
+                "evidence_type": "Catalytic residue",
+                "evidence_score": 1.0,
+                "evidence_note": "seed residue should define the active-site neighborhood",
+                "uniprot_resid": 1,
+                "mapping_level": "exact",
+                "mapping_confidence": 0.94,
+                "mapping_method": "sifts-chain-map",
+            }
+        ]
+    )
+
+    pocket_df = detect_auto_pocket_table(
+        PDB_TEXT,
+        prefer_kvfinder=False,
+        prefer_ligand=False,
+        external_site_df=external_site_df,
+    )
+    diagnostics = build_pocket_detection_diagnostics_table(pocket_df)
+
+    assert not pocket_df.empty
+    evidence_diag = diagnostics[diagnostics["method"].astype(str) == "external-evidence"].iloc[0]
+    assert evidence_diag["status"] == "used"
+    assert int(evidence_diag["residue_rows"]) >= 3
+
+    seed_rows = pocket_df[pocket_df["consensus_methods"].astype(str).str.contains("external-evidence", regex=False)]
+    seed_residues = {(row.chain, int(row.resid)) for row in seed_rows.itertuples(index=False)}
+    assert {("A", 1), ("A", 2), ("A", 3)}.issubset(seed_residues)
+    assert seed_rows["evidence_anchor_residue"].astype(str).str.contains("A:1", regex=False).any()
+    assert pd.to_numeric(seed_rows["evidence_anchor_distance"], errors="coerce").min() == 0.0
+
+    pocket_summary = build_pocket_summary(pocket_df, pd.DataFrame())
+    seeded_summary = pocket_summary[pocket_summary["consensus_methods"].astype(str).str.contains("external-evidence", regex=False)]
+    assert not seeded_summary.empty
+    assert seeded_summary["residue_count"].astype(int).max() >= 3
+    assert seeded_summary["external_direct_anchor_count"].astype(int).max() >= 1
+
+
 def test_detect_auto_pocket_table_can_disable_external_evidence_guided_route():
     external_site_df = pd.DataFrame(
         [

@@ -2991,9 +2991,11 @@ def _build_external_evidence_method_table(
     external_count = pd.to_numeric(working.get("external_evidence_count"), errors="coerce").fillna(0.0) if "external_evidence_count" in working.columns else pd.Series(np.zeros(len(working)), index=working.index)
     exact_flags = _boolean_frame_series(working, "external_exact_match", False)
     verified_flags = _boolean_frame_series(working, "external_structure_verified", False)
+    direct_anchor_flags = _boolean_frame_series(working, "external_direct_anchor", False)
 
     anchor_mask = (
-        ((external_count > 0) & exact_flags)
+        direct_anchor_flags
+        | ((external_count > 0) & exact_flags)
         | ((external_count > 0) & (external_support >= min_anchor_support) & (external_confidence >= min_anchor_confidence))
         | ((external_count > 0) & (external_quality >= min_mapping_quality))
     )
@@ -3017,7 +3019,7 @@ def _build_external_evidence_method_table(
     resolved_evidence_radius = (
         _clamp_float(float(evidence_radius), 3.5, 12.0)
         if evidence_radius is not None
-        else _clamp_float(float(cluster_cutoff) * 0.80, 4.6, 7.2)
+        else _clamp_float(float(cluster_cutoff) * 0.92, 5.4, 8.4)
     )
     proximity_score = np.clip(1.0 - (anchor_distances / max(resolved_evidence_radius, 1e-6)), 0.0, 1.0)
     anchor_distance_series = pd.Series(anchor_distances, index=working.index)
@@ -3031,10 +3033,10 @@ def _build_external_evidence_method_table(
     hotspot_flags = working.get("is_hotspot", pd.Series(False, index=working.index)).fillna(False).astype(bool)
 
     method_score = (
-        0.34 * external_support
+        0.31 * external_support
         + 0.18 * external_confidence
         + 0.15 * external_quality
-        + 0.13 * proximity_series
+        + 0.18 * proximity_series
         + 0.08 * precision_score
         + 0.05 * confidence_score
         + 0.04 * contact_density
@@ -3061,14 +3063,21 @@ def _build_external_evidence_method_table(
     )
 
     candidate_anchor_mask = anchor_mask.reindex(candidate_df.index).fillna(False).astype(bool)
-    keep_limit = max(len(anchor_df), min(max(1, int(max_candidates)), len(candidate_df)))
+    evidence_seed_floor = min(
+        len(candidate_df),
+        max(len(anchor_df), len(anchor_df) * 4, len(anchor_df) + 3),
+    )
+    keep_limit = min(
+        len(candidate_df),
+        max(len(anchor_df), int(max_candidates), evidence_seed_floor),
+    )
     candidate_df = _select_ranked_candidate_rows(
         candidate_df,
         target_candidates=keep_limit,
         sort_columns=["method_score", "external_support", "external_confidence", "precision_score", "contact_count", "center_distance"],
         ascending=[False, False, False, False, False, True],
         anchor_mask=candidate_anchor_mask if candidate_anchor_mask.any() else None,
-        hard_limit=max_candidates,
+        hard_limit=max(int(max_candidates), evidence_seed_floor),
     )
     if candidate_df.empty:
         return _empty_auto_pocket_table()
@@ -3126,8 +3135,8 @@ def _build_external_evidence_method_table(
                     "contact_count": int(getattr(row, "contact_count", 0) or 0),
                     "center_distance": round(float(getattr(row, "center_distance", 0.0) or 0.0), 3),
                     "ligand_contact_count": int(getattr(row, "ligand_contact_count", 0) or 0),
-                    "detection_method": "external-evidence",
-                    "detection_route": _detection_route_label("external-evidence"),
+                    "detection_method": "external-evidence-seeded",
+                    "detection_route": _detection_route_label("external-evidence-seeded"),
                     "is_hotspot": residue_key in hotspot_set or bool(getattr(row, "is_hotspot", False)),
                     "depth_avg": round(depth_avg, 3),
                     "depth_max": round(depth_max, 3),
@@ -3368,16 +3377,40 @@ def _build_consensus_pocket_table(
                 & (_numeric_frame_series(merged, "external_evidence_count", 0.0) > 0)
             )
         )
+        external_method_gate = merged["support_methods"].apply(
+            lambda methods: "external-evidence" in set(_ordered_unique_methods(methods))
+        )
+        evidence_anchor_proximity = pd.to_numeric(merged["evidence_anchor_proximity"], errors="coerce").fillna(0.0)
+        evidence_anchor_distance = pd.to_numeric(merged["evidence_anchor_distance"], errors="coerce")
+        evidence_seed_distance_cutoff = _clamp_float(float(cluster_cutoff) * 0.92, 5.4, 8.4)
+        evidence_neighborhood_gate = (
+            external_method_gate
+            & (
+                (evidence_anchor_proximity >= 0.16)
+                | evidence_anchor_distance.le(evidence_seed_distance_cutoff).fillna(False)
+            )
+            & (
+                (_numeric_frame_series(merged, "external_support", 0.0) >= 0.18)
+                | (pd.to_numeric(merged["seed_support"], errors="coerce").fillna(0.0) >= 0.18)
+                | merged["external_exact_match"]
+            )
+        )
     else:
         evidence_anchor_gate = pd.Series(np.full(len(merged), False, dtype=bool), index=merged.index)
-    support_gate = multi_method_gate | evidence_anchor_gate
+        evidence_neighborhood_gate = pd.Series(np.full(len(merged), False, dtype=bool), index=merged.index)
+    support_gate = multi_method_gate | evidence_anchor_gate | evidence_neighborhood_gate
 
     candidate_df = merged[support_gate].copy()
     if candidate_df.empty:
         return _empty_auto_pocket_table()
 
-    target_candidates = max(min_candidates, int(math.ceil(len(candidate_df) * float(top_fraction))))
-    target_candidates = min(max_candidates, target_candidates, len(candidate_df))
+    evidence_seed_candidate_count = int((evidence_anchor_gate | evidence_neighborhood_gate).reindex(candidate_df.index).fillna(False).astype(bool).sum())
+    target_candidates = max(
+        min_candidates,
+        int(math.ceil(len(candidate_df) * float(top_fraction))),
+        evidence_seed_candidate_count,
+    )
+    target_candidates = min(max(max_candidates, evidence_seed_candidate_count), target_candidates, len(candidate_df))
     target_candidates = max(1, target_candidates)
     consensus_anchor_mask = (
         candidate_df["is_hotspot"].fillna(False).astype(bool)
@@ -3385,6 +3418,7 @@ def _build_consensus_pocket_table(
         | (_numeric_frame_series(candidate_df, "external_support", 0.0) >= 0.70)
         | _boolean_frame_series(candidate_df, "external_exact_match", False)
         | (pd.to_numeric(candidate_df["method_vote_count"], errors="coerce").fillna(0).astype(int) >= 3)
+        | (evidence_anchor_gate | evidence_neighborhood_gate).reindex(candidate_df.index).fillna(False).astype(bool)
     )
     candidate_df = _select_ranked_candidate_rows(
         candidate_df,
@@ -3392,7 +3426,7 @@ def _build_consensus_pocket_table(
         sort_columns=["consensus_score", "method_vote_count", "seed_support", "confidence_score", "contact_count", "center_distance"],
         ascending=[False, False, False, False, False, True],
         anchor_mask=consensus_anchor_mask if consensus_anchor_mask.any() else None,
-        hard_limit=max_candidates,
+        hard_limit=max(max_candidates, evidence_seed_candidate_count),
     )
 
     if candidate_df.empty:
