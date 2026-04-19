@@ -51,6 +51,9 @@ EVIDENCE_COLUMNS = [
     "sentence_index",
     "extraction_pattern",
     "requires_manual_review",
+    "target_pocket_id",
+    "reviewer_note",
+    "closure_action",
 ]
 
 EVIDENCE_SOURCE_DETAIL_COLUMNS = [
@@ -62,6 +65,9 @@ EVIDENCE_SOURCE_DETAIL_COLUMNS = [
     "sentence_index",
     "extraction_pattern",
     "requires_manual_review",
+    "target_pocket_id",
+    "reviewer_note",
+    "closure_action",
 ]
 
 EVIDENCE_COLUMN_DEFAULTS: Dict[str, object] = {
@@ -83,6 +89,9 @@ EVIDENCE_COLUMN_DEFAULTS: Dict[str, object] = {
     "sentence_index": "",
     "extraction_pattern": "",
     "requires_manual_review": False,
+    "target_pocket_id": "",
+    "reviewer_note": "",
+    "closure_action": "",
 }
 
 MANUAL_KEY_RESIDUE_TEMPLATE_COLUMNS = [
@@ -207,7 +216,18 @@ def ensure_evidence_columns(table: Optional[pd.DataFrame]) -> pd.DataFrame:
             working[column] = EVIDENCE_COLUMN_DEFAULTS.get(column, "")
 
     working["requires_manual_review"] = working["requires_manual_review"].map(_coerce_bool)
-    for column in ["article_title", "pmid", "pmcid", "doi", "evidence_snippet", "sentence_index", "extraction_pattern"]:
+    for column in [
+        "article_title",
+        "pmid",
+        "pmcid",
+        "doi",
+        "evidence_snippet",
+        "sentence_index",
+        "extraction_pattern",
+        "target_pocket_id",
+        "reviewer_note",
+        "closure_action",
+    ]:
         working[column] = working[column].fillna("").astype(str).str.strip()
     return working[EVIDENCE_COLUMNS].copy()
 
@@ -334,6 +354,9 @@ def parse_manual_key_residue_table(
                 "sentence_index": str(row.get("sentence_index") or "").strip(),
                 "extraction_pattern": str(row.get("extraction_pattern") or "manual").strip(),
                 "requires_manual_review": _coerce_bool(row.get("requires_manual_review")),
+                "target_pocket_id": str(row.get("target_pocket_id") or "").strip(),
+                "reviewer_note": str(row.get("reviewer_note") or "").strip(),
+                "closure_action": str(row.get("closure_action") or "").strip(),
             }
         )
 
@@ -560,7 +583,16 @@ def merge_external_evidence_tables(*tables: Optional[pd.DataFrame]) -> pd.DataFr
         ["_mapping_rank", "mapping_confidence", "evidence_score", "resid", "evidence_source", "evidence_type"],
         ascending=[True, False, False, True, True, True],
     ).drop_duplicates(
-        subset=["chain", "resid", "evidence_source", "evidence_type", "mapping_level", "uniprot_resid", "evidence_note"],
+        subset=[
+            "chain",
+            "resid",
+            "evidence_source",
+            "evidence_type",
+            "mapping_level",
+            "uniprot_resid",
+            "evidence_note",
+            "target_pocket_id",
+        ],
         keep="first",
     )
     return ensure_evidence_columns(combined.drop(columns="_mapping_rank").reset_index(drop=True))

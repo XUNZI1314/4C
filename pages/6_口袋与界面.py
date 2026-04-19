@@ -5524,6 +5524,9 @@ with tab_auto:
                         "sentence_index",
                         "extraction_pattern",
                         "requires_manual_review",
+                        "target_pocket_id",
+                        "reviewer_note",
+                        "closure_action",
                     ]
                     if column in external_site_df.columns
                 ]

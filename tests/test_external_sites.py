@@ -91,6 +91,9 @@ def test_parse_manual_key_residue_table_preserves_collection_template_context():
     assert "target_pocket_id=Pocket-2" in note
     assert "reviewer_note=confirmed by curator" in note
     assert "closure_action=rerun auto detection" in note
+    assert evidence_df.iloc[0]["target_pocket_id"] == "Pocket-2"
+    assert evidence_df.iloc[0]["reviewer_note"] == "confirmed by curator"
+    assert evidence_df.iloc[0]["closure_action"] == "rerun auto detection"
     assert meta["target_pocket_ids"] == "Pocket-2"
     assert meta["target_pocket_count"] == "1"
 
